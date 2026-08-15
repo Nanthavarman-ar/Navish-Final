@@ -23,12 +23,6 @@
       "dest": "/$1"
     }
   ],
-  "env": {
-    "NODE_ENV": "production",
-    "VITE_SUPABASE_URL": "@vite-supabase-url",
-    "VITE_SUPABASE_ANON_KEY": "@vite-supabase-anon-key",
-    "VITE_SOCKET_URL": "@vite-socket-url"
-  },
   "functions": {
     "src/**/*.js": {
       "runtime": "nodejs20.x"
