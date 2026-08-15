@@ -1,0 +1,196 @@
+/* CostEstimatorWrapper styles */
+
+.costEstimatorContainer {
+  position: absolute;
+  top: 60px;
+  right: 10px;
+  width: 320px;
+  background: rgba(0, 0, 0, 0.9);
+  border-radius: 8px;
+  padding: 16px;
+  color: white;
+  font-size: 12px;
+  z-index: 1000;
+  max-height: 384px;
+  overflow-y: auto;
+}
+
+.costEstimatorHeader {
+  margin: 0 0 16px 0;
+  color: #10b981;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.loadingSpinner {
+  animation: spin 1s linear infinite;
+  width: 12px;
+  height: 12px;
+  border: 1px solid white;
+  border-top-color: transparent;
+  border-radius: 50%;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.errorMessage {
+  margin-bottom: 16px;
+  padding: 8px;
+  background: rgba(153, 27, 27, 0.5);
+  border: 1px solid #dc2626;
+  border-radius: 4px;
+  color: #fca5a5;
+}
+
+.budgetSettings {
+  margin-bottom: 16px;
+}
+
+.budgetSettingRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.budgetSettingLabel {
+  display: block;
+  font-size: 12px;
+}
+
+.budgetInput {
+  width: 80px;
+  padding: 4px;
+  background: #374151;
+  color: white;
+  border: 1px solid #4b5563;
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+.regionSelect {
+  width: 96px;
+  padding: 4px;
+  background: #374151;
+  color: white;
+  border: 1px solid #4b5563;
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+.elementInfo {
+  margin-bottom: 16px;
+}
+
+.elementName {
+  font-size: 12px;
+  color: #d1d5db;
+  margin-bottom: 4px;
+}
+
+.elementDetails {
+  font-size: 12px;
+  color: #d1d5db;
+  margin-bottom: 8px;
+}
+
+.budgetStatus {
+  margin-bottom: 16px;
+}
+
+.budgetStatusRow {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+
+.budgetStatusMessage {
+  font-size: 12px;
+}
+
+.budgetStatusOver {
+  color: #f87171;
+}
+
+.budgetStatusWarning {
+  color: #fbbf24;
+}
+
+.budgetStatusGood {
+  color: #34d399;
+}
+
+.progressBarContainer {
+  height: 8px;
+  background: #374151;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.progressBar {
+  height: 100%;
+  transition: width 0.3s ease;
+}
+
+.progressBarRed {
+  background: #dc2626;
+}
+
+.progressBarYellow {
+  background: #f59e0b;
+}
+
+.progressBarGreen {
+  background: #10b981;
+}
+
+.costBreakdown {
+  margin-bottom: 16px;
+}
+
+.costBreakdownTitle {
+  color: #10b981;
+  margin-bottom: 8px;
+}
+
+.costBreakdownItem {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+
+.costBreakdownTotal {
+  display: flex;
+  justify-content: space-between;
+  font-weight: bold;
+  border-top: 1px solid #4b5563;
+  padding-top: 4px;
+  margin-top: 8px;
+}
+
+.costTotalOver {
+  color: #f87171;
+}
+
+.costTotalWarning {
+  color: #fbbf24;
+}
+
+.costTotalGood {
+  color: #34d399;
+}
+
+.modelCostSection {
+  margin-bottom: 16px;
+}
+
+.noSelectionMessage {
+  text-align: center;
+  color: #9ca3af;
+  padding: 16px 0;
+}

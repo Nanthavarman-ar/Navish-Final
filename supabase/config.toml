@@ -1,0 +1,15 @@
+project_id = "xgljnawquknqrjezqhgo"
+
+# This project's JWT signing key is ES256 (asymmetric). The Supabase Edge
+# Functions platform's built-in gateway JWT check does not accept ES256
+# tokens and rejects every real login session with
+# "UNAUTHORIZED_UNSUPPORTED_TOKEN_ALGORITHM" before our code even runs -
+# which is what showed up in the app as "Session expired. Please log in
+# again." right after a successful login.
+#
+# We already verify the caller's token ourselves inside the function
+# (server/index.tsx verifyUser/verifyAdmin, via supabase.auth.getUser(),
+# which does support ES256), so the platform-level gate is redundant here
+# and must be disabled.
+[functions.make-server-cf230d31]
+verify_jwt = false

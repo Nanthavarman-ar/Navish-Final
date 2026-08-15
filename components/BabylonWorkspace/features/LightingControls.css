@@ -1,0 +1,500 @@
+.lighting-controls {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: linear-gradient(135deg, #2a2a2a 0%, #1a1a1a 100%);
+  border: 1px solid #333;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.lighting-controls-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px;
+  border-bottom: 1px solid #333;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.lighting-controls-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #fff;
+  margin: 0;
+}
+
+.lighting-controls-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.lighting-controls-tabs {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.lighting-controls-tabs-list {
+  padding: 8px 16px 0;
+  background: transparent;
+  border-bottom: 1px solid #333;
+}
+
+.lighting-controls-tab-content {
+  flex: 1;
+  padding: 16px;
+  overflow-y: auto;
+}
+
+/* Lights Section */
+.lights-section {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.lights-header {
+  margin-bottom: 16px;
+}
+
+.section-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #fff;
+  margin-bottom: 12px;
+}
+
+.add-light-buttons {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+}
+
+.add-light-button {
+  width: 48px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  transition: all 0.2s ease;
+}
+
+.add-light-button:hover {
+  transform: scale(1.1);
+  background: rgba(0, 122, 204, 0.2);
+}
+
+.lights-list {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.lights-scroll-area {
+  flex: 1;
+  height: 100%;
+}
+
+.lights-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+  height: 100%;
+}
+
+.light-card {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid #444;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.light-card:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: #007acc;
+}
+
+.light-card.selected {
+  background: rgba(0, 122, 204, 0.2);
+  border-color: #007acc;
+}
+
+.light-content {
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.light-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.light-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.light-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: #fff;
+}
+
+.light-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.light-properties {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.property-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.property-label {
+  font-size: 11px;
+  color: #ccc;
+  min-width: 60px;
+}
+
+.property-input {
+  width: 80px;
+  height: 28px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid #555;
+  border-radius: 4px;
+  padding: 0 6px;
+  color: #fff;
+  font-size: 11px;
+  text-align: center;
+}
+
+.property-input:focus {
+  outline: none;
+  border-color: #007acc;
+}
+
+.color-picker {
+  display: flex;
+  align-items: center;
+}
+
+.color-picker input[type="color"] {
+  width: 32px;
+  height: 28px;
+  border: 1px solid #555;
+  border-radius: 4px;
+  cursor: pointer;
+  background: transparent;
+}
+
+.color-picker input[type="color"]::-webkit-color-swatch {
+  border-radius: 2px;
+  border: none;
+}
+
+.color-picker input[type="color"]::-moz-color-swatch {
+  border-radius: 2px;
+  border: none;
+}
+
+/* Environment Section */
+.environment-scroll-area {
+  height: 100%;
+}
+
+.environment-section {
+  margin-bottom: 24px;
+}
+
+.environment-section:last-child {
+  margin-bottom: 0;
+}
+
+.environment-group {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.environment-item {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.environment-item label {
+  font-size: 12px;
+  color: #ccc;
+  font-weight: 500;
+}
+
+.environment-item input[type="text"] {
+  height: 32px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid #444;
+  border-radius: 4px;
+  padding: 0 8px;
+  color: #fff;
+  font-size: 12px;
+}
+
+.environment-item input[type="text"]:focus {
+  outline: none;
+  border-color: #007acc;
+}
+
+.environment-item input[type="number"] {
+  height: 32px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid #444;
+  border-radius: 4px;
+  padding: 0 8px;
+  color: #fff;
+  font-size: 12px;
+}
+
+.environment-item input[type="number"]:focus {
+  outline: none;
+  border-color: #007acc;
+}
+
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: #ccc;
+  cursor: pointer;
+}
+
+.checkbox-label input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: #007acc;
+}
+
+/* Shadows Section */
+.shadows-section {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.shadows-info {
+  margin-bottom: 20px;
+}
+
+.shadows-description {
+  font-size: 12px;
+  color: #888;
+  line-height: 1.4;
+  margin: 0;
+}
+
+.shadows-group {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.shadows-item {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.shadows-label {
+  font-size: 12px;
+  color: #ccc;
+  font-weight: 500;
+}
+
+.shadows-controls {
+  display: flex;
+  gap: 8px;
+}
+
+.shadows-controls button {
+  flex: 1;
+  height: 32px;
+  font-size: 11px;
+}
+
+.shadows-input {
+  height: 32px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid #444;
+  border-radius: 4px;
+  padding: 0 8px;
+  color: #fff;
+  font-size: 12px;
+}
+
+.shadows-input:focus {
+  outline: none;
+  border-color: #007acc;
+}
+
+.shadows-presets {
+  margin-top: auto;
+}
+
+.shadows-presets-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #fff;
+  margin-bottom: 12px;
+}
+
+.shadows-presets-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.shadows-preset {
+  height: 36px;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .lighting-controls-header {
+    padding: 12px;
+  }
+
+  .lighting-controls-title {
+    font-size: 14px;
+  }
+
+  .lighting-controls-tab-content {
+    padding: 12px;
+  }
+
+  .add-light-buttons {
+    flex-wrap: wrap;
+  }
+
+  .add-light-button {
+    width: 44px;
+    height: 44px;
+  }
+
+  .property-row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 4px;
+  }
+
+  .property-label {
+    text-align: center;
+    min-width: auto;
+  }
+
+  .property-input {
+    width: 100%;
+  }
+
+  .shadows-controls {
+    flex-wrap: wrap;
+  }
+
+  .shadows-controls button {
+    flex: none;
+    min-width: 60px;
+  }
+
+  .shadows-presets-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 480px) {
+  .lighting-controls-header {
+    padding: 8px;
+  }
+
+  .lighting-controls-tab-content {
+    padding: 8px;
+  }
+
+  .add-light-buttons {
+    gap: 4px;
+  }
+
+  .add-light-button {
+    width: 40px;
+    height: 40px;
+  }
+
+  .lights-grid {
+    gap: 8px;
+  }
+
+  .light-content {
+    padding: 8px;
+    gap: 8px;
+  }
+
+  .light-header {
+    flex-direction: column;
+    gap: 8px;
+    align-items: stretch;
+  }
+
+  .light-actions {
+    justify-content: center;
+  }
+}
+
+/* Dark Theme Support */
+@media (prefers-color-scheme: dark) {
+  .lighting-controls {
+    background: linear-gradient(135deg, #1a1a1a 0%, #0a0a0a 100%);
+    border-color: #444;
+  }
+}
+
+/* High Contrast Mode */
+@media (prefers-contrast: high) {
+  .lighting-controls {
+    border-width: 2px;
+  }
+
+  .light-card,
+  .property-input,
+  .shadows-input,
+  .environment-item input {
+    border-width: 2px;
+  }
+}
+
+/* Reduced Motion */
+@media (prefers-reduced-motion: reduce) {
+  .light-card,
+  .add-light-button {
+    transition: none;
+  }
+
+  .add-light-button:hover {
+    transform: none;
+  }
+}

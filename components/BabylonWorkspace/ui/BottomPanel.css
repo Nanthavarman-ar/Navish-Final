@@ -1,0 +1,560 @@
+.bottom-panel {
+  position: relative;
+  height: 280px;
+  background: linear-gradient(135deg, #2a2a2a 0%, #1a1a1a 100%);
+  border-top: 1px solid #333;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+.bottom-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid #333;
+}
+
+.bottom-panel-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #fff;
+  margin: 0;
+}
+
+.bottom-panel-controls {
+  display: flex;
+  gap: 4px;
+}
+
+.bottom-panel-controls .topbar-button {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border-radius: 4px;
+}
+
+.bottom-panel-content {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr 1fr 1fr;
+  gap: 8px;
+  padding: 12px 16px;
+  overflow-y: auto;
+}
+
+.bottom-panel-content::-webkit-scrollbar {
+  width: 4px;
+}
+
+.bottom-panel-content::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 2px;
+}
+
+.bottom-panel-content::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 2px;
+}
+
+/* Cards */
+.performance-card,
+.system-card,
+.scene-card,
+.tools-card,
+.actions-card {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid #333;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.performance-header,
+.system-header,
+.scene-header,
+.tools-header,
+.actions-header {
+  padding: 12px;
+  background: rgba(255, 255, 255, 0.02);
+  border-bottom: 1px solid #333;
+}
+
+.performance-content,
+.system-content,
+.scene-content,
+.tools-content,
+.actions-content {
+  padding: 12px;
+}
+
+/* Metrics grid */
+.metrics-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.metric-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.metric-label {
+  font-size: 11px;
+  color: #888;
+  font-weight: 500;
+}
+
+.metric-value {
+  font-size: 14px;
+  color: #fff;
+  font-weight: 600;
+  font-family: monospace;
+}
+
+.fps-value[data-quality="good"] {
+  color: #10b981;
+}
+
+.fps-value[data-quality="medium"] {
+  color: #f59e0b;
+}
+
+.fps-value[data-quality="poor"] {
+  color: #ef4444;
+}
+
+.metric-progress {
+  height: 3px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.metric-progress > div {
+  height: 100%;
+  background: #007acc;
+  border-radius: 2px;
+  transition: width 0.3s ease;
+}
+
+/* System grid */
+.system-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.system-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 11px;
+}
+
+.system-label {
+  color: #888;
+}
+
+.system-value {
+  color: #ccc;
+  font-family: monospace;
+}
+
+/* Scene stats */
+.scene-stats {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.stat-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 11px;
+}
+
+.stat-label {
+  color: #888;
+}
+
+/* Tools status */
+.tools-status {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.tool-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid #333;
+  border-radius: 4px;
+  font-size: 11px;
+  color: #888;
+  transition: all 0.2s ease;
+}
+
+.tool-item.active {
+  background: rgba(0, 122, 204, 0.2);
+  border-color: #007acc;
+  color: #fff;
+}
+
+.tool-item:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: #ccc;
+}
+
+/* Quick actions */
+.quick-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.quick-action {
+  height: 28px;
+  padding: 0 8px;
+  font-size: 10px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid #333;
+  border-radius: 4px;
+  color: #888;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  transition: all 0.2s ease;
+}
+
+.quick-action:hover {
+  background: rgba(0, 122, 204, 0.2);
+  border-color: #007acc;
+  color: #fff;
+}
+
+/* Status bar */
+.status-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 16px;
+  background: rgba(0, 0, 0, 0.3);
+  border-top: 1px solid #333;
+  font-size: 11px;
+}
+
+.status-left,
+.status-center,
+.status-right {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.status-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.status-label {
+  color: #888;
+}
+
+.status-value {
+  color: #ccc;
+  font-family: monospace;
+}
+
+/* Performance monitor */
+.performance-monitor {
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  width: 100%;
+  height: 300px;
+  background: linear-gradient(135deg, #2a2a2a 0%, #1a1a1a 100%);
+  border: 1px solid #333;
+  border-bottom: none;
+  border-radius: 8px 8px 0 0;
+  z-index: 1000;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+.monitor-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid #333;
+}
+
+.monitor-header h3 {
+  font-size: 14px;
+  font-weight: 600;
+  color: #fff;
+  margin: 0;
+}
+
+.monitor-content {
+  padding: 16px;
+  height: calc(100% - 49px);
+  overflow-y: auto;
+}
+
+.monitor-stats {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.monitor-stats .stat {
+  flex: 1;
+  text-align: center;
+}
+
+.monitor-stats .stat-label {
+  font-size: 11px;
+  color: #888;
+  margin-bottom: 4px;
+}
+
+.monitor-stats .stat-value {
+  font-size: 16px;
+  color: #fff;
+  font-weight: 600;
+  font-family: monospace;
+}
+
+.monitor-chart {
+  height: 120px;
+}
+
+.chart-title {
+  font-size: 12px;
+  color: #888;
+  margin-bottom: 8px;
+}
+
+.chart-container {
+  height: 100px;
+  display: flex;
+  align-items: end;
+  gap: 1px;
+  overflow: hidden;
+}
+
+.chart-bar {
+  flex: 1;
+  min-height: 2px;
+  border-radius: 1px 1px 0 0;
+  transition: height 0.3s ease;
+}
+
+/* Console */
+.console-panel {
+  position: absolute;
+  bottom: 100%;
+  right: 0;
+  width: 500px;
+  height: 300px;
+  background: linear-gradient(135deg, #2a2a2a 0%, #1a1a1a 100%);
+  border: 1px solid #333;
+  border-bottom: none;
+  border-radius: 8px 8px 0 0;
+  z-index: 1000;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  display: flex;
+  flex-direction: column;
+}
+
+.console-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid #333;
+}
+
+.console-header h3 {
+  font-size: 14px;
+  font-weight: 600;
+  color: #fff;
+  margin: 0;
+}
+
+.console-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.console-filter {
+  height: 24px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid #444;
+  border-radius: 4px;
+  padding: 0 8px;
+  color: #fff;
+  font-size: 11px;
+}
+
+.console-filter:focus {
+  outline: none;
+  border-color: #007acc;
+}
+
+.console-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px 16px;
+}
+
+.console-logs {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.console-log {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-family: monospace;
+}
+
+.log-info {
+  background: rgba(59, 130, 246, 0.1);
+  color: #93c5fd;
+}
+
+.log-warn {
+  background: rgba(245, 158, 11, 0.1);
+  color: #fcd34d;
+}
+
+.log-error {
+  background: rgba(239, 68, 68, 0.1);
+  color: #fca5a5;
+}
+
+.log-icon {
+  margin-top: 1px;
+}
+
+.log-content {
+  flex: 1;
+}
+
+.log-message {
+  margin-bottom: 2px;
+}
+
+.log-time {
+  font-size: 10px;
+  opacity: 0.7;
+}
+
+/* Responsive design */
+@media (max-width: 1200px) {
+  .bottom-panel-content {
+    grid-template-columns: 1fr 1fr 1fr;
+  }
+}
+
+@media (max-width: 768px) {
+  .bottom-panel {
+    height: 200px;
+  }
+
+  .bottom-panel-content {
+    grid-template-columns: 1fr 1fr;
+    padding: 8px 12px;
+  }
+
+  .console-panel {
+    width: 100%;
+    right: 0;
+  }
+}
+
+@media (max-width: 480px) {
+  .bottom-panel-content {
+    grid-template-columns: 1fr;
+  }
+
+  .status-bar {
+    flex-direction: column;
+    gap: 8px;
+    padding: 6px 12px;
+  }
+
+  .status-left,
+  .status-center,
+  .status-right {
+    width: 100%;
+    justify-content: space-between;
+  }
+}
+
+/* Dark theme support */
+@media (prefers-color-scheme: dark) {
+  .bottom-panel {
+    background: linear-gradient(135deg, #1a1a1a 0%, #0a0a0a 100%);
+    border-top-color: #444;
+  }
+
+  .performance-monitor,
+  .console-panel {
+    background: linear-gradient(135deg, #1a1a1a 0%, #0a0a0a 100%);
+    border-color: #444;
+  }
+}
+
+/* High contrast mode */
+@media (prefers-contrast: high) {
+  .bottom-panel {
+    border-top-width: 2px;
+  }
+
+  .performance-card,
+  .system-card,
+  .scene-card,
+  .tools-card,
+  .actions-card {
+    border-width: 2px;
+  }
+
+  .quick-action {
+    border-width: 2px;
+  }
+}
+
+/* Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  .metric-progress > div,
+  .chart-bar {
+    transition: none;
+  }
+
+  .performance-monitor,
+  .console-panel {
+    transition: none;
+  }
+}

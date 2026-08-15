@@ -1,0 +1,88 @@
+.windTunnelContainer {
+  padding: 16px;
+  background: #1e293b;
+  border: 1px solid #334155;
+  border-radius: 8px;
+  color: #f1f5f9;
+}
+
+.heading {
+  margin: 0 0 16px 0;
+  font-size: 16px;
+}
+
+.simulationToggle {
+  margin-bottom: 16px;
+}
+
+.toggleButton {
+  padding: 8px 16px;
+  border: none;
+  border-radius: 4px;
+  color: white;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.toggleButtonActive {
+  background: #dc2626;
+}
+
+.toggleButtonInactive {
+  background: #10b981;
+}
+
+.windPresets {
+  margin-bottom: 16px;
+}
+
+.windPresetsHeading {
+  margin: 0 0 8px 0;
+  font-size: 14px;
+}
+
+.windPresetsGrid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 4px;
+}
+
+.presetButton {
+  padding: 6px;
+  background: #334155;
+  border: 1px solid #475569;
+  border-radius: 4px;
+  color: #f1f5f9;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.windControls {
+  border-top: 1px solid #334155;
+  padding-top: 16px;
+}
+
+.windControlsHeading {
+  margin: 0 0 12px 0;
+  font-size: 14px;
+}
+
+.controlGroup {
+  margin-bottom: 12px;
+}
+
+.controlLabel {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 12px;
+}
+
+.rangeInput {
+  width: 100%;
+}
+
+.footerNote {
+  font-size: 12px;
+  color: #94a3b8;
+  margin-top: 8px;
+}

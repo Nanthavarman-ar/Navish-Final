@@ -1,0 +1,14 @@
+.progressBarContainer {
+  width: 100%;
+  height: 8px;
+  background-color: #2d3748; /* Tailwind gray-700 */
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.progressBarFill {
+  height: 100%;
+  width: var(--progress-width, 0%);
+  background-color: #3b82f6; /* Tailwind blue-500 */
+  transition: width 0.3s ease-in-out;
+}

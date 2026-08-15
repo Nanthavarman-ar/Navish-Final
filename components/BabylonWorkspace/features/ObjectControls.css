@@ -1,0 +1,507 @@
+.object-controls {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: linear-gradient(135deg, #2a2a2a 0%, #1a1a1a 100%);
+  border: 1px solid #333;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.object-controls-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px;
+  border-bottom: 1px solid #333;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.object-controls-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #fff;
+  margin: 0;
+}
+
+.object-controls-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.object-controls-tabs {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.object-controls-tabs-list {
+  padding: 8px 16px 0;
+  background: transparent;
+  border-bottom: 1px solid #333;
+}
+
+.object-controls-tab-content {
+  flex: 1;
+  padding: 16px;
+  overflow-y: auto;
+}
+
+/* Objects Section */
+.objects-section {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.objects-header {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.search-container {
+  width: 100%;
+}
+
+.search-input {
+  width: 100%;
+  height: 36px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid #444;
+  border-radius: 6px;
+  padding: 0 12px;
+  color: #fff;
+  font-size: 13px;
+}
+
+.search-input:focus {
+  outline: none;
+  border-color: #007acc;
+}
+
+.add-object-buttons {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 8px;
+}
+
+.add-object-button {
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+}
+
+.add-object-button:hover {
+  transform: scale(1.05);
+  background: rgba(0, 122, 204, 0.2);
+}
+
+.objects-list {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.objects-scroll-area {
+  flex: 1;
+  height: 100%;
+}
+
+.objects-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+  height: 100%;
+}
+
+.object-card {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid #444;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.object-card:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: #007acc;
+}
+
+.object-card.selected {
+  background: rgba(0, 122, 204, 0.2);
+  border-color: #007acc;
+}
+
+.object-content {
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.object-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.object-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+}
+
+.object-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: #fff;
+  flex: 1;
+}
+
+.object-type {
+  font-size: 10px;
+  padding: 2px 6px;
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 10px;
+}
+
+.object-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.object-preview {
+  display: flex;
+  justify-content: center;
+}
+
+.object-color {
+  width: 32px;
+  height: 32px;
+  border-radius: 4px;
+  border: 2px solid #555;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+/* Groups Section */
+.groups-section {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.groups-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
+.groups-scroll-area {
+  flex: 1;
+  height: 100%;
+}
+
+.groups-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+  height: 100%;
+}
+
+.group-card {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid #444;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.group-card:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: #007acc;
+}
+
+.group-card.selected {
+  background: rgba(0, 122, 204, 0.2);
+  border-color: #007acc;
+}
+
+.group-content {
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.group-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.group-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+}
+
+.group-color {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 1px solid #555;
+}
+
+.group-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: #fff;
+  flex: 1;
+}
+
+.group-count {
+  font-size: 10px;
+  padding: 2px 6px;
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 10px;
+}
+
+.group-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.group-controls {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+}
+
+/* Properties Section */
+.properties-section {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.properties-scroll-area {
+  flex: 1;
+  height: 100%;
+}
+
+.properties-content {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.property-group {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.property-group-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #fff;
+  margin: 0;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #444;
+}
+
+.property-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+}
+
+.property-item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.property-item label {
+  font-size: 11px;
+  color: #ccc;
+  font-weight: 500;
+}
+
+.property-item input {
+  height: 32px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid #444;
+  border-radius: 4px;
+  padding: 0 8px;
+  color: #fff;
+  font-size: 12px;
+}
+
+.property-item input:focus {
+  outline: none;
+  border-color: #007acc;
+}
+
+.color-picker {
+  display: flex;
+  align-items: center;
+}
+
+.color-picker input[type="color"] {
+  width: 100%;
+  height: 32px;
+  border: 1px solid #555;
+  border-radius: 4px;
+  cursor: pointer;
+  background: transparent;
+}
+
+.color-picker input[type="color"]::-webkit-color-swatch {
+  border-radius: 2px;
+  border: none;
+}
+
+.color-picker input[type="color"]::-moz-color-swatch {
+  border-radius: 2px;
+  border: none;
+}
+
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: #ccc;
+  cursor: pointer;
+}
+
+.checkbox-label input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: #007acc;
+}
+
+/* No Selection State */
+.no-selection {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: #888;
+  font-size: 14px;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .object-controls-header {
+    padding: 12px;
+  }
+
+  .object-controls-title {
+    font-size: 14px;
+  }
+
+  .object-controls-tab-content {
+    padding: 12px;
+  }
+
+  .add-object-buttons {
+    grid-template-columns: repeat(3, 1fr);
+  }
+
+  .property-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .groups-header {
+    flex-direction: column;
+    gap: 12px;
+    align-items: stretch;
+  }
+}
+
+@media (max-width: 480px) {
+  .object-controls-header {
+    padding: 8px;
+  }
+
+  .object-controls-tab-content {
+    padding: 8px;
+  }
+
+  .add-object-buttons {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .property-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .object-header {
+    flex-direction: column;
+    gap: 8px;
+    align-items: stretch;
+  }
+
+  .object-actions {
+    justify-content: center;
+  }
+
+  .group-header {
+    flex-direction: column;
+    gap: 8px;
+    align-items: stretch;
+  }
+
+  .group-actions {
+    justify-content: center;
+  }
+
+  .group-controls {
+    justify-content: center;
+  }
+}
+
+/* Dark Theme Support */
+@media (prefers-color-scheme: dark) {
+  .object-controls {
+    background: linear-gradient(135deg, #1a1a1a 0%, #0a0a0a 100%);
+    border-color: #444;
+  }
+}
+
+/* High Contrast Mode */
+@media (prefers-contrast: high) {
+  .object-controls {
+    border-width: 2px;
+  }
+
+  .object-card,
+  .group-card,
+  .property-item input,
+  .search-input {
+    border-width: 2px;
+  }
+}
+
+/* Reduced Motion */
+@media (prefers-reduced-motion: reduce) {
+  .object-card,
+  .group-card,
+  .add-object-button {
+    transition: none;
+  }
+
+  .add-object-button:hover {
+    transform: none;
+  }
+}

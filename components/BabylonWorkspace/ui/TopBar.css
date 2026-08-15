@@ -1,0 +1,43 @@
+.topbar-button {
+  transition: all 0.2s ease;
+}
+
+.topbar-button:hover {
+  transform: scale(1.05);
+}
+
+.dark .topbar-button:hover {
+  transform: scale(1.05);
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+@media (max-width: 768px) {
+  .topbar-center {
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+}
+
+/* Focus styles for accessibility - enhance Tailwind defaults */
+.topbar-button:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px currentColor;
+}
+
+.floating-tool-button {
+  transition: all 0.2s ease;
+}
+
+.floating-tool-button:hover {
+  transform: scale(1.05);
+}
+
+.dark .floating-tool-button:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+@media (max-width: 768px) {
+  .floating-toolbar {
+    transform: scale(0.9);
+  }
+}

@@ -1,0 +1,213 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+ * Naviz design tokens - "blueprint" direction.
+ * Named palette:
+ *   Graphite   #0B1120  - dark base surface
+ *   Panel      #131B2E  - dark elevated surface
+ *   Blueprint  #06B6D4  - primary accent (drafting-line cyan)
+ *   Signal     #F59E0B  - warm accent, used sparingly for emphasis/CTAs
+ *   Paper      #FAFAF9  - light base surface
+ *   Ink        #0F172A  - primary text on light surfaces
+ */
+
+:root {
+  --font-size: 16px;
+  --font-sans: 'Manrope', ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-display: 'Space Grotesk', ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, monospace;
+
+  --background: #FAFAF9;
+  --foreground: #0F172A;
+  --card: #ffffff;
+  --card-foreground: #0F172A;
+  --popover: #ffffff;
+  --popover-foreground: #0F172A;
+  --primary: #0891B2;
+  --primary-foreground: #ffffff;
+  --secondary: #F1F5F9;
+  --secondary-foreground: #0F172A;
+  --muted: #F1F5F9;
+  --muted-foreground: #64748B;
+  --accent: #ECFEFF;
+  --accent-foreground: #0E7490;
+  --destructive: #DC2626;
+  --destructive-foreground: #ffffff;
+  --border: rgba(15, 23, 42, 0.1);
+  --input: transparent;
+  --input-background: #F1F5F9;
+  --switch-background: #CBD5E1;
+  --font-weight-medium: 500;
+  --font-weight-normal: 400;
+  --ring: #06B6D4;
+  --chart-1: #06B6D4;
+  --chart-2: #F59E0B;
+  --chart-3: #6366F1;
+  --chart-4: #22C55E;
+  --chart-5: #EC4899;
+  --radius: 0.5rem;
+  --sidebar: #ffffff;
+  --sidebar-foreground: #0F172A;
+  --sidebar-primary: #0891B2;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #F1F5F9;
+  --sidebar-accent-foreground: #0F172A;
+  --sidebar-border: rgba(15, 23, 42, 0.1);
+  --sidebar-ring: #06B6D4;
+}
+
+.dark {
+  --background: #0B1120;
+  --foreground: #E2E8F0;
+  --card: #131B2E;
+  --card-foreground: #E2E8F0;
+  --popover: #131B2E;
+  --popover-foreground: #E2E8F0;
+  --primary: #22D3EE;
+  --primary-foreground: #0B1120;
+  --secondary: #1B2438;
+  --secondary-foreground: #E2E8F0;
+  --muted: #1B2438;
+  --muted-foreground: #8B99AF;
+  --accent: #17293A;
+  --accent-foreground: #67E8F9;
+  --destructive: #F87171;
+  --destructive-foreground: #0B1120;
+  --border: rgba(226, 232, 240, 0.1);
+  --input: #1B2438;
+  --ring: #22D3EE;
+  --font-weight-medium: 500;
+  --font-weight-normal: 400;
+  --chart-1: #22D3EE;
+  --chart-2: #F59E0B;
+  --chart-3: #818CF8;
+  --chart-4: #4ADE80;
+  --chart-5: #F472B6;
+  --sidebar: #0E1524;
+  --sidebar-foreground: #E2E8F0;
+  --sidebar-primary: #22D3EE;
+  --sidebar-primary-foreground: #0B1120;
+  --sidebar-accent: #1B2438;
+  --sidebar-accent-foreground: #E2E8F0;
+  --sidebar-border: rgba(226, 232, 240, 0.1);
+  --sidebar-ring: #22D3EE;
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    font-family: var(--font-sans);
+  }
+}
+
+/**
+ * Base typography. This is not applied to elements which have an ancestor with a Tailwind text class.
+ */
+@layer base {
+  :where(:not(:has([class*=" text-"]), :not(:has([class^="text-"])))) {
+    h1 {
+      font-family: var(--font-display);
+      font-size: var(--text-2xl);
+      font-weight: 600;
+      line-height: 1.2;
+      letter-spacing: -0.01em;
+    }
+
+    h2 {
+      font-family: var(--font-display);
+      font-size: var(--text-xl);
+      font-weight: 600;
+      line-height: 1.25;
+      letter-spacing: -0.01em;
+    }
+
+    h3 {
+      font-family: var(--font-display);
+      font-size: var(--text-lg);
+      font-weight: 600;
+      line-height: 1.3;
+    }
+
+    h4 {
+      font-family: var(--font-display);
+      font-size: var(--text-base);
+      font-weight: 600;
+      line-height: 1.4;
+    }
+
+    p {
+      font-size: var(--text-base);
+      font-weight: var(--font-weight-normal);
+      line-height: 1.6;
+    }
+
+    label {
+      font-size: var(--text-base);
+      font-weight: var(--font-weight-medium);
+      line-height: 1.5;
+    }
+
+    button {
+      font-size: var(--text-base);
+      font-weight: var(--font-weight-medium);
+      line-height: 1.5;
+    }
+
+    input {
+      font-size: var(--text-base);
+      font-weight: var(--font-weight-normal);
+      line-height: 1.5;
+    }
+  }
+}
+
+html {
+  font-size: var(--font-size);
+}
+
+/* Technical readouts (coordinates, measurements, cost figures, timestamps) read like
+   blueprint annotations - a monospace face makes them scan as precise data rather than
+   prose, which fits a BIM/architecture tool's subject matter. */
+.font-technical,
+.tabular-data {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Signature element: viewfinder/reticle corner brackets, echoing the AR scan-target
+   motif used throughout the product. Applied selectively to feature cards and panels
+   as the one recurring, memorable visual signature - not scattered everywhere. */
+.blueprint-corners {
+  position: relative;
+}
+.blueprint-corners::before,
+.blueprint-corners::after,
+.blueprint-corners > .corner-tl,
+.blueprint-corners > .corner-br {
+  content: '';
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  pointer-events: none;
+  border-color: var(--primary);
+  opacity: 0.6;
+}
+.blueprint-corners::before {
+  top: -1px;
+  left: -1px;
+  border-top: 2px solid var(--primary);
+  border-left: 2px solid var(--primary);
+}
+.blueprint-corners::after {
+  bottom: -1px;
+  right: -1px;
+  border-bottom: 2px solid var(--primary);
+  border-right: 2px solid var(--primary);
+}
+

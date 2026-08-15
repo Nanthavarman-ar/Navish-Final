@@ -1,0 +1,6 @@
+.colorBox {
+  width: 0.75rem; /* 3 * 0.25rem */
+  height: 0.75rem;
+  border-radius: 0.375rem; /* rounded */
+  background-color: var(--annotation-color);
+}

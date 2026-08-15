@@ -1,0 +1,1559 @@
+import React, { useEffect, useState } from 'react';
+import { Suspense } from 'react';
+import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
+import { Badge } from '../ui/badge';
+import { Separator } from '../ui/separator';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '../ui/dropdown-menu';
+import { Button } from '../ui/button';
+import { Slider } from '../ui/slider';
+import { Label } from '../ui/label';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
+import { Globe, Maximize, Map, Hand } from 'lucide-react';
+import { showToast } from '../utils/toast';
+
+// Lazy load components
+const LeftPanel = React.lazy(() => import('../LeftPanel'));
+const ControlPanel = React.lazy(() => import('../../src/components/UI/ControlPanel/ControlPanel'));
+const TopBar = React.lazy(() => import('../TopBar'));
+const SimpleWorkspaceTopBar = React.lazy(() => import('./SimpleWorkspaceTopBar').then(m => ({ default: m.SimpleWorkspaceTopBar })));
+const BottomPanel = React.lazy(() => import('../BottomPanel'));
+const FloatingToolbar = React.lazy(() => import('../FloatingToolbar'));
+const EnhancedWorkspaceLayout = React.lazy(() => import('../EnhancedWorkspaceLayout'));
+const EnhancedToolbar = React.lazy(() => import('../EnhancedToolbar'));
+
+// Props interfaces
+interface LeftPanelSegmentProps {
+  featureCategories: Record<string, any[]>;
+  categoryPanelVisible: Record<string, boolean>;
+  searchTerm: string;
+  activeFeatures: Set<string>;
+  currentLayoutMode: 'standard' | 'compact' | 'immersive';
+  onCategoryToggle: (category: string) => void;
+  onSearchChange: (term: string) => void;
+  onFeatureToggle: (featureId: string | number, enabled: boolean) => void;
+  onClose: () => void;
+  aiManagerRef?: React.RefObject<any>;
+  bimManagerRef?: React.RefObject<any>;
+}
+
+interface TopBarSegmentProps {
+  isGenerating: boolean;
+  generationProgress: number;
+  onToggleRealTime: () => void;
+  realTimeEnabled: boolean;
+  fps: number;
+  activeFeatures: Set<string>;
+  cameraMode: 'orbit' | 'fly' | 'walk' | undefined;
+  onCameraModeChange: (mode: 'orbit' | 'fly' | 'walk' | undefined) => void;
+  onToggleGrid: () => void;
+  gridVisible: boolean;
+  onToggleWireframe: () => void;
+  wireframeEnabled: boolean;
+  onToggleStats: () => void;
+  statsVisible: boolean;
+}
+
+interface BottomPanelSegmentProps {
+  activeFeatures: string[];
+  performanceMode: 'low' | 'medium' | 'high';
+  selectedMesh: any;
+  onFeatureToggle: (featureId: string) => void;
+  onPerformanceModeChange: (mode: 'low' | 'medium' | 'high') => void;
+  featureStats: { total: number; active: number; byCategory: Record<string, number>; byStatus: Record<string, number> };
+  warnings: string[];
+  suggestions: string[];
+  onSequenceCreate: (sequence: any) => void;
+  onSequencePlay: (sequenceId: string) => void;
+}
+
+interface FloatingToolbarSegmentProps {
+  onMoveToggle: () => void;
+  onRotateToggle: () => void;
+  onScaleToggle: () => void;
+  onCameraToggle: () => void;
+  onPerspectiveToggle: () => void;
+  isMoveActive: boolean;
+  isRotateActive: boolean;
+  isScaleActive: boolean;
+  isCameraActive: boolean;
+  isPerspectiveActive: boolean;
+}
+
+// Components
+export const LeftPanelSegment: React.FC<LeftPanelSegmentProps> = ({
+  featureCategories,
+  categoryPanelVisible,
+  searchTerm,
+  activeFeatures,
+  currentLayoutMode,
+  onCategoryToggle,
+  onSearchChange,
+  onFeatureToggle,
+  onClose,
+  aiManagerRef,
+  bimManagerRef
+}) => (
+  <Suspense fallback={<div className="p-4">Loading Left Panel...</div>}>
+    <LeftPanel
+      featureCategories={featureCategories}
+      categoryPanelVisible={categoryPanelVisible}
+      searchTerm={searchTerm}
+      activeFeatures={activeFeatures}
+      currentLayoutMode={currentLayoutMode}
+      onCategoryToggle={onCategoryToggle}
+      onSearchChange={onSearchChange}
+      onFeatureToggle={onFeatureToggle}
+      onClose={onClose}
+      aiManagerRef={aiManagerRef}
+      bimManagerRef={bimManagerRef}
+    />
+  </Suspense>
+);
+
+export const TopBarSegment: React.FC<TopBarSegmentProps> = ({
+  isGenerating,
+  generationProgress,
+  onToggleRealTime,
+  realTimeEnabled,
+  fps,
+  activeFeatures,
+  cameraMode,
+  onCameraModeChange,
+  onToggleGrid,
+  gridVisible,
+  onToggleWireframe,
+  wireframeEnabled,
+  onToggleStats,
+  statsVisible
+}) => (
+  <Suspense fallback={<div className="p-2">Loading Top Bar...</div>}>
+    <TopBar
+      isGenerating={isGenerating}
+      generationProgress={generationProgress}
+      onToggleRealTime={onToggleRealTime}
+      realTimeEnabled={realTimeEnabled}
+      fps={fps.toString()}
+      activeFeatures={activeFeatures.size.toString()}
+      cameraMode={cameraMode}
+      onCameraModeChange={onCameraModeChange}
+      onToggleGrid={onToggleGrid}
+      gridVisible={gridVisible}
+      onToggleWireframe={onToggleWireframe}
+      wireframeEnabled={wireframeEnabled}
+      onToggleStats={onToggleStats}
+      statsVisible={statsVisible}
+    />
+  </Suspense>
+);
+
+export const BottomPanelSegment: React.FC<BottomPanelSegmentProps> = ({
+  activeFeatures,
+  performanceMode,
+  selectedMesh,
+  onFeatureToggle,
+  onPerformanceModeChange,
+  featureStats,
+  warnings,
+  suggestions,
+  onSequenceCreate,
+  onSequencePlay
+}) => (
+  <Suspense fallback={<div className="p-2">Loading Bottom Panel...</div>}>
+    <BottomPanel
+      activeFeatures={activeFeatures}
+      performanceMode={performanceMode}
+      selectedMesh={selectedMesh}
+      onFeatureToggle={onFeatureToggle}
+      onPerformanceModeChange={onPerformanceModeChange}
+      featureStats={featureStats}
+      warnings={warnings}
+      suggestions={suggestions}
+      onSequenceCreate={onSequenceCreate}
+      onSequencePlay={onSequencePlay}
+    />
+  </Suspense>
+);
+
+export const FloatingToolbarSegment: React.FC<FloatingToolbarSegmentProps> = ({
+  onMoveToggle,
+  onRotateToggle,
+  onScaleToggle,
+  onCameraToggle,
+  onPerspectiveToggle,
+  isMoveActive,
+  isRotateActive,
+  isScaleActive,
+  isCameraActive,
+  isPerspectiveActive
+}) => (
+  <Suspense fallback={<div className="p-2">Loading Toolbar...</div>}>
+    <div className="fixed top-24 left-6 z-50 bg-gray-900 border border-gray-700 rounded-lg shadow-xl p-3">
+      <FloatingToolbar
+        onMoveToggle={onMoveToggle}
+        onRotateToggle={onRotateToggle}
+        onScaleToggle={onScaleToggle}
+        onCameraToggle={onCameraToggle}
+        onPerspectiveToggle={onPerspectiveToggle}
+        isMoveActive={isMoveActive}
+        isRotateActive={isRotateActive}
+        isScaleActive={isScaleActive}
+        isCameraActive={isCameraActive}
+        isPerspectiveActive={isPerspectiveActive}
+      />
+    </div>
+  </Suspense>
+);
+
+// Immersive mode controls component
+export const ImmersiveControls: React.FC<{
+  activeFeatures: Set<string>;
+  featuresByCategory: Record<string, any[]>;
+  handleCategoryToggle: (category: string) => void;
+  updateState: (updates: any) => void;
+}> = ({ activeFeatures, featuresByCategory, handleCategoryToggle, updateState }) => (
+  <div className="absolute top-4 left-1/2 transform -translate-x-1/2 z-20">
+    <Card className="bg-background">
+      <CardContent className="p-2 flex items-center gap-2">
+        <Badge variant="outline">{activeFeatures.size}</Badge>
+        <Separator orientation="vertical" className="h-6" />
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button size="sm" variant="ghost" aria-label="Feature Categories">
+              📂
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent>
+            {Object.keys(featuresByCategory).map(category => (
+              <DropdownMenuItem key={category} onClick={() => handleCategoryToggle(category)}>
+                {category.charAt(0).toUpperCase() + category.slice(1)}
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
+        <Button size="sm" variant="ghost" onClick={() => updateState({ leftPanelVisible: false })} title="Toggle Left Panel">
+          🎛️
+        </Button>
+        <Button size="sm" variant="ghost" onClick={() => updateState({ rightPanelVisible: false })} title="Toggle Right Panel">
+          ⚙️
+        </Button>
+        <Button size="sm" variant="ghost" onClick={() => updateState({ leftPanelVisible: true, rightPanelVisible: true, bottomPanelVisible: true })} title="Exit Immersive Mode">
+          🔙
+        </Button>
+      </CardContent>
+    </Card>
+  </div>
+);
+
+// Loading overlay component
+export const LoadingOverlay: React.FC<{
+  isInitialized: boolean;
+}> = ({ isInitialized }) => {
+  if (isInitialized) return null;
+
+  return (
+    <div className="absolute inset-0 bg-black/50 flex items-center justify-center z-50">
+      <Card className="bg-black/80 text-white border-gray-600">
+        <CardContent className="p-6 text-center">
+          <div className="animate-spin w-8 h-8 border-2 border-cyan-500 border-t-transparent rounded-full mx-auto mb-4"></div>
+          <p>Initializing 3D Workspace....</p>
+        </CardContent>
+      </Card>
+    </div>
+  );
+};
+
+// Keyboard shortcuts help component
+interface KeyboardShortcutsHelpProps {
+  visible?: boolean;
+  onClose?: () => void;
+}
+
+const keyboardShortcutsList = [
+  { keys: 'Ctrl+1/2/3', label: 'Switch layout modes' },
+  { keys: 'Ctrl+H/J/K', label: 'Toggle panels' },
+  { keys: 'W/F/T/N', label: 'Simulation controls' },
+  { keys: 'A/U/C/V', label: 'AI helpers' },
+  { keys: 'X/Z', label: 'VR/AR modes' },
+  { keys: 'Esc', label: 'Close this overlay' },
+];
+
+export const KeyboardShortcutsHelp: React.FC<KeyboardShortcutsHelpProps> = ({
+  visible = true,
+  onClose,
+}) => {
+  useEffect(() => {
+    if (!visible || !onClose) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' || event.key === 'Esc') {
+        event.preventDefault();
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [visible, onClose]);
+
+  if (!visible) {
+    return null;
+  }
+
+  return (
+    <div className="fixed bottom-4 right-4 z-50 flex flex-col items-end gap-2 text-xs">
+      <div className="flex items-center gap-2">
+        <Button size="sm" variant="outline" className="rounded-full w-8 h-8 p-0" title="Keyboard Shortcuts">
+          ?
+        </Button>
+      </div>
+      <div className="w-64 bg-slate-900/90 text-white p-3 rounded-lg border border-slate-800 shadow-xl space-y-2">
+        <div className="text-[11px] font-semibold tracking-[0.2em] uppercase text-slate-400">Keyboard shortcuts</div>
+        <div className="space-y-1 text-[12px]">
+          {keyboardShortcutsList.map(({ keys, label }) => (
+            <div
+              key={keys}
+              className="flex items-center justify-between border-b border-slate-800 pb-1 last:border-b-0 last:pb-0"
+            >
+              <kbd className="bg-slate-800 px-2 py-0.5 rounded border border-slate-700 text-[10px]">{keys}</kbd>
+              <span className="text-slate-200 text-[11px]">{label}</span>
+            </div>
+          ))}
+        </div>
+        <div className="flex justify-end pt-2">
+          <Button size="sm" variant="ghost" className="px-3" onClick={() => onClose?.()}>
+            Close
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const domainOptions = [
+  { id: 'architecture', label: 'Architecture' },
+  { id: 'interiors', label: 'Interior Design' },
+  { id: 'urban', label: 'Urban Planning' },
+] as const;
+
+const gestureSamples = [
+  'Swipe Left',
+  'Swipe Right',
+  'Wave',
+  'Pinch',
+  'Spread',
+  'Thumbs Up',
+];
+
+const DomainSelectorOverlay: React.FC<{ visible: boolean; onClose: () => void }> = ({ visible, onClose }) => {
+  const [selectedDomain, setSelectedDomain] = useState(domainOptions[0].id);
+
+  if (!visible) {
+    return null;
+  }
+
+  const handleSelect = (option: typeof domainOptions[number]) => {
+    if (selectedDomain === option.id) {
+      return;
+    }
+    setSelectedDomain(option.id as 'architecture');
+    showToast.info(`Domain set to ${option.label}`);
+  };
+
+  const resetSelection = () => {
+    setSelectedDomain(domainOptions[0].id);
+    showToast.info(`Domain reset to ${domainOptions[0].label}`);
+  };
+
+  return (
+    <div className="fixed top-4 right-4 z-50 w-64 rounded-lg border border-slate-800 bg-slate-900/95 p-4 shadow-xl text-slate-100">
+      <div className="flex items-center gap-2 text-sm font-semibold">
+        <Map className="h-4 w-4 text-sky-400" />
+        <span>Domain Selector</span>
+      </div>
+      <p className="text-xs text-slate-400">
+        Scope the workspace to a specific design domain.
+      </p>
+      <div className="space-y-2 pt-2">
+        {domainOptions.map(option => (
+          <Button
+            key={option.id}
+            size="sm"
+            variant={selectedDomain === option.id ? 'default' : 'outline'}
+            className="flex w-full justify-between px-2 py-1"
+            onClick={() => handleSelect(option)}
+          >
+            <span className="text-left text-[12px]">{option.label}</span>
+            {selectedDomain === option.id && <Badge variant="outline" className="text-[10px]">Active</Badge>}
+          </Button>
+        ))}
+      </div>
+      <div className="flex justify-end gap-2 pt-2 text-[11px]">
+        <Button size="sm" variant="ghost" onClick={resetSelection}>
+          Reset
+        </Button>
+        <Button size="sm" variant="ghost" onClick={onClose}>
+          Close
+        </Button>
+      </div>
+    </div>
+  );
+};
+
+const GestureInspectorOverlay: React.FC<{ visible: boolean; onClose: () => void }> = ({ visible, onClose }) => {
+  const [history, setHistory] = useState(() =>
+    gestureSamples.slice(0, 3).map((gesture, index) => ({
+      id: `${gesture}-${index}`,
+      gesture,
+      timestamp: new Date(Date.now() - index * 60000).toLocaleTimeString(),
+    }))
+  );
+  const [listening, setListening] = useState(true);
+
+  if (!visible) {
+    return null;
+  }
+
+  const handleSimulateGesture = () => {
+    const sample = gestureSamples[Math.floor(Math.random() * gestureSamples.length)];
+    const entry = {
+      id: `${sample}-${Date.now()}`,
+      gesture: sample,
+      timestamp: new Date().toLocaleTimeString(),
+    };
+    setHistory(prev => [entry, ...prev].slice(0, 5));
+    showToast.info(`Gesture detected: ${sample}`);
+  };
+
+  const toggleListening = () => {
+    setListening(prev => {
+      const next = !prev;
+      showToast.info(`Gesture monitoring ${next ? 'resumed' : 'paused'}`);
+      return next;
+    });
+  };
+
+  const clearHistory = () => {
+    setHistory([]);
+    showToast.info('Gesture history cleared');
+  };
+
+  return (
+    <div className="fixed bottom-4 left-4 z-50 w-72 rounded-lg border border-slate-800 bg-slate-900/95 p-4 text-slate-100 shadow-xl">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2 text-sm font-semibold">
+          <Hand className="h-4 w-4 text-pink-400" />
+          Gesture Inspector
+        </div>
+        <Button size="sm" variant="ghost" onClick={onClose}>
+          Close
+        </Button>
+      </div>
+      <div className="text-[11px] text-slate-400">
+        Status: <span className="font-semibold text-slate-100">{listening ? 'Listening' : 'Paused'}</span>
+      </div>
+      <div className="mt-2 max-h-36 space-y-1 overflow-y-auto text-[12px]">
+        {history.length > 0 ? (
+          history.map(entry => (
+            <div key={entry.id} className="flex items-center justify-between text-slate-200">
+              <span>{entry.gesture}</span>
+              <span className="text-[10px] text-slate-500">{entry.timestamp}</span>
+            </div>
+          ))
+        ) : (
+          <div className="text-slate-500 text-[11px]">No gestures yet.</div>
+        )}
+      </div>
+      <div className="mt-3 flex items-center justify-between gap-2">
+        <Button size="sm" variant="outline" onClick={toggleListening}>
+          {listening ? 'Pause' : 'Listen'}
+        </Button>
+        <Button size="sm" variant="outline" onClick={handleSimulateGesture}>
+          Simulate
+        </Button>
+        <Button size="sm" variant="outline" onClick={clearHistory}>
+          Clear
+        </Button>
+      </div>
+    </div>
+  );
+};
+
+// Hidden file input component
+export const HiddenFileInput: React.FC<{
+  fileInputRef: React.RefObject<HTMLInputElement>;
+  onFilesSelected?: (files: FileList | null) => void;
+}> = ({ fileInputRef, onFilesSelected }) => (
+  <>
+    <label htmlFor="file-upload" className="hidden">File Upload</label>
+    <input
+      id="file-upload"
+      ref={fileInputRef}
+      type="file"
+      multiple
+      accept=".gltf,.glb,.obj,.fbx,.stl"
+      className="hidden"
+      onChange={(e) => {
+        const files = e.target.files;
+        if (onFilesSelected) {
+          onFilesSelected(files);
+        }
+      }}
+    />
+  </>
+);
+
+// Additional lazy loads for custom panels
+const MaterialEditor = React.lazy(() => import('../MaterialEditor'));
+const Minimap = React.lazy(() => import('../Minimap'));
+const MeasureTool = React.lazy(() => import('../MeasureTool'));
+const AutoFurnish = React.lazy(() => import('../AutoFurnish'));
+const DragDropMaterialHandler = React.lazy(() => import('../DragDropMaterialHandler').then(module => ({ default: module.DragDropMaterialHandler })));
+const BIMIntegration = React.lazy(() => import('../BIMIntegration'));
+const EnergyDashboard = React.lazy(() => import('../EnergyDashboard'));
+const GeoLocationContext = React.lazy(() => import('../GeoLocationContext'));
+const FloodSimulation = React.lazy(() => import('../FloodSimulation'));
+const WindTunnelSimulation = React.lazy(() => import('../WindTunnelSimulation'));
+const LightingPresets = React.lazy(() => import('../LightingPresets'));
+const VersionHistoryPanel = React.lazy(() => import('../VersionHistoryPanel'));
+const AnnotationTool = React.lazy(() => import('../AnnotationTool'));
+const SiteContextPanel = React.lazy(() => import('../SiteContextPanel'));
+const ROICalculatorPanel = React.lazy(() => import('../ROICalculatorPanel'));
+const DesignReportPanel = React.lazy(() => import('../DesignReportPanel'));
+const MobileHandoffPanel = React.lazy(() => import('../MobileHandoffPanel'));
+const ApprovalPanel = React.lazy(() => import('../ApprovalPanel'));
+const WalkthroughRecorderPanel = React.lazy(() => import('../WalkthroughRecorderPanel'));
+const BudgetTierPanel = React.lazy(() => import('../BudgetTierPanel'));
+const BeforeAfterPanel = React.lazy(() => import('../BeforeAfterPanel'));
+const ScenarioTourPanel = React.lazy(() => import('../ScenarioTourPanel'));
+const ARScalePanel = React.lazy(() => import('../ARScalePanel'));
+const SpatialAudioPanel = React.lazy(() => import('../SpatialAudioPanel'));
+const AIAdvisorPanel = React.lazy(() => import('../AIAdvisorPanel'));
+const MovementControlPanel = React.lazy(() => import('../MovementControlPanel'));
+const SmartAlternativesPanel = React.lazy(() => import('../SmartAlternativesPanel'));
+const SoundPrivacyPanel = React.lazy(() => import('../SoundPrivacyPanel'));
+const MultiSensoryPanel = React.lazy(() => import('../MultiSensoryPanel'));
+const CostEstimatorWrapper = React.lazy(() => import('../CostEstimatorWrapper'));
+
+// Props interface for CustomPanelsSegment
+interface CustomPanelsSegmentProps {
+  featureStates: Record<string, boolean>;
+  sceneRef: React.RefObject<any>;
+  engineRef: React.RefObject<any>;
+  cameraRef: React.RefObject<any>;
+  bimManagerRef: React.RefObject<any>;
+  simulationManagerRef: React.RefObject<any>;
+  aiManagerRef: React.RefObject<any>;
+  collabManagerRef: React.RefObject<any>;
+  siteContextManagerRef: React.RefObject<any>;
+  geoSyncManagerRef: React.RefObject<any>;
+  costEstimatorRef: React.RefObject<any>;
+  scenarioManagerRef: React.RefObject<any>;
+  moodSceneManagerRef: React.RefObject<any>;
+  animationManagerRef: React.RefObject<any>;
+  sustainabilityManagerRef: React.RefObject<any>;
+  audioManagerRef: React.RefObject<any>;
+  currentModelId: string;
+  workspaces: any[];
+  selectedWorkspaceId: string;
+  handleWorkspaceSelect: (id: string) => void;
+  handleMaterialApplied: (mesh: any, material: any) => void;
+  handleAnimationCreate: (sequence: any) => void;
+  handleSequencePlay: (sequenceId: string, options?: any) => void;
+  handleTourSequenceCreate: (sequence: any) => void;
+  handleTourSequencePlay: (sequenceId: string) => void;
+  disableFeature: (id: string) => void;
+  enableFeature: (id: string) => void;
+  onRainToggle?: (on: boolean) => void;
+  rainOn?: boolean;
+  rainIntensity?: number;
+  onRainIntensityChange?: (v: number) => void;
+  onSnowToggle?: (on: boolean) => void;
+  snowOn?: boolean;
+  particleSize?: number;
+  onParticleSizeChange?: (v: number) => void;
+  onFloodToggle?: (on: boolean) => void;
+  floodOn?: boolean;
+  onFloodLevelChange?: (level: number) => void;
+  onFloodWaveSpeedChange?: (speed: number) => void;
+  workspaceState: {
+    selectedMesh: any;
+  };
+  sustainabilityReport?: {
+    greenScore: number;
+    energyEfficiency: number;
+    waterEfficiency: number;
+    waterFootprint: number;
+    renewableEnergyUsage: number;
+    carbonFootprint: number;
+    energyUsage: number;
+    complianceStatus: boolean;
+    recommendations: string[];
+  } | null;
+}
+
+// Main CustomPanelsSegment that composes all sub-segments
+export const CustomPanelsSegment: React.FC<CustomPanelsSegmentProps> = (props) => (
+  <>
+    <CoreFeaturesSegment {...props} />
+    <NavigationControlsSegment {...props} />
+    <SimulationAnalysisSegment {...props} />
+    <AdvancedFeaturesSegment {...props} />
+    <AdditionalSimulationSegment {...props} />
+    <AIFeaturesSegment {...props} />
+    <AnalysisFeaturesSegment {...props} />
+    <CollaborationFeaturesSegment {...props} />
+    <ImmersiveFeaturesSegment {...props} />
+    <GeoFeaturesSegment {...props} />
+    <SpecializedComponentsSegment {...props} />
+  </>
+);
+
+// Sub-segment components for CustomPanels
+const CoreFeaturesSegment: React.FC<Pick<CustomPanelsSegmentProps, 'featureStates' | 'sceneRef' | 'engineRef' | 'cameraRef' | 'bimManagerRef' | 'aiManagerRef' | 'workspaces' | 'selectedWorkspaceId' | 'handleWorkspaceSelect' | 'handleMaterialApplied' | 'handleAnimationCreate' | 'handleSequencePlay' | 'disableFeature' | 'workspaceState' | 'scenarioManagerRef' | 'moodSceneManagerRef' | 'animationManagerRef'>> = ({
+  featureStates, sceneRef, engineRef, cameraRef, bimManagerRef, aiManagerRef, workspaces, selectedWorkspaceId, handleWorkspaceSelect, handleMaterialApplied, handleAnimationCreate, handleSequencePlay, disableFeature, workspaceState, scenarioManagerRef, moodSceneManagerRef, animationManagerRef
+}) => (
+  <>
+    {featureStates.showMaterialEditor && sceneRef.current && (
+      <Suspense fallback={<div className="absolute top-4 right-4 z-40 w-48 p-4 bg-slate-900/95 rounded-lg animate-pulse">Loading Material Editor...</div>}>
+        <MaterialEditor
+          sceneManager={{ scene: sceneRef.current }}
+          selectedMesh={workspaceState?.selectedMesh}
+          onClose={() => disableFeature('showMaterialEditor')}
+          onMaterialChange={() => {}}
+          onMaterialApplied={handleMaterialApplied}
+        />
+      </Suspense>
+    )}
+    {featureStates.showMinimap && sceneRef.current && cameraRef.current && (
+      <Suspense fallback={<div className="absolute top-4 right-4 z-40 w-52 h-32 bg-slate-900/95 rounded-lg animate-pulse" />}>
+      <div className="absolute top-4 right-4 z-40 w-64 max-h-[calc(100vh-6rem)] overflow-y-auto bg-slate-900/95 border border-slate-700 rounded-lg p-3 shadow-xl pointer-events-auto">
+        <div className="flex justify-between items-center mb-2">
+          <span className="text-xs font-medium text-slate-300">Minimap</span>
+          <Button size="sm" variant="ghost" className="h-6 w-6 p-0" onClick={() => disableFeature('showMinimap')} aria-label="Close Minimap">✕</Button>
+        </div>
+        <Minimap
+          scene={sceneRef.current}
+          camera={cameraRef.current}
+          workspaces={workspaces ?? []}
+          selectedWorkspaceId={selectedWorkspaceId ?? ''}
+          onWorkspaceSelect={handleWorkspaceSelect}
+          onCameraMove={(pos) => {
+            if (cameraRef.current) {
+              cameraRef.current.position.copyFrom(pos);
+              if (cameraRef.current.setTarget) cameraRef.current.setTarget(pos);
+            }
+          }}
+        />
+      </div>
+      </Suspense>
+    )}
+    {featureStates.showLighting && sceneRef.current && (
+      <Suspense fallback={<div className="fixed bottom-4 left-4 z-50 w-96 max-w-[90vw] h-48 bg-slate-900/95 rounded-xl animate-pulse border border-slate-600" />}>
+      <div className="fixed top-20 bottom-4 left-4 z-50 w-96 max-w-[90vw] flex flex-col bg-slate-900/95 backdrop-blur-sm border border-slate-600 rounded-xl shadow-2xl pointer-events-auto overflow-hidden">
+        <div className="flex justify-between items-center px-4 py-3 border-b border-slate-600 bg-slate-800/80 shrink-0">
+          <span className="text-sm font-semibold text-slate-200 flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" /> Lighting
+          </span>
+          <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-400 hover:text-white" onClick={() => disableFeature('showLighting')} aria-label="Close Lighting">✕</Button>
+        </div>
+        <div className="flex-1 min-h-0 overflow-hidden p-4">
+          <LightingPresets scene={sceneRef.current} />
+        </div>
+      </div>
+      </Suspense>
+    )}
+    {featureStates.showVersionHistory && (
+      <Suspense fallback={<div className="fixed top-20 right-4 z-40 w-96 max-w-[90vw] h-48 bg-slate-900/95 rounded-xl animate-pulse border border-slate-600" />}>
+        <VersionHistoryPanel
+          roomId={selectedWorkspaceId || 'default-room'}
+          onClose={() => disableFeature('showVersionHistory')}
+        />
+      </Suspense>
+    )}
+    {featureStates.showMeasurementTool && sceneRef.current && engineRef.current && (
+      <Suspense fallback={<div className="fixed top-4 right-4 z-50 w-96 max-w-[90vw] h-48 bg-slate-900/95 rounded-xl animate-pulse border border-slate-600" />}>
+      <div className="fixed top-4 right-4 z-50 w-96 max-w-[90vw] max-h-[85vh] flex flex-col bg-slate-900/95 backdrop-blur-sm border border-slate-600 rounded-xl shadow-2xl pointer-events-auto overflow-hidden">
+        <div className="flex justify-between items-center px-4 py-3 border-b border-slate-600 bg-slate-800/80 shrink-0">
+          <span className="text-sm font-semibold text-slate-200 flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-emerald-400" /> Measure
+          </span>
+          <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-400 hover:text-white" onClick={() => disableFeature('showMeasurementTool')} aria-label="Close Measure">✕</Button>
+        </div>
+        <div className="flex-1 min-h-0 overflow-y-auto p-4">
+          <MeasureTool
+            scene={sceneRef.current}
+            engine={engineRef.current}
+            isActive={featureStates.showMeasurementTool}
+            onMeasurementComplete={(measurement: any) => console.log('Measurement completed:', measurement)}
+          />
+        </div>
+      </div>
+      </Suspense>
+    )}
+    {featureStates.showAutoFurnish && sceneRef.current && (
+      <Suspense fallback={<div className="fixed top-4 right-4 z-50 w-64 p-4 bg-slate-800 rounded-lg animate-pulse">Loading Auto Furnish...</div>}>
+        <AutoFurnish sceneManager={{ scene: sceneRef.current }} onClose={() => disableFeature('showAutoFurnish')} />
+      </Suspense>
+    )}
+    {featureStates.showARScale && sceneRef.current && (
+      <Suspense fallback={null}>
+        <ARScalePanel
+          scene={sceneRef.current}
+          onClose={() => disableFeature('showARScale')}
+        />
+      </Suspense>
+    )}
+    {featureStates.showAnnotations && sceneRef.current && (
+      <Suspense fallback={<div className="fixed top-1/2 left-4 z-40 w-80 max-w-[90vw] h-48 bg-slate-900/95 rounded-xl animate-pulse border border-slate-600" />}>
+        <AnnotationTool
+          scene={sceneRef.current}
+          roomId={selectedWorkspaceId || 'default-room'}
+          onClose={() => disableFeature('showAnnotations')}
+        />
+      </Suspense>
+    )}
+    {featureStates.showBIMIntegration && sceneRef.current && bimManagerRef.current && (
+      <Suspense fallback={<div className="fixed top-4 right-4 z-50 w-64 p-4 bg-slate-800 rounded-lg animate-pulse">Loading BIM...</div>}>
+        <BIMIntegration scene={sceneRef.current} isActive={featureStates.showBIMIntegration} bimManager={bimManagerRef.current} onClose={() => disableFeature('showBIMIntegration')} />
+      </Suspense>
+    )}
+    {sceneRef.current && engineRef.current && (
+      <Suspense fallback={null}>
+        <DragDropMaterialHandler
+          scene={sceneRef.current}
+          canvas={engineRef.current.getRenderingCanvas()!}
+          onMaterialApplied={handleMaterialApplied}
+        />
+      </Suspense>
+    )}
+  </>
+);
+
+const NavigationControlsSegment: React.FC<Pick<CustomPanelsSegmentProps, 'featureStates' | 'sceneRef' | 'cameraRef' | 'disableFeature'>> = ({
+  featureStates, sceneRef, cameraRef, disableFeature
+}) => (
+  <>
+    {featureStates.showMovementControlChecker && sceneRef.current && cameraRef.current && (
+      <Suspense fallback={null}>
+        <MovementControlPanel
+          scene={sceneRef.current}
+          camera={cameraRef.current}
+          onClose={() => disableFeature('showMovementControlChecker')}
+        />
+      </Suspense>
+    )}
+    {featureStates.showTeleportManager && sceneRef.current && cameraRef.current && (
+      <div className="fixed top-4 left-4 z-50 bg-slate-800 p-4 rounded-lg border border-slate-600">
+        <h3 className="text-white mb-2">Teleport Navigation</h3>
+        <p className="text-slate-300 text-sm">Click anywhere on the floor to move there instantly.</p>
+        <Button size="sm" variant="outline" onClick={() => disableFeature('showTeleportManager')} className="mt-2">Close</Button>
+      </div>
+    )}
+    {featureStates.showSwimMode && sceneRef.current && cameraRef.current && (
+      <div className="fixed top-4 right-4 z-50 bg-slate-800 p-4 rounded-lg border border-slate-600">
+        <h3 className="text-white mb-2">Underwater / Swim Mode</h3>
+        <p className="text-slate-300 text-sm">Underwater fog, caustics, and bubbles are active around the camera.</p>
+        <Button size="sm" variant="outline" onClick={() => disableFeature('showSwimMode')} className="mt-2">Close</Button>
+      </div>
+    )}
+  </>
+);
+
+const SimulationAnalysisSegment: React.FC<Pick<CustomPanelsSegmentProps, 'featureStates' | 'sceneRef' | 'engineRef' | 'disableFeature' | 'workspaceState' | 'onFloodToggle' | 'floodOn' | 'onFloodLevelChange' | 'onFloodWaveSpeedChange' | 'sustainabilityReport' | 'siteContextManagerRef' | 'geoSyncManagerRef' | 'moodSceneManagerRef' | 'audioManagerRef'>> = ({
+  featureStates, sceneRef, engineRef, disableFeature, workspaceState, onFloodToggle, floodOn = false, onFloodLevelChange, onFloodWaveSpeedChange, sustainabilityReport, siteContextManagerRef, geoSyncManagerRef, moodSceneManagerRef, audioManagerRef
+}) => {
+  return (
+    <>
+      {featureStates.showMultiSensoryPreview && sceneRef.current && (
+        <Suspense fallback={null}>
+          <MultiSensoryPanel
+            moodSceneManager={moodSceneManagerRef?.current || null}
+            audioManager={audioManagerRef?.current || null}
+            onClose={() => disableFeature('showMultiSensoryPreview')}
+          />
+        </Suspense>
+      )}
+      {featureStates.showFloodSimulation && sceneRef.current && (
+        <Suspense fallback={<div className="fixed bottom-4 left-4 z-50 w-80 max-w-[90vw] bg-slate-800 p-4 rounded">Loading Flood...</div>}>
+          <FloodSimulation
+            scene={sceneRef.current}
+            isActive={featureStates.showFloodSimulation}
+            onClose={() => { onFloodToggle?.(false); disableFeature('showFloodSimulation'); }}
+            onFloodToggle={onFloodToggle}
+            floodOn={floodOn}
+            onWaterLevelChange={onFloodLevelChange}
+            onWaveSpeedChange={onFloodWaveSpeedChange}
+          />
+        </Suspense>
+      )}
+      {featureStates.showPropertyInspector && sceneRef.current && (
+        <Card className="fixed top-4 left-4 z-50 w-72 bg-slate-800 border-slate-600 text-white">
+          <CardHeader className="pb-2">
+            <div className="flex justify-between items-center">
+              <CardTitle className="text-base">Property Inspector</CardTitle>
+              <Button size="sm" variant="ghost" onClick={() => disableFeature('showPropertyInspector')}>✕</Button>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {workspaceState?.selectedMesh ? (
+              <div className="text-xs space-y-1">
+                <p className="font-medium text-slate-200">{workspaceState.selectedMesh.name}</p>
+                <p className="text-slate-400">Position: {workspaceState.selectedMesh.position.x.toFixed(2)}, {workspaceState.selectedMesh.position.y.toFixed(2)}, {workspaceState.selectedMesh.position.z.toFixed(2)}</p>
+                <p className="text-slate-400">Material: {workspaceState.selectedMesh.material?.name || 'None'}</p>
+              </div>
+            ) : (
+              <p className="text-slate-300 text-xs">Click a mesh in the scene to inspect its properties.</p>
+            )}
+            <p className="text-slate-500 text-xs pt-1">Objects: {sceneRef.current.meshes.length} | Lights: {sceneRef.current.lights.length}</p>
+          </CardContent>
+        </Card>
+      )}
+      {featureStates.showSceneBrowser && sceneRef.current && (
+        <Card className="fixed top-4 right-4 z-50 w-72 max-h-80 overflow-y-auto bg-slate-800 border-slate-600 text-white">
+          <CardHeader className="pb-2">
+            <div className="flex justify-between items-center">
+              <CardTitle className="text-base">Scene Browser</CardTitle>
+              <Button size="sm" variant="ghost" onClick={() => disableFeature('showSceneBrowser')}>✕</Button>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-1 text-xs max-h-48 overflow-y-auto">
+              {sceneRef.current.meshes.filter((m: any) => !m.name.startsWith('__')).slice(0, 20).map((m: any) => (
+                <div key={m.uniqueId} className="p-1 rounded bg-slate-700/50 truncate" title={m.name}>{m.name}</div>
+              ))}
+              {sceneRef.current.meshes.length > 20 && (
+                <p className="text-slate-500 text-xs">+ {sceneRef.current.meshes.length - 20} more</p>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+      {featureStates.showSiteContextGenerator && sceneRef.current && (
+        <Suspense fallback={null}>
+          <SiteContextPanel
+            siteContextManager={siteContextManagerRef?.current || null}
+            geoSyncManager={geoSyncManagerRef?.current || null}
+            onClose={() => disableFeature('showSiteContextGenerator')}
+          />
+        </Suspense>
+      )}
+      {featureStates.showSmartAlternatives && sceneRef.current && (
+        <Suspense fallback={null}>
+          <SmartAlternativesPanel
+            selectedMesh={workspaceState?.selectedMesh}
+            onClose={() => disableFeature('showSmartAlternatives')}
+          />
+        </Suspense>
+      )}
+      {featureStates.showSoundPrivacySimulation && sceneRef.current && engineRef.current && (
+        <Suspense fallback={null}>
+          <SoundPrivacyPanel
+            scene={sceneRef.current}
+            onClose={() => disableFeature('showSoundPrivacySimulation')}
+          />
+        </Suspense>
+      )}
+      {featureStates.showSustainabilityCompliancePanel && sceneRef.current && (
+        <div className="fixed top-1/2 right-4 z-50 w-80 max-w-[90vw] bg-slate-800 p-4 rounded-lg border border-slate-600">
+          <h3 className="text-white mb-2">Sustainability Compliance</h3>
+          {sustainabilityReport ? (
+            <div className="space-y-2 text-sm">
+              <div className="flex items-center justify-between">
+                <span className="text-slate-400">Green Score</span>
+                <span className={`font-technical font-semibold ${sustainabilityReport.greenScore >= 70 ? 'text-green-400' : sustainabilityReport.greenScore >= 40 ? 'text-amber-400' : 'text-red-400'}`}>
+                  {sustainabilityReport.greenScore.toFixed(0)}/100
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-slate-400">Compliance</span>
+                <span className={sustainabilityReport.complianceStatus ? 'text-green-400' : 'text-red-400'}>
+                  {sustainabilityReport.complianceStatus ? 'Compliant' : 'Non-compliant'}
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-slate-400">Carbon Footprint</span>
+                <span className="font-technical text-slate-200">{sustainabilityReport.carbonFootprint.toFixed(1)} kg CO2</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-slate-400">Water Footprint</span>
+                <span className="font-technical text-slate-200">{sustainabilityReport.waterFootprint.toFixed(1)} L</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-slate-400">Energy Efficiency</span>
+                <span className="font-technical text-slate-200">{sustainabilityReport.energyEfficiency.toFixed(0)}%</span>
+              </div>
+              {sustainabilityReport.recommendations.length > 0 && (
+                <div className="pt-2 border-t border-slate-700">
+                  <div className="text-slate-400 mb-1">Recommendations</div>
+                  <ul className="list-disc list-inside text-slate-300 space-y-1">
+                    {sustainabilityReport.recommendations.slice(0, 3).map((rec, i) => (
+                      <li key={i} className="text-xs">{rec}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          ) : (
+            <p className="text-slate-300 text-sm">No model loaded yet - load a model to see its sustainability report.</p>
+          )}
+          <Button size="sm" variant="outline" onClick={() => disableFeature('showSustainabilityCompliancePanel')} className="mt-3">Close</Button>
+        </div>
+      )}
+      {featureStates.showWindTunnelSimulation && sceneRef.current && (
+        <Suspense fallback={<div className="fixed top-4 right-4 z-50 w-80 max-w-[90vw] bg-slate-800 p-4 rounded">Loading Wind...</div>}>
+          <div className="fixed top-4 right-4 z-50 w-96 max-w-[90vw] max-h-[80vh] overflow-y-auto bg-slate-800 border border-slate-600 rounded-lg shadow-xl p-4">
+            <WindTunnelSimulation scene={sceneRef.current} />
+            <div className="mt-3 pt-3 border-t border-slate-600">
+              <Button size="sm" variant="outline" onClick={() => disableFeature('showWindTunnelSimulation')} className="w-full">Close</Button>
+            </div>
+          </div>
+        </Suspense>
+      )}
+    </>
+  );
+};
+
+// Additional sub-segment components for CustomPanels
+const AdvancedFeaturesSegment: React.FC<Pick<CustomPanelsSegmentProps, 'featureStates' | 'sceneRef' | 'disableFeature' | 'scenarioManagerRef'>> = ({
+  featureStates, sceneRef, disableFeature, scenarioManagerRef
+}) => (
+  <>
+    {featureStates.showPresentationManager && sceneRef.current && (
+      <Suspense fallback={null}>
+        <ScenarioTourPanel
+          scenarioManager={scenarioManagerRef?.current || null}
+          title="Presentation Mode"
+          autoStart
+          onClose={() => disableFeature('showPresentationManager')}
+        />
+      </Suspense>
+    )}
+    {featureStates.showPresenterMode && sceneRef.current && (
+      <Suspense fallback={null}>
+        <ScenarioTourPanel
+          scenarioManager={scenarioManagerRef?.current || null}
+          title="Presenter Mode"
+          autoStart
+          onClose={() => disableFeature('showPresenterMode')}
+        />
+      </Suspense>
+    )}
+  </>
+);
+
+const AdditionalSimulationSegment: React.FC<Pick<CustomPanelsSegmentProps, 'featureStates' | 'sceneRef' | 'disableFeature' | 'onRainToggle' | 'rainOn' | 'rainIntensity' | 'onRainIntensityChange' | 'onSnowToggle' | 'snowOn' | 'particleSize' | 'onParticleSizeChange'>> = ({
+  featureStates, sceneRef, disableFeature, onRainToggle, rainOn = false, rainIntensity = 1, onRainIntensityChange,
+  onSnowToggle, snowOn = false, particleSize = 1, onParticleSizeChange
+}) => (
+  <>
+    {featureStates.showWeather && sceneRef.current && (
+      <Card className="fixed bottom-4 right-4 z-50 w-72 bg-slate-800 border-slate-600 text-white pointer-events-auto">
+        <CardHeader className="flex flex-row items-center justify-between">
+          <CardTitle>Weather</CardTitle>
+          <Button type="button" size="sm" variant="outline" onClick={() => { onRainToggle?.(false); onSnowToggle?.(false); disableFeature('showWeather'); }}>Close</Button>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-slate-300 text-sm">Rain</span>
+            <div className="flex gap-1">
+              <Button
+                type="button"
+                size="sm"
+                variant={rainOn ? 'default' : 'outline'}
+                onClick={() => { onSnowToggle?.(false); onRainToggle?.(true); }}
+              >
+                On
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant={rainOn ? 'outline' : 'default'}
+                onClick={() => onRainToggle?.(false)}
+              >
+                Off
+              </Button>
+            </div>
+          </div>
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-slate-300 text-sm">Snow</span>
+            <div className="flex gap-1">
+              <Button
+                type="button"
+                size="sm"
+                variant={snowOn ? 'default' : 'outline'}
+                onClick={() => { onRainToggle?.(false); onSnowToggle?.(true); }}
+              >
+                On
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant={snowOn ? 'outline' : 'default'}
+                onClick={() => onSnowToggle?.(false)}
+              >
+                Off
+              </Button>
+            </div>
+          </div>
+          <div>
+            <label className="text-xs text-slate-400 flex items-center justify-between mb-1">
+              <span>Intensity (speed &amp; quantity)</span>
+              <span className="font-technical text-cyan-300">{rainIntensity.toFixed(1)}x</span>
+            </label>
+            <input
+              type="range"
+              min={0.2}
+              max={2}
+              step={0.1}
+              value={rainIntensity}
+              onChange={(e) => onRainIntensityChange?.(Number(e.target.value))}
+              className="w-full"
+              aria-label="Precipitation Intensity"
+            />
+          </div>
+          <div>
+            <label className="text-xs text-slate-400 flex items-center justify-between mb-1">
+              <span>Particle Size</span>
+              <span className="font-technical text-cyan-300">{particleSize.toFixed(1)}x</span>
+            </label>
+            <input
+              type="range"
+              min={0.3}
+              max={3}
+              step={0.1}
+              value={particleSize}
+              onChange={(e) => onParticleSizeChange?.(Number(e.target.value))}
+              className="w-full"
+              aria-label="Particle Size"
+            />
+          </div>
+        </CardContent>
+      </Card>
+    )}
+  </>
+);
+
+const AIFeaturesSegment: React.FC<Pick<CustomPanelsSegmentProps, 'featureStates' | 'sceneRef' | 'aiManagerRef' | 'disableFeature' | 'sustainabilityManagerRef' | 'costEstimatorRef' | 'bimManagerRef' | 'currentModelId'>> = ({
+  featureStates, sceneRef, aiManagerRef, disableFeature, sustainabilityManagerRef, costEstimatorRef, bimManagerRef, currentModelId
+}) => (
+  <>
+    {featureStates.showAIAdvisor && sceneRef.current && aiManagerRef.current && (
+      <Suspense fallback={null}>
+        <AIAdvisorPanel
+          sustainabilityManager={sustainabilityManagerRef?.current || null}
+          costEstimator={costEstimatorRef?.current || null}
+          bimManager={bimManagerRef?.current || null}
+          modelId={currentModelId}
+          onClose={() => disableFeature('showAIAdvisor')}
+        />
+      </Suspense>
+    )}
+  </>
+);
+
+const AnalysisFeaturesSegment: React.FC<Pick<CustomPanelsSegmentProps, 'featureStates' | 'sceneRef' | 'engineRef' | 'bimManagerRef' | 'simulationManagerRef' | 'currentModelId' | 'disableFeature' | 'workspaceState' | 'costEstimatorRef' | 'scenarioManagerRef' | 'sustainabilityManagerRef'>> = ({
+  featureStates, sceneRef, engineRef, bimManagerRef, simulationManagerRef, currentModelId, disableFeature, workspaceState, costEstimatorRef, scenarioManagerRef, sustainabilityManagerRef
+}) => (
+  <>
+    {featureStates.showCost && sceneRef.current && (
+      <Suspense fallback={<div>Loading Cost Estimator...</div>}>
+        <CostEstimatorWrapper scene={sceneRef.current} selectedMesh={workspaceState.selectedMesh} />
+      </Suspense>
+    )}
+    {featureStates.showBeforeAfter && sceneRef.current && engineRef.current && (
+      <Suspense fallback={null}>
+        <BeforeAfterPanel
+          scene={sceneRef.current}
+          engine={engineRef.current}
+          onClose={() => disableFeature('showBeforeAfter')}
+        />
+      </Suspense>
+    )}
+    {featureStates.showROICalculator && sceneRef.current && (
+      <Suspense fallback={null}>
+        <ROICalculatorPanel
+          costEstimator={costEstimatorRef?.current || null}
+          modelId={currentModelId}
+          onClose={() => disableFeature('showROICalculator')}
+        />
+      </Suspense>
+    )}
+    {featureStates.showDesignReport && sceneRef.current && engineRef.current && (
+      <Suspense fallback={null}>
+        <DesignReportPanel
+          scene={sceneRef.current}
+          engine={engineRef.current}
+          costEstimator={costEstimatorRef?.current || null}
+          sustainabilityManager={sustainabilityManagerRef?.current || null}
+          bimManager={bimManagerRef?.current || null}
+          modelId={currentModelId}
+          onClose={() => disableFeature('showDesignReport')}
+        />
+      </Suspense>
+    )}
+    {featureStates.showMobileHandoff && sceneRef.current && (
+      <Suspense fallback={null}>
+        <MobileHandoffPanel onClose={() => disableFeature('showMobileHandoff')} />
+      </Suspense>
+    )}
+    {featureStates.showApproval && sceneRef.current && (
+      <Suspense fallback={null}>
+        <ApprovalPanel roomId={currentModelId} onClose={() => disableFeature('showApproval')} />
+      </Suspense>
+    )}
+    {featureStates.showWalkthroughRecorder && engineRef.current && (
+      <Suspense fallback={null}>
+        <WalkthroughRecorderPanel engine={engineRef.current} onClose={() => disableFeature('showWalkthroughRecorder')} />
+      </Suspense>
+    )}
+    {featureStates.showBudgetTiers && sceneRef.current && (
+      <Suspense fallback={null}>
+        <BudgetTierPanel
+          costEstimator={costEstimatorRef?.current || null}
+          sustainabilityManager={sustainabilityManagerRef?.current || null}
+          modelId={currentModelId}
+          onClose={() => disableFeature('showBudgetTiers')}
+        />
+      </Suspense>
+    )}
+  </>
+);
+
+const SharingPanelContent: React.FC<{ onClose: () => void; currentModelId?: string }> = ({ onClose, currentModelId }) => {
+  const [copied, setCopied] = React.useState(false);
+  const shareUrl = React.useMemo(() => {
+    if (typeof window === 'undefined') return '';
+    const url = new URL(window.location.href);
+    // Only include a model reference if a real model is actually loaded - sharing the
+    // 'default-model'/'local-...' placeholder id would be meaningless to the recipient.
+    if (currentModelId && currentModelId !== 'default-model' && !currentModelId.startsWith('local-')) {
+      url.searchParams.set('model', currentModelId);
+    }
+    return url.toString();
+  }, [currentModelId]);
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(shareUrl);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (error) {
+      console.error('Failed to copy share link:', error);
+    }
+  };
+
+  return (
+    <div className="fixed bottom-4 left-4 z-50 w-80 max-w-[90vw] bg-slate-800 p-4 rounded-lg border border-slate-600">
+      <h3 className="text-white mb-2">Share this workspace</h3>
+      <p className="text-slate-400 text-xs mb-2">Anyone with this link (and access to this project) can open it.</p>
+      <div className="flex gap-2">
+        <input
+          readOnly
+          value={shareUrl}
+          onFocus={(e) => e.target.select()}
+          className="flex-1 bg-slate-900 border border-slate-600 rounded px-2 py-1.5 text-xs text-slate-300 font-technical"
+        />
+        <Button size="sm" onClick={handleCopy}>
+          {copied ? 'Copied!' : 'Copy'}
+        </Button>
+      </div>
+      <Button size="sm" variant="outline" onClick={onClose} className="mt-3">Close</Button>
+    </div>
+  );
+};
+
+const ChatPanel = React.lazy(() => import('../ChatPanel'));
+
+const CollaborationFeaturesSegment: React.FC<Pick<CustomPanelsSegmentProps, 'featureStates' | 'sceneRef' | 'disableFeature' | 'collabManagerRef' | 'currentModelId'>> = ({
+  featureStates, sceneRef, disableFeature, collabManagerRef, currentModelId
+}) => (
+  <>
+    {featureStates.showMultiUser && sceneRef.current && (
+      <div className="fixed top-4 left-4 z-50 bg-slate-800 p-4 rounded-lg border border-slate-600 w-56">
+        <h3 className="text-white mb-2">Multi-User Collaboration</h3>
+        <p className="text-slate-300 text-sm">
+          {collabManagerRef?.current ? (
+            <>Connected · {collabManagerRef.current.getUsers().length + 1} participant{collabManagerRef.current.getUsers().length !== 0 ? 's' : ''}</>
+          ) : (
+            'Connecting...'
+          )}
+        </p>
+        <p className="text-slate-500 text-xs mt-1">Open Chat or Sharing from the feature list to interact.</p>
+        <Button size="sm" variant="outline" onClick={() => disableFeature('showMultiUser')} className="mt-2">Close</Button>
+      </div>
+    )}
+    {featureStates.showChat && sceneRef.current && (
+      <React.Suspense fallback={null}>
+        <ChatPanel
+          collabManager={collabManagerRef?.current || null}
+          onClose={() => disableFeature('showChat')}
+        />
+      </React.Suspense>
+    )}
+    {featureStates.showSharing && sceneRef.current && (
+      <SharingPanelContent onClose={() => disableFeature('showSharing')} currentModelId={currentModelId} />
+    )}
+  </>
+);
+
+const ImmersiveFeaturesSegment: React.FC<Pick<CustomPanelsSegmentProps, 'featureStates' | 'sceneRef' | 'disableFeature' | 'audioManagerRef'>> = ({
+  featureStates, sceneRef, disableFeature, audioManagerRef
+}) => (
+  <>
+    {featureStates.showVR && sceneRef.current && (
+      <div className="fixed top-4 left-4 z-50 bg-slate-800 p-4 rounded-lg border border-slate-600">
+        <h3 className="text-white mb-2">VR Mode</h3>
+        <p className="text-slate-300 text-sm">VR mode active</p>
+        <Button size="sm" variant="outline" onClick={() => disableFeature('showVR')} className="mt-2">Close</Button>
+      </div>
+    )}
+    {featureStates.showAR && sceneRef.current && (
+      <div className="fixed top-4 right-4 z-50 bg-slate-800 p-4 rounded-lg border border-slate-600">
+        <h3 className="text-white mb-2">AR Mode</h3>
+        <p className="text-slate-300 text-sm">AR mode active</p>
+        <Button size="sm" variant="outline" onClick={() => disableFeature('showAR')} className="mt-2">Close</Button>
+      </div>
+    )}
+    {featureStates.showSpatialAudio && sceneRef.current && (
+      <Suspense fallback={null}>
+        <SpatialAudioPanel
+          audioManager={audioManagerRef?.current || null}
+          onClose={() => disableFeature('showSpatialAudio')}
+        />
+      </Suspense>
+    )}
+    {featureStates.showHaptic && sceneRef.current && (
+      <div className="fixed bottom-4 right-4 z-50 bg-slate-800 p-4 rounded-lg border border-slate-600">
+        <h3 className="text-white mb-2">Haptic Feedback</h3>
+        <p className="text-slate-300 text-sm">Haptic feedback active</p>
+        <Button size="sm" variant="outline" onClick={() => disableFeature('showHaptic')} className="mt-2">Close</Button>
+      </div>
+    )}
+  </>
+);
+
+const GeoFeaturesSegment: React.FC<Pick<CustomPanelsSegmentProps, 'featureStates' | 'sceneRef' | 'disableFeature'>> = ({
+  featureStates, sceneRef, disableFeature
+}) => (
+  <>
+    {featureStates.showGeoLocation && sceneRef.current && (
+      <Suspense fallback={<div>Loading Geo Location...</div>}>
+        <GeoLocationContext scene={sceneRef.current} />
+      </Suspense>
+    )}
+    {featureStates.showGeoSync && sceneRef.current && (
+      <div className="fixed bottom-4 left-4 z-50 bg-slate-800 p-4 rounded-lg border border-slate-600">
+        <h3 className="text-white mb-2">Geo Sync</h3>
+        <p className="text-slate-300 text-sm">Geo sync active</p>
+        <Button size="sm" variant="outline" onClick={() => disableFeature('showGeoSync')} className="mt-2">Close</Button>
+      </div>
+    )}
+  </>
+);
+
+const SpecializedComponentsSegment: React.FC<Pick<CustomPanelsSegmentProps, 'featureStates' | 'sceneRef' | 'cameraRef' | 'engineRef' | 'simulationManagerRef' | 'disableFeature' | 'enableFeature'>> = ({
+  featureStates, sceneRef, cameraRef, engineRef, simulationManagerRef, disableFeature, enableFeature
+}) => (
+  <>
+    {featureStates.showCollabManager && sceneRef.current && (
+      <div className="fixed top-4 left-4 z-50 bg-slate-800 p-4 rounded-lg border border-slate-600">
+        <h3 className="text-white mb-2">Collaboration Manager</h3>
+        <p className="text-slate-300 text-sm">Collaboration manager active</p>
+        <Button size="sm" variant="outline" onClick={() => disableFeature('showCollabManager')} className="mt-2">Close</Button>
+      </div>
+    )}
+    {featureStates.showDomainSelector && (
+      <DomainSelectorOverlay
+        visible
+        onClose={() => disableFeature('showDomainSelector')}
+      />
+    )}
+    {featureStates.showGestureInspector && (
+      <GestureInspectorOverlay
+        visible
+        onClose={() => disableFeature('showGestureInspector')}
+      />
+    )}
+    {featureStates.showKeyboardShortcuts && (
+      <KeyboardShortcutsHelp
+        visible
+        onClose={() => disableFeature('showKeyboardShortcuts')}
+      />
+    )}
+  </>
+);
+
+// Props interfaces for render functions
+interface RenderLeftPanelProps {
+  featureCategories: Record<string, any[]>;
+  categoryPanelVisible: Record<string, boolean>;
+  searchTerm: string;
+  activeFeatures: Set<string>;
+  layoutMode: 'standard' | 'compact' | 'immersive' | 'split';
+  onCategoryToggle: (category: string) => void;
+  onToggleAllCategories?: (visible: boolean) => void;
+  setSearchTerm: (term: string) => void;
+  handleFeatureToggle: (featureId: string | number, enabled: boolean) => void;
+  handleCategoryToggle: (category: string) => void;
+  updateState: (updates: any) => void;
+  setLeftPanelVisible: (visible: boolean) => void;
+  aiManagerRef?: React.RefObject<any>;
+  bimManagerRef?: React.RefObject<any>;
+}
+
+interface RenderTopBarProps {
+  fps: number;
+  realTimeEnabled: boolean;
+  activeFeatures: Set<string>;
+  topBarVisible?: boolean;
+  onToggleTopBar?: () => void;
+  leftPanelVisible?: boolean;
+  rightPanelVisible?: boolean;
+  onToggleLeftPanel?: () => void;
+  onToggleRightPanel?: () => void;
+  cameraMode: 'orbit' | 'fly' | 'walk' | undefined;
+  viewMode?: 'walk' | 'orbit' | 'dollhouse' | 'vr' | 'ar';
+  gridVisible: boolean;
+  wireframeEnabled: boolean;
+  statsVisible: boolean;
+  floorPlanVisible?: boolean;
+  workspaceId?: string;
+  handleToggleRealTime: () => void;
+  handleCameraModeChange: (mode: 'orbit' | 'fly' | 'walk' | undefined) => void;
+  onViewModeChange?: (mode: 'walk' | 'orbit' | 'dollhouse' | 'vr' | 'ar') => void;
+  handleToggleGrid: () => void;
+  handleToggleWireframe: () => void;
+  handleToggleStats: () => void;
+  onToggleFloorPlan?: () => void;
+  onSave?: () => void;
+  onImport?: () => void;
+  onExport?: () => void;
+  onScreenshot?: (format?: 'png' | 'jpeg') => void;
+  onAutoZoom?: () => void;
+  onSettings?: () => void;
+  onHelp?: () => void;
+  onShare?: () => void;
+}
+
+interface RenderRightPanelProps {
+  workspaceState: { rightPanelVisible: boolean; selectedMesh: any };
+  updateState: (updates: any) => void;
+  bimManagerRef: React.RefObject<any>;
+  simulationManagerRef: React.RefObject<any>;
+  currentModelId: string;
+}
+
+interface RenderBottomPanelProps {
+  workspaceState: { bottomPanelVisible: boolean };
+  activeFeatures: Set<string>;
+  performanceMode: 'low' | 'medium' | 'high';
+  selectedMesh: any;
+  handleFeatureToggle: (featureId: string | number, enabled: boolean) => void;
+  setPerformanceMode: (mode: 'low' | 'medium' | 'high') => void;
+  handleTourSequenceCreate: (sequence: any) => void;
+  handleTourSequencePlay: (sequenceId: string) => void;
+}
+
+interface RenderFloatingToolbarProps {
+  workspaceState: { showFloatingToolbar: boolean; moveActive: boolean; rotateActive: boolean; scaleActive: boolean; cameraActive: boolean; perspectiveActive: boolean };
+  updateState: (updates: any) => void;
+}
+
+interface RenderCustomPanelsProps {
+  featureStates: Record<string, boolean>;
+  sceneRef: React.RefObject<any>;
+  engineRef: React.RefObject<any>;
+  cameraRef: React.RefObject<any>;
+  bimManagerRef: React.RefObject<any>;
+  simulationManagerRef: React.RefObject<any>;
+  aiManagerRef: React.RefObject<any>;
+  collabManagerRef: React.RefObject<any>;
+  siteContextManagerRef: React.RefObject<any>;
+  geoSyncManagerRef: React.RefObject<any>;
+  costEstimatorRef: React.RefObject<any>;
+  scenarioManagerRef: React.RefObject<any>;
+  moodSceneManagerRef: React.RefObject<any>;
+  animationManagerRef: React.RefObject<any>;
+  sustainabilityManagerRef: React.RefObject<any>;
+  audioManagerRef: React.RefObject<any>;
+  currentModelId: string;
+  workspaces: any[];
+  selectedWorkspaceId: string;
+  handleWorkspaceSelect: (id: string) => void;
+  handleMaterialApplied: (mesh: any, material: any) => void;
+  handleAnimationCreate: (sequence: any) => void;
+  handleSequencePlay: (sequenceId: string, options?: any) => void;
+  handleTourSequenceCreate: (sequence: any) => void;
+  handleTourSequencePlay: (sequenceId: string) => void;
+  disableFeature: (id: string) => void;
+  enableFeature: (id: string) => void;
+  onRainToggle?: (on: boolean) => void;
+  rainOn?: boolean;
+  rainIntensity?: number;
+  onRainIntensityChange?: (v: number) => void;
+  onSnowToggle?: (on: boolean) => void;
+  snowOn?: boolean;
+  particleSize?: number;
+  onParticleSizeChange?: (v: number) => void;
+  onFloodToggle?: (on: boolean) => void;
+  floodOn?: boolean;
+  onFloodLevelChange?: (level: number) => void;
+  onFloodWaveSpeedChange?: (speed: number) => void;
+  workspaceState: { selectedMesh: any };
+  sustainabilityReport?: CustomPanelsSegmentProps['sustainabilityReport'];
+}
+
+// Render functions - use LeftPanel for full category/feature support
+export const renderLeftPanel = (props: RenderLeftPanelProps) => (
+  <React.Suspense fallback={<div className="p-4">Loading Left Panel...</div>}>
+    <LeftPanel
+      featureCategories={props.featureCategories}
+      categoryPanelVisible={props.categoryPanelVisible}
+      searchTerm={props.searchTerm}
+      activeFeatures={props.activeFeatures}
+      currentLayoutMode={props.layoutMode === 'split' ? 'standard' : props.layoutMode}
+      onCategoryToggle={props.handleCategoryToggle}
+      onToggleAllCategories={props.onToggleAllCategories}
+      onSearchChange={props.setSearchTerm}
+      onFeatureToggle={props.handleFeatureToggle}
+      onClose={() => props.setLeftPanelVisible(false)}
+      aiManagerRef={props.aiManagerRef}
+      bimManagerRef={props.bimManagerRef}
+    />
+  </React.Suspense>
+);
+
+export const renderTopBar = (props: RenderTopBarProps) => (
+  <React.Suspense fallback={<div className="p-2">Loading Top Bar...</div>}>
+    <SimpleWorkspaceTopBar
+      fps={props.fps}
+      realTimeEnabled={props.realTimeEnabled}
+      activeFeatures={props.activeFeatures.size}
+      topBarVisible={props.topBarVisible}
+      onToggleTopBar={props.onToggleTopBar}
+      leftPanelVisible={props.leftPanelVisible}
+      rightPanelVisible={props.rightPanelVisible}
+      onToggleLeftPanel={props.onToggleLeftPanel}
+      onToggleRightPanel={props.onToggleRightPanel}
+      cameraMode={props.cameraMode ?? 'orbit'}
+      viewMode={props.viewMode ?? 'orbit'}
+      gridVisible={props.gridVisible}
+      wireframeEnabled={props.wireframeEnabled}
+      statsVisible={props.statsVisible}
+      floorPlanVisible={props.floorPlanVisible}
+      workspaceId={props.workspaceId}
+      onToggleRealTime={props.handleToggleRealTime}
+      onCameraModeChange={(m) => props.handleCameraModeChange(m)}
+      onViewModeChange={props.onViewModeChange}
+      onToggleGrid={props.handleToggleGrid}
+      onToggleWireframe={props.handleToggleWireframe}
+      onToggleStats={props.handleToggleStats}
+      onToggleFloorPlan={props.onToggleFloorPlan}
+      onSave={props.onSave}
+      onImport={props.onImport}
+      onExport={props.onExport}
+      onScreenshot={props.onScreenshot}
+      onAutoZoom={props.onAutoZoom}
+      onSettings={props.onSettings}
+      onHelp={props.onHelp}
+    />
+  </React.Suspense>
+);
+
+export const renderRightPanel = (props: RenderRightPanelProps) => {
+  if (!props.workspaceState.rightPanelVisible) return null;
+  return (
+    <div className="absolute inset-y-0 right-0 z-30 w-[85vw] max-w-[320px] sm:relative sm:z-auto sm:w-80 sm:max-w-none border-l border-gray-700 bg-gray-900 text-white h-full overflow-y-auto shadow-2xl sm:shadow-none">
+      <div className="p-4 border-b border-gray-700 flex items-center justify-between">
+        <h2 className="text-lg font-semibold">Inspector</h2>
+        <Button size="sm" variant="ghost" aria-label="Close Right Panel" onClick={() => props.updateState({ rightPanelVisible: false })}>
+          <Maximize className="w-4 h-4" />
+        </Button>
+      </div>
+      <Tabs defaultValue="properties" className="w-full">
+        <TabsList className="grid w-full grid-cols-3">
+          <TabsTrigger value="properties">Properties</TabsTrigger>
+          <TabsTrigger value="materials">Materials</TabsTrigger>
+          <TabsTrigger value="features">Features</TabsTrigger>
+        </TabsList>
+        <TabsContent value="properties" className="p-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>Object Properties</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {props.workspaceState.selectedMesh ? (
+                <div className="space-y-2">
+                  <div><strong>Name:</strong> {props.workspaceState.selectedMesh.name}</div>
+                  <div><strong>Position:</strong> {props.workspaceState.selectedMesh.position.toString()}</div>
+                  <div><strong>Rotation:</strong> {props.workspaceState.selectedMesh.rotation.toString()}</div>
+                  <div><strong>Scale:</strong> {props.workspaceState.selectedMesh.scaling.toString()}</div>
+                </div>
+              ) : (
+                <p className="text-muted-foreground">No object selected</p>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+        <TabsContent value="features" className="p-4">
+          <div className="text-muted-foreground">
+            Feature management is handled through the left panel.
+          </div>
+        </TabsContent>
+        <TabsContent value="energy" className="p-4">
+          {props.bimManagerRef.current && props.simulationManagerRef.current && (
+            <EnergyDashboard
+              bimManager={props.bimManagerRef.current}
+              simulationManager={props.simulationManagerRef.current}
+              modelId={String(props.currentModelId)}
+            />
+          )}
+        </TabsContent>
+      </Tabs>
+    </div>
+  );
+};
+
+export const renderBottomPanel = (props: RenderBottomPanelProps) => {
+  if (!props.workspaceState.bottomPanelVisible) return null;
+  return (
+    <React.Suspense fallback={<div className="p-2">Loading Bottom Panel...</div>}>
+      <BottomPanel
+        activeFeatures={Array.from(props.activeFeatures)}
+        performanceMode={props.performanceMode}
+        selectedMesh={props.selectedMesh}
+        onFeatureToggle={(featureId: string) => props.handleFeatureToggle(featureId, false)}
+        onPerformanceModeChange={props.setPerformanceMode}
+        featureStats={{ total: 0, active: 0, byCategory: {}, byStatus: {} }}
+        warnings={[]}
+        suggestions={[]}
+        onSequenceCreate={props.handleTourSequenceCreate}
+        onSequencePlay={props.handleTourSequencePlay}
+      />
+    </React.Suspense>
+  );
+};
+
+export const renderFloatingToolbar = (props: RenderFloatingToolbarProps) => {
+  if (!props.workspaceState.showFloatingToolbar) return null;
+  return (
+    <React.Suspense fallback={<div className="p-2">Loading Toolbar...</div>}>
+      <div className="absolute top-4 left-4 z-40 bg-gray-900/95 border border-gray-700 rounded-lg shadow-xl p-2 pointer-events-auto">
+        <FloatingToolbar
+          onMoveToggle={() => props.updateState({ moveActive: !props.workspaceState.moveActive })}
+          onRotateToggle={() => props.updateState({ rotateActive: !props.workspaceState.rotateActive })}
+          onScaleToggle={() => props.updateState({ scaleActive: !props.workspaceState.scaleActive })}
+          onCameraToggle={() => props.updateState({ cameraActive: !props.workspaceState.cameraActive })}
+          onPerspectiveToggle={() => props.updateState({ perspectiveActive: !props.workspaceState.perspectiveActive })}
+          isMoveActive={props.workspaceState.moveActive}
+          isRotateActive={props.workspaceState.rotateActive}
+          isScaleActive={props.workspaceState.scaleActive}
+          isCameraActive={props.workspaceState.cameraActive}
+          isPerspectiveActive={props.workspaceState.perspectiveActive}
+        />
+      </div>
+    </React.Suspense>
+  );
+};
+
+export const renderCustomPanels = (props: RenderCustomPanelsProps) => (
+  <CustomPanelsSegment {...props} />
+);

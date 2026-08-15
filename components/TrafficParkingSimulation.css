@@ -1,0 +1,222 @@
+.traffic-parking-simulation {
+  padding: 16px;
+  background: #1e293b;
+  border: 1px solid #334155;
+  border-radius: 8px;
+  color: #f1f5f9;
+}
+
+.traffic-parking-simulation h3 {
+  margin: 0 0 16px 0;
+  font-size: 16px;
+}
+
+.controls-section {
+  margin-bottom: 16px;
+}
+
+.control-row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.control-label {
+  font-size: 12px;
+}
+
+.duration-input {
+  margin-left: 8px;
+  width: 100px;
+}
+
+.duration-value {
+  margin-left: 4px;
+}
+
+.density-select {
+  margin-left: 8px;
+  background: #334155;
+  border: 1px solid #475569;
+  border-radius: 4px;
+  color: #f1f5f9;
+  padding: 2px 4px;
+}
+
+.checkbox-label {
+  font-size: 12px;
+}
+
+.action-buttons {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.start-button {
+  padding: 8px 16px;
+  background: #3b82f6;
+  border: none;
+  border-radius: 4px;
+  color: white;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.start-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.export-button {
+  padding: 8px 16px;
+  background: #10b981;
+  border: none;
+  border-radius: 4px;
+  color: white;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.results-section {
+  margin-top: 16px;
+}
+
+.results-section h4 {
+  margin: 0 0 12px 0;
+  font-size: 14px;
+}
+
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.stat-card {
+  padding: 8px;
+  background: #334155;
+  border-radius: 4px;
+  text-align: center;
+}
+
+.stat-value {
+  font-size: 18px;
+  font-weight: bold;
+}
+
+.stat-value.total-vehicles {
+  color: #3b82f6;
+}
+
+.stat-value.parking-efficiency {
+  color: #10b981;
+}
+
+.stat-value.road-segments {
+  color: #f59e0b;
+}
+
+.stat-value.congestion-points {
+  color: #ef4444;
+}
+
+.stat-label {
+  font-size: 10px;
+  color: #94a3b8;
+}
+
+.traffic-flow-section {
+  margin-bottom: 16px;
+}
+
+.traffic-flow-section h5 {
+  margin: 0 0 8px 0;
+  font-size: 12px;
+}
+
+.traffic-flow-list {
+  max-height: 150px;
+  overflow-y: auto;
+  border: 1px solid #334155;
+  border-radius: 4px;
+}
+
+.traffic-flow-item {
+  padding: 8px;
+  font-size: 11px;
+  border-bottom: 1px solid #334155;
+}
+
+.traffic-flow-item:last-child {
+  border-bottom: none;
+}
+
+.road-name {
+  font-weight: bold;
+  margin-bottom: 4px;
+}
+
+.road-details {
+  color: #94a3b8;
+}
+
+.congestion-level {
+  color: #10b981;
+}
+
+.congestion-level.medium {
+  color: #f59e0b;
+}
+
+.congestion-level.high {
+  color: #ef4444;
+}
+
+.parking-analysis-section {
+  margin-bottom: 16px;
+}
+
+.parking-analysis-section h5 {
+  margin: 0 0 8px 0;
+  font-size: 12px;
+}
+
+.parking-types-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 8px;
+  font-size: 11px;
+}
+
+.parking-type-card {
+  padding: 8px;
+  background: #334155;
+  border-radius: 4px;
+  text-align: center;
+}
+
+.parking-count {
+  font-weight: bold;
+}
+
+.parking-type {
+  color: #94a3b8;
+  font-size: 10px;
+}
+
+.recommendations-section h5 {
+  margin: 0 0 8px 0;
+  font-size: 12px;
+}
+
+.recommendations-list {
+  font-size: 11px;
+  color: #94a3b8;
+  padding-left: 16px;
+}
+
+.recommendation-item {
+  margin-bottom: 4px;
+}

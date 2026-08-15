@@ -1,0 +1,256 @@
+/* BabylonWorkspace Component Styles */
+
+.annotationMarker {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  color: #FFD700;
+  background: rgba(0, 0, 0, 0.7);
+  padding: 4px 8px;
+  border-radius: 6px;
+  pointer-events: none;
+  z-index: 20;
+}
+
+.annotationPanel {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  background: rgba(0, 0, 0, 0.9);
+  color: white;
+  padding: 16px;
+  border-radius: 8px;
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  z-index: 30;
+}
+
+.annotationTextarea {
+  width: 256px;
+  height: 80px;
+  padding: 8px;
+  border-radius: 4px;
+  background: #1f2937;
+  color: white;
+  border: 1px solid #4b5563;
+  resize: vertical;
+}
+
+.annotationTextarea:focus {
+  outline: none;
+  border-color: #06b6d4;
+  box-shadow: 0 0 0 3px rgba(6, 182, 212, 0.1);
+}
+
+.annotationButton {
+  padding: 4px 16px;
+  border-radius: 4px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.annotationButton:hover {
+  transform: translateY(-1px);
+}
+
+.annotationButtonSave {
+  background: #059669;
+  color: white;
+}
+
+.annotationButtonSave:hover {
+  background: #047857;
+}
+
+.annotationButtonCancel {
+  background: #dc2626;
+  color: white;
+}
+
+.annotationButtonCancel:hover {
+  background: #b91c1c;
+}
+
+.annotationLabel {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  color: white;
+}
+
+.controlPanel {
+  position: absolute;
+  bottom: 16px;
+  left: 16px;
+  width: 384px;
+  background: rgba(0, 0, 0, 0.8);
+  color: white;
+  border: 1px solid #4b5563;
+  border-radius: 8px;
+  padding: 16px;
+}
+
+.qrCodeContainer {
+  position: absolute;
+  top: 96px;
+  right: 16px;
+  z-index: 40;
+}
+
+.loadingOverlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.loadingContent {
+  background: rgba(0, 0, 0, 0.8);
+  color: white;
+  border: 1px solid #4b5563;
+  border-radius: 8px;
+  padding: 24px;
+  text-align: center;
+}
+
+.loadingSpinner {
+  width: 32px;
+  height: 32px;
+  border: 2px solid #06b6d4;
+  border-top: 2px solid transparent;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin: 0 auto 16px;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.xrStatusOverlay {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  background: rgba(0, 0, 0, 0.8);
+  color: #22d3ee;
+  padding: 8px 16px;
+  border-radius: 4px;
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  font-size: 12px;
+}
+
+.performanceHUD {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  width: 288px;
+  background: rgba(0, 0, 0, 0.8);
+  color: white;
+  border: 1px solid #0891b2;
+  border-radius: 8px;
+  padding: 16px;
+}
+
+.uploadProgress {
+  position: absolute;
+  bottom: 16px;
+  right: 16px;
+  width: 320px;
+  background: rgba(0, 0, 0, 0.8);
+  color: white;
+  border: 1px solid #4b5563;
+  border-radius: 8px;
+  padding: 16px;
+}
+
+.progressBar {
+  width: 100%;
+  height: 4px;
+  background: #374151;
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.progressFill {
+  height: 100%;
+  background: #3b82f6;
+  border-radius: 2px;
+  transition: width 0.3s ease;
+}
+
+.sectionTitle {
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.statusRow {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  margin-bottom: 4px;
+}
+
+.collabSection {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid #0891b2;
+}
+
+.collabUser {
+  background: #0e7490;
+  color: white;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 10px;
+  margin-right: 2px;
+  margin-bottom: 2px;
+  display: inline-block;
+}
+
+.performanceValue {
+  font-weight: 500;
+}
+
+.performanceValueGood {
+  color: #10b981;
+}
+
+.performanceValueWarning {
+  color: #f59e0b;
+}
+
+.performanceValueError {
+  color: #ef4444;
+}
+
+.collabStatusConnected {
+  color: #10b981;
+}
+
+.collabStatusConnecting {
+  color: #f59e0b;
+}
+
+.collabStatusDisconnected {
+  color: #ef4444;
+}
+
+.uploadStatusComplete {
+  color: #10b981;
+}
+
+.uploadStatusError {
+  color: #ef4444;
+}
+
+.uploadStatusUploading {
+  color: #f59e0b;
+}

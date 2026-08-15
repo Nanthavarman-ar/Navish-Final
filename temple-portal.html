@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Temple Darshan Portal</title>
+    <link rel="stylesheet" href="temple-portal.css">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <!-- Header -->
+    <header class="header">
+        <nav class="navbar">
+            <div class="nav-container">
+                <div class="nav-logo">
+                    <i class="fas fa-om"></i>
+                    <span>Temple Darshan Portal</span>
+                </div>
+                <ul class="nav-menu">
+                    <li><a href="#home" class="nav-link">Home</a></li>
+                    <li><a href="#temples" class="nav-link">Temples</a></li>
+                    <li><a href="#live-darshan" class="nav-link">Live Darshan</a></li>
+                    <li><a href="#bookings" class="nav-link">Bookings</a></li>
+                    <li><a href="#about" class="nav-link">About</a></li>
+                    <li><a href="#contact" class="nav-link">Contact</a></li>
+                </ul>
+                <div class="nav-toggle">
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                </div>
+            </div>
+        </nav>
+    </header>
+
+    <!-- Hero Section -->
+    <section id="home" class="hero">
+        <div class="hero-content">
+            <h1>Experience Divine Blessings</h1>
+            <p>Connect with sacred temples through our comprehensive darshan portal</p>
+            <div class="hero-buttons">
+                <button class="btn btn-primary">Start Darshan</button>
+                <button class="btn btn-secondary">Explore Temples</button>
+            </div>
+        </div>
+        <div class="hero-stats">
+            <div class="stat-item">
+                <span class="stat-number">50+</span>
+                <span class="stat-label">Temples</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-number">24/7</span>
+                <span class="stat-label">Live Streaming</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-number">1M+</span>
+                <span class="stat-label">Devotees</span>
+            </div>
+        </div>
+    </section>
+
+    <!-- Featured Temples -->
+    <section id="temples" class="featured-temples">
+        <div class="container">
+            <h2 class="section-title">Featured Temples</h2>
+            <div class="temple-grid">
+                <div class="temple-card" data-temple="somnath">
+                    <div class="temple-image">
+                        <img src="https://images.unsplash.com/photo-1580500550469-4b20ee8ae07b?w=400&h=300&fit=crop" alt="Somnath Temple">
+                        <div class="temple-overlay">
+                            <button class="btn-live">Live Darshan</button>
+                        </div>
+                    </div>
+                    <div class="temple-info">
+                        <h3>Somnath Temple</h3>
+                        <p class="temple-location">Gujarat, India</p>
+                        <p class="temple-description">One of the twelve Jyotirlinga shrines of Shiva</p>
+                        <div class="temple-features">
+                            <span class="feature"><i class="fas fa-clock"></i> Open 6:00 AM - 9:00 PM</span>
+                            <span class="feature"><i class="fas fa-video"></i> Live Streaming</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="temple-card" data-temple="dwarkadhish">
+                    <div class="temple-image">
+                        <img src="https://images.unsplash.com/photo-1578662996442-48f60103fc96?w=400&h=300&fit=crop" alt="Dwarkadhish Temple">
+                        <div class="temple-overlay">
+                            <button class="btn-live">Live Darshan</button>
+                        </div>
+                    </div>
+                    <div class="temple-info">
+                        <h3>Dwarkadhish Temple</h3>
+                        <p class="temple-location">Gujarat, India</p>
+                        <p class="temple-description">Dedicated to Lord Krishna, the king of Dwarka</p>
+                        <div class="temple-features">
+                            <span class="feature"><i class="fas fa-clock"></i> Open 6:30 AM - 8:30 PM</span>
+                            <span class="feature"><i class="fas fa-video"></i> Live Streaming</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="temple-card" data-temple="ambaji">
+                    <div class="temple-image">
+                        <img src="https://images.unsplash.com/photo-1606836573950-710f8d5c7cc4?w=400&h=300&fit=crop" alt="Ambaji Temple">
+                        <div class="temple-overlay">
+                            <button class="btn-live">Live Darshan</button>
+                        </div>
+                    </div>
+                    <div class="temple-info">
+                        <h3>Ambaji Temple</h3>
+                        <p class="temple-location">Gujarat, India</p>
+                        <p class="temple-description">Temple dedicated to Goddess Amba</p>
+                        <div class="temple-features">
+                            <span class="feature"><i class="fas fa-clock"></i> Open 7:00 AM - 7:30 PM</span>
+                            <span class="feature"><i class="fas fa-video"></i> Live Streaming</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="temple-card" data-temple="pavagadh">
+                    <div class="temple-image">
+                        <img src="https://images.unsplash.com/photo-1580500550469-4b20ee8ae07b?w=400&h=300&fit=crop" alt="Pavagadh Temple">
+                        <div class="temple-overlay">
+                            <button class="btn-live">Live Darshan</button>
+                        </div>
+                    </div>
+                    <div class="temple-info">
+                        <h3>Pavagadh Temple</h3>
+                        <p class="temple-location">Gujarat, India</p>
+                        <p class="temple-description">Hill temple dedicated to Goddess Mahakali</p>
+                        <div class="temple-features">
+                            <span class="feature"><i class="fas fa-clock"></i> Open 5:00 AM - 8:00 PM</span>
+                            <span class="feature"><i class="fas fa-video"></i> Live Streaming</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="temple-card" data-temple="akshardham">
+                    <div class="temple-image">
+                        <img src="https://images.unsplash.com/photo-1578662996442-48f60103fc96?w=400&h=300&fit=crop" alt="Akshardham Temple">
+                        <div class="temple-overlay">
+                            <button class="btn-live">Live Darshan</button>
+                        </div>
+                    </div>
+                    <div class="temple-info">
+                        <h3>Akshardham Temple</h3>
+                        <p class="temple-location">Gujarat, India</p>
+                        <p class="temple-description">Magnificent temple complex showcasing Indian culture</p>
+                        <div class="temple-features">
+                            <span class="feature"><i class="fas fa-clock"></i> Open 9:30 AM - 7:30 PM</span>
+                            <span class="feature"><i class="fas fa-video"></i> Live Streaming</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="temple-card" data-temple="kedarnath">
+                    <div class="temple-image">
+                        <img src="https://images.unsplash.com/photo-1606836573950-710f8d5c7cc4?w=400&h=300&fit=crop" alt="Kedarnath Temple">
+                        <div class="temple-overlay">
+                            <button class="btn-live">Live Darshan</button>
+                        </div>
+                    </div>
+                    <div class="temple-info">
+                        <h3>Kedarnath Temple</h3>
+                        <p class="temple-location">Uttarakhand, India</p>
+                        <p class="temple-description">One of the twelve Jyotirlingas of Lord Shiva</p>
+                        <div class="temple-features">
+                            <span class="feature"><i class="fas fa-clock"></i> Open 4:00 AM - 8:00 PM</span>
+                            <span class="feature"><i class="fas fa-video"></i> Live Streaming</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Live Darshan Section -->
+    <section id="live-darshan" class="live-darshan">
+        <div class="container">
+            <h2 class="section-title">Live Darshan</h2>
+            <div class="live-darshan-grid">
+                <div class="live-darshan-main">
+                    <div class="live-video-container">
+                        <div class="live-video-placeholder">
+                            <i class="fas fa-play-circle"></i>
+                            <h3>Live Darshan - Somnath Temple</h3>
+                            <p>Currently showing: Morning Aarti</p>
+                            <button class="btn btn-primary">Watch Live</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="live-darshan-sidebar">
+                    <div class="upcoming-darshans">
+                        <h3>Upcoming Darshans</h3>
+                        <div class="upcoming-list">
+                            <div class="upcoming-item">
+                                <span class="time">6:00 AM</span>
+                                <span class="temple">Somnath Temple</span>
+                                <span class="event">Morning Aarti</span>
+                            </div>
+                            <div class="upcoming-item">
+                                <span class="time">7:30 AM</span>
+                                <span class="temple">Dwarkadhish Temple</span>
+                                <span class="event">Mangala Aarti</span>
+                            </div>
+                            <div class="upcoming-item">
+                                <span class="time">12:00 PM</span>
+                                <span class="temple">Ambaji Temple</span>
+                                <span class="event">Midday Darshan</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Booking Section -->
+    <section id="bookings" class="bookings">
+        <div class="container">
+            <h2 class="section-title">Book Your Darshan</h2>
+            <div class="booking-form-container">
+                <form class="booking-form">
+                    <div class="form-group">
+                        <label for="temple-select">Select Temple</label>
+                        <select id="temple-select" required>
+                            <option value="">Choose a temple</option>
+                            <option value="somnath">Somnath Temple</option>
+                            <option value="dwarkadhish">Dwarkadhish Temple</option>
+                            <option value="ambaji">Ambaji Temple</option>
+                            <option value="pavagadh">Pavagadh Temple</option>
+                            <option value="akshardham">Akshardham Temple</option>
+                            <option value="kedarnath">Kedarnath Temple</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="darshan-type">Darshan Type</label>
+                        <select id="darshan-type" required>
+                            <option value="">Choose darshan type</option>
+                            <option value="general">General Darshan</option>
+                            <option value="special">Special Darshan</option>
+                            <option value="vip">VIP Darshan</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="visit-date">Visit Date</label>
+                        <input type="date" id="visit-date" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="visitors">Number of Visitors</label>
+                        <input type="number" id="visitors" min="1" max="10" value="1" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="name">Full Name</label>
+                        <input type="text" id="name" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="email">Email</label>
+                        <input type="email" id="email" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="phone">Phone Number</label>
+                        <input type="tel" id="phone" required>
+                    </div>
+                    <button type="submit" class="btn btn-primary">Book Darshan</button>
+                </form>
+            </div>
+        </div>
+    </section>
+
+    <!-- About Section -->
+    <section id="about" class="about">
+        <div class="container">
+            <h2 class="section-title">About Temple Darshan Portal</h2>
+            <div class="about-content">
+                <div class="about-text">
+                    <p>Our Temple Darshan Portal is dedicated to bringing the divine experience of sacred temples directly to devotees worldwide. We provide live streaming of darshans, temple information, and booking services for a seamless spiritual journey.</p>
+                    <div class="features-list">
+                        <div class="feature-item">
+                            <i class="fas fa-video"></i>
+                            <h4>Live Darshan</h4>
+                            <p>Experience live darshan from temples across India</p>
+                        </div>
+                        <div class="feature-item">
+                            <i class="fas fa-calendar-alt"></i>
+                            <h4>Easy Booking</h4>
+                            <p>Book your darshan slots online with ease</p>
+                        </div>
+                        <div class="feature-item">
+                            <i class="fas fa-info-circle"></i>
+                            <h4>Temple Information</h4>
+                            <p>Get detailed information about temples and their significance</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="about-image">
+                    <img src="https://images.unsplash.com/photo-1578662996442-48f60103fc96?w=600&h=400&fit=crop" alt="Temple">
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Contact Section -->
+    <section id="contact" class="contact">
+        <div class="container">
+            <h2 class="section-title">Contact Us</h2>
+            <div class="contact-content">
+                <div class="contact-info">
+                    <div class="contact-item">
+                        <i class="fas fa-map-marker-alt"></i>
+                        <h4>Address</h4>
+                        <p>123 Temple Street, Sacred City, India</p>
+                    </div>
+                    <div class="contact-item">
+                        <i class="fas fa-phone"></i>
+                        <h4>Phone</h4>
+                        <p>+91 12345 67890</p>
+                    </div>
+                    <div class="contact-item">
+                        <i class="fas fa-envelope"></i>
+                        <h4>Email</h4>
+                        <p>info@templedarshan.com</p>
+                    </div>
+                </div>
+                <form class="contact-form">
+                    <div class="form-group">
+                        <label for="contact-name">Name</label>
+                        <input type="text" id="contact-name" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="contact-email">Email</label>
+                        <input type="email" id="contact-email" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="contact-subject">Subject</label>
+                        <input type="text" id="contact-subject" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="contact-message">Message</label>
+                        <textarea id="contact-message" rows="5" required></textarea>
+                    </div>
+                    <button type="submit" class="btn btn-primary">Send Message</button>
+                </form>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <div class="container">
+            <div class="footer-content">
+                <div class="footer-section">
+                    <h4>Temple Darshan Portal</h4>
+                    <p>Bringing divine blessings to your home</p>
+                    <div class="social-links">
+                        <a href="#"><i class="fab fa-facebook"></i></a>
+                        <a href="#"><i class="fab fa-twitter"></i></a>
+                        <a href="#"><i class="fab fa-instagram"></i></a>
+                        <a href="#"><i class="fab fa-youtube"></i></a>
+                    </div>
+                </div>
+                <div class="footer-section">
+                    <h4>Quick Links</h4>
+                    <ul>
+                        <li><a href="#home">Home</a></li>
+                        <li><a href="#temples">Temples</a></li>
+                        <li><a href="#live-darshan">Live Darshan</a></li>
+                        <li><a href="#bookings">Bookings</a></li>
+                    </ul>
+                </div>
+                <div class="footer-section">
+                    <h4>Support</h4>
+                    <ul>
+                        <li><a href="#">Help Center</a></li>
+                        <li><a href="#">Contact Us</a></li>
+                        <li><a href="#">Privacy Policy</a></li>
+                        <li><a href="#">Terms of Service</a></li>
+                    </ul>
+                </div>
+            </div>
+            <div class="footer-bottom">
+                <p>&copy; 2024 Temple Darshan Portal. All rights reserved.</p>
+            </div>
+        </div>
+    </footer>
+
+    <script src="temple-portal.js"></script>
+</body>
+</html>

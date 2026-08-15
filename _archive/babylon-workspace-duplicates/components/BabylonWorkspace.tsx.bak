@@ -1,0 +1,321 @@
+import React, { useRef, useEffect, useState, useCallback } from 'react';
+// Babylon.js imports
+import {
+  Engine, Scene, ArcRotateCamera, UniversalCamera, HemisphericLight, DirectionalLight, Vector3, Color3, Color4,
+  AbstractMesh, Mesh, StandardMaterial, PBRMaterial, ShadowGenerator, DefaultRenderingPipeline, SSAORenderingPipeline,
+  SceneOptimizer, SceneOptimizerOptions, HardwareScalingOptimization, ShadowsOptimization, PostProcessesOptimization,
+  LensFlaresOptimization, ParticlesOptimization, RenderTargetsOptimization, MergeMeshesOptimization, GizmoManager,
+  UtilityLayerRenderer, PickingInfo, AssetContainer, SceneLoader, ActionManager, HighlightLayer, Plane, PhysicsImpostor,
+  CannonJSPlugin, AmmoJSPlugin, OimoJSPlugin
+} from '@babylonjs/core';
+import {
+  AdvancedDynamicTexture, Rectangle, Button as BabylonButton, TextBlock, StackPanel, Control, Slider, Checkbox
+} from '@babylonjs/gui';
+import '@babylonjs/loaders/glTF';
+import '@babylonjs/loaders/OBJ';
+
+// UI Components
+import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
+import { Badge } from './ui/badge';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
+import { Separator } from './ui/separator';
+import { ScrollArea } from './ui/scroll-area';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip';
+import { Progress } from './ui/progress';
+import { Input } from './ui/input';
+import { Button } from './ui/button';
+
+// Additional UI Components
+import MaterialEditor from './MaterialEditor';
+import Minimap from './Minimap';
+import MeasurementTool from './MeasurementTool';
+
+// Icons
+import {
+  Play, Pause, Square, Settings, Layers, Eye, EyeOff, Zap, Wind, Droplet, Volume2, Sun, Ruler, DollarSign,
+  Brain, Wand2, Mic, MapPin, Mountain, Construction, Users, MessageSquare, Search, Palette, Download,
+  Smartphone, Hand, Presentation, Activity, Network, CloudSnow, Car, Shield, Sofa, Box, Camera, Undo, Redo,
+  Maximize, Minimize, RotateCcw, RotateCw, Move, Scale, Grid3X3, MousePointer, Navigation, Zap as Lightning,
+  VolumeX, Volume2 as Volume, Headphones, Gamepad2, MonitorSpeaker, Radio, Music, Speaker, Pencil, Share,
+  Upload, HelpCircle, Compass, Map, Edit, Target
+} from 'lucide-react';
+
+// Interfaces
+interface SceneConfig {
+  enablePhysics?: boolean;
+  enablePostProcessing?: boolean;
+  enableSSAO?: boolean;
+  enableShadows?: boolean;
+  shadowMapSize?: number;
+  enableOptimization?: boolean;
+  targetFPS?: number;
+  physicsEngine?: 'cannon' | 'ammo' | 'oimo';
+}
+
+// Feature categories and buttons
+const featureCategories = {
+  essential: [
+    { id: 'move', name: 'Move', icon: <Move className="w-4 h-4" />, category: 'essential', enabled: true, hotkey: 'M', description: 'Move objects in 3D space' },
+    { id: 'rotate', name: 'Rotate', icon: <RotateCw className="w-4 h-4" />, category: 'essential', enabled: true, hotkey: 'R', description: 'Rotate objects' },
+    { id: 'scale', name: 'Scale', icon: <Scale className="w-4 h-4" />, category: 'essential', enabled: true, hotkey: 'S', description: 'Scale objects' },
+    { id: 'measure', name: 'Measure', icon: <Ruler className="w-4 h-4" />, category: 'essential', enabled: true, hotkey: 'T', description: 'Measure distances and dimensions' },
+    { id: 'lighting', name: 'Lighting', icon: <Sun className="w-4 h-4" />, category: 'essential', enabled: true, hotkey: 'L', description: 'Control scene lighting' },
+    { id: 'materials', name: 'Materials', icon: <Palette className="w-4 h-4" />, category: 'essential', enabled: true, hotkey: 'P', description: 'Manage materials and textures' },
+    { id: 'undo', name: 'Undo', icon: <Undo className="w-4 h-4" />, category: 'essential', enabled: true, hotkey: 'Ctrl+Z', description: 'Undo last action' },
+    { id: 'redo', name: 'Redo', icon: <Redo className="w-4 h-4" />, category: 'essential', enabled: true, hotkey: 'Ctrl+Y', description: 'Redo last undone action' },
+    { id: 'minimap', name: 'Minimap', icon: <Map className="w-4 h-4" />, category: 'essential', enabled: true, hotkey: 'N', description: 'Show minimap' },
+    { id: 'materialEditor', name: 'Material Editor', icon: <Edit className="w-4 h-4" />, category: 'essential', enabled: true, hotkey: 'E', description: 'Edit materials' }
+  ],
+  simulation: [
+    { id: 'weather', name: 'Weather', icon: <CloudSnow className="w-4 h-4" />, category: 'simulation', enabled: false, hotkey: 'W', description: 'Weather simulation and effects' },
+    { id: 'flood', name: 'Flood', icon: <Droplet className="w-4 h-4" />, category: 'simulation', enabled: false, hotkey: 'F', description: 'Flood simulation' },
+    { id: 'wind', name: 'Wind Tunnel', icon: <Wind className="w-4 h-4" />, category: 'simulation', enabled: false, hotkey: 'T', description: 'Wind tunnel simulation' },
+    { id: 'noise', name: 'Noise', icon: <Volume2 className="w-4 h-4" />, category: 'simulation', enabled: false, hotkey: 'N', description: 'Noise simulation' },
+    { id: 'traffic', name: 'Traffic', icon: <Car className="w-4 h-4" />, category: 'simulation', enabled: false, hotkey: 'R', description: 'Traffic simulation' },
+    { id: 'shadow', name: 'Shadow Analysis', icon: <Sun className="w-4 h-4" />, category: 'simulation', enabled: false, hotkey: 'H', description: 'Shadow analysis' }
+  ],
+  ai: [
+    { id: 'aiAdvisor', name: 'AI Advisor', icon: <Brain className="w-4 h-4" />, category: 'ai', enabled: false, hotkey: 'A', description: 'AI-powered design advisor' },
+    { id: 'autoFurnish', name: 'Auto Furnish', icon: <Sofa className="w-4 h-4" />, category: 'ai', enabled: false, hotkey: 'U', description: 'Automatic furniture placement' },
+    { id: 'aiCoDesigner', name: 'Co-Designer', icon: <Wand2 className="w-4 h-4" />, category: 'ai', enabled: false, hotkey: 'C', description: 'AI collaborative design' },
+    { id: 'voiceAssistant', name: 'Voice AI', icon: <Mic className="w-4 h-4" />, category: 'ai', enabled: false, hotkey: 'V', description: 'Voice-controlled assistant' }
+  ],
+  analysis: [
+    { id: 'measure', name: 'Measure', icon: <Ruler className="w-4 h-4" />, category: 'analysis', enabled: false, hotkey: 'M', description: 'Advanced measurement tools' },
+    { id: 'ergonomic', name: 'Ergonomic', icon: <Users className="w-4 h-4" />, category: 'analysis', enabled: false, hotkey: 'E', description: 'Ergonomic analysis' },
+    { id: 'energy', name: 'Energy', icon: <Zap className="w-4 h-4" />, category: 'analysis', enabled: false, hotkey: 'G', description: 'Energy efficiency analysis' },
+    { id: 'cost', name: 'Cost Est.', icon: <DollarSign className="w-4 h-4" />, category: 'analysis', enabled: false, hotkey: 'O', description: 'Cost estimation' }
+  ],
+  collaboration: [
+    { id: 'multiUser', name: 'Multi-User', icon: <Users className="w-4 h-4" />, category: 'collaboration', enabled: false, hotkey: 'U', description: 'Multi-user collaboration' },
+    { id: 'chat', name: 'Chat', icon: <MessageSquare className="w-4 h-4" />, category: 'collaboration', enabled: false, hotkey: 'C', description: 'Real-time chat' },
+    { id: 'annotations', name: 'Annotations', icon: <Pencil className="w-4 h-4" />, category: 'collaboration', enabled: false, hotkey: 'A', description: 'Add annotations' },
+    { id: 'sharing', name: 'Share', icon: <Share className="w-4 h-4" />, category: 'collaboration', enabled: false, hotkey: 'S', description: 'Share workspace' }
+  ],
+  immersive: [
+    { id: 'vr', name: 'VR Mode', icon: <Eye className="w-4 h-4" />, category: 'immersive', enabled: false, hotkey: 'X', description: 'Virtual reality mode' },
+    { id: 'ar', name: 'AR Mode', icon: <Smartphone className="w-4 h-4" />, category: 'immersive', enabled: false, hotkey: 'Z', description: 'Augmented reality mode' },
+    { id: 'spatialAudio', name: 'Spatial Audio', icon: <Volume className="w-4 h-4" />, category: 'immersive', enabled: false, hotkey: 'B', description: '3D spatial audio' },
+    { id: 'haptic', name: 'Haptic', icon: <Hand className="w-4 h-4" />, category: 'immersive', enabled: false, hotkey: 'H', description: 'Haptic feedback' }
+  ],
+  utilities: [
+    { id: 'export', name: 'Export', icon: <Download className="w-4 h-4" />, category: 'utilities', enabled: true, hotkey: 'E', description: 'Export scene' },
+    { id: 'import', name: 'Import', icon: <Upload className="w-4 h-4" />, category: 'utilities', enabled: true, hotkey: 'I', description: 'Import models' },
+    { id: 'settings', name: 'Settings', icon: <Settings className="w-4 h-4" />, category: 'utilities', enabled: true, hotkey: 'S', description: 'Workspace settings' },
+    { id: 'help', name: 'Help', icon: <HelpCircle className="w-4 h-4" />, category: 'utilities', enabled: true, hotkey: 'F1', description: 'Help and documentation' }
+  ]
+};
+
+// State variables for toggling custom panels
+const [showMaterialEditor, setShowMaterialEditor] = useState(false);
+const [showMinimap, setShowMinimap] = useState(false);
+const [showMeasurementTool, setShowMeasurementTool] = useState(false);
+
+// State for active features and search term
+const [activeFeatures, setActiveFeatures] = useState<Set<string>>(new Set());
+const [searchTerm, setSearchTerm] = useState('');
+
+// Feature toggle handler
+const handleFeatureToggle = useCallback((featureId: string, enabled: boolean) => {
+  setActiveFeatures(prev => {
+    const newSet = new Set(prev);
+    if (enabled) {
+      newSet.add(featureId);
+    } else {
+      newSet.delete(featureId);
+    }
+    return newSet;
+  });
+
+  switch (featureId) {
+    case 'materialEditor':
+      setShowMaterialEditor(enabled);
+      break;
+    case 'minimap':
+      setShowMinimap(enabled);
+      break;
+    case 'measure':
+      setShowMeasurementTool(enabled);
+      break;
+    default:
+      break;
+  }
+}, []);
+
+// Render custom panels
+const renderCustomPanels = () => (
+  <>
+    {showMaterialEditor && <MaterialEditor onClose={() => setShowMaterialEditor(false)} />}
+    {showMinimap && <Minimap onClose={() => setShowMinimap(false)} />}
+    {showMeasurementTool && <MeasurementTool onClose={() => setShowMeasurementTool(false)} />}
+  </>
+);
+
+// State for category panel visibility
+const [categoryPanelVisible, setCategoryPanelVisible] = useState<Record<string, boolean>>({
+  essential: true,
+  simulation: false,
+  ai: false,
+  analysis: false,
+  collaboration: false,
+  immersive: false,
+  utilities: false
+});
+const handleCategoryToggle = useCallback((category: string) => {
+  setCategoryPanelVisible(prev => ({
+    ...prev,
+    [category]: !prev[category]
+  }));
+}, []);
+const renderCategoryToggles = () => (
+  <div className="flex gap-2 mb-2">
+    {Object.keys(featureCategories).map(category => (
+      <Button
+        key={category}
+        size="sm"
+        variant={categoryPanelVisible[category] ? "default" : "outline"}
+        onClick={() => handleCategoryToggle(category)}
+        className="capitalize"
+      >
+        {categoryPanelVisible[category] ? "Hide" : "Show"} {category}
+      </Button>
+    ))}
+  </div>
+);
+const renderCategoryPanels = () => (
+  <div>
+    {Object.entries(featureCategories).map(([category, features]) =>
+      categoryPanelVisible[category] && (
+        <Card key={category} className="mb-4">
+          <CardHeader>
+            <CardTitle className="capitalize">{category} Features</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid gap-2 grid-cols-2">
+              {getFilteredFeatures(features).map(feature =>
+                renderFeatureButton(feature, compactMode ? 'sm' : 'md')
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      )
+    )}
+  </div>
+);
+const renderLeftPanel = () => (
+  <div className={layoutClasses.leftPanel}>
+    <div className="p-4 border-b border-slate-700">
+      <div className="flex items-center justify-between">
+        <h2 className="text-lg font-semibold">Workspace</h2>
+        <Button
+          size="sm"
+          variant="ghost"
+          onClick={() => setLeftPanelVisible(false)}
+        >
+          <Maximize className="w-4 h-4" />
+        </Button>
+      </div>
+    </div>
+    <ScrollArea className="flex-1">
+      <div className="p-4">
+        {renderCategoryToggles()}
+        <div className="mb-4">
+          <Input
+            placeholder="Search features..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full"
+          />
+        </div>
+        {renderCategoryPanels()}
+      </div>
+    </ScrollArea>
+  </div>
+);
+
+// ...existing renderTopBar, renderRightPanel, renderBottomPanel...
+
+return (
+  <div className={layoutClasses.container}>
+    {renderLeftPanel()}
+    <div className={layoutClasses.mainWorkspace}>
+      {layoutMode !== 'immersive' && renderTopBar()}
+      <div className="flex-1 relative">
+        <canvas
+          ref={canvasRef}
+          className="w-full h-full"
+          style={{ outline: 'none' }}
+        />
+        {renderCustomPanels()}
+        {/* Floating controls for immersive mode */}
+        {layoutMode === 'immersive' && (
+          <div className="absolute top-4 left-1/2 transform -translate-x-1/2 z-20">
+            <Card className="bg-background/95 backdrop-blur">
+              <CardContent className="p-2 flex items-center gap-2">
+                <Badge variant="outline">{activeFeatures.size} Active</Badge>
+                <Separator orientation="vertical" className="h-6" />
+                <Button size="sm" variant="ghost" onClick={() => setLeftPanelVisible(!leftPanelVisible)}>
+                  🎛️
+                </Button>
+                <Button size="sm" variant="ghost" onClick={() => setRightPanelVisible(!rightPanelVisible)}>
+                  ⚙️
+                </Button>
+                <Button size="sm" variant="ghost" onClick={() => setCurrentLayoutMode('standard')}>
+                  🔙
+                </Button>
+              </CardContent>
+            </Card>
+          </div>
+        )}
+      </div>
+      {layoutMode !== 'immersive' && bottomPanelVisible && renderBottomPanel()}
+    </div>
+    {renderRightPanel()}
+    {/* Hidden file input */}
+    <input
+      ref={fileInputRef}
+      type="file"
+      multiple
+      accept=".gltf,.glb,.obj,.fbx,.stl"
+      className="hidden"
+      onChange={(e) => {
+        // Handle file upload
+        console.log('Files selected:', e.target.files);
+      }}
+    />
+    {/* Loading Overlay */}
+    {!isInitialized && (
+      <div className="absolute inset-0 bg-black/50 flex items-center justify-center z-50">
+        <Card className="bg-black/80 text-white border-gray-600">
+          <CardContent className="p-6 text-center">
+            <div className="animate-spin w-8 h-8 border-2 border-cyan-500 border-t-transparent rounded-full mx-auto mb-4"></div>
+            <p>Initializing 3D Workspace...</p>
+          </CardContent>
+        </Card>
+      </div>
+    )}
+    {/* Keyboard shortcuts help */}
+    <div className="fixed bottom-4 right-4 z-50">
+      <TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button size="sm" variant="outline" className="rounded-full w-8 h-8 p-0">
+              ?
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="left" className="max-w-xs">
+            <div className="text-xs space-y-1">
+              <div><kbd>Ctrl+1/2/3</kbd> Layout modes</div>
+              <div><kbd>Ctrl+H/J/K</kbd> Toggle panels</div>
+              <div><kbd>W/F/T/N</kbd> Simulation features</div>
+              <div><kbd>A/U/C/V</kbd> AI features</div>
+              <div><kbd>X/Z</kbd> VR/AR modes</div>
+            </div>
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+    </div>
+  </div>
+);
+
+export default BabylonWorkspace;

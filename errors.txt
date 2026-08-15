@@ -1,0 +1,36 @@
+components/BabylonWorkspace.tsx(405,33): error TS2339: Property 'removeCamera' does not exist on type 'SSAORenderingPipeline'.
+components/BabylonWorkspace.tsx(444,31): error TS2339: Property 'addCamera' does not exist on type 'SSAORenderingPipeline'.
+components/BabylonWorkspace.tsx(497,5): error TS2322: Type 'MutableRefObject<Camera | null>' is not assignable to type 'RefObject<ArcRotateCamera | null>'.
+components/BabylonWorkspace.tsx(1406,7): error TS2322: Type '"default" | "sm" | "lg" | "icon"' is not assignable to type '"default" | "sm" | "lg" | undefined'.
+components/BabylonWorkspace.tsx(1412,36): error TS2304: Cannot find name 'CategoryInfo'.
+components/BabylonWorkspace.tsx(1543,5): error TS2353: Object literal may only specify known properties, and 'currentLayoutMode' does not exist in type 'RenderLeftPanelProps'.
+components/BabylonWorkspace.tsx(1561,13): error TS2322: Type '(mode: "orbit" | "fly" | "walk") => void' is not assignable to type '(mode: "walk" | "orbit" | "fly" | undefined) => void'.
+components/BabylonWorkspace/core/FeatureManager.tsx(567,9): error TS2322: Type 'ComponentType<{ className?: string | undefined; }>' is not assignable to type 'ReactNode'.
+components/BabylonWorkspace/core/FeatureManager.tsx(622,15): error TS2322: Type 'ComponentType<{ className?: string | undefined; }>' is not assignable to type 'ReactNode'.
+components/BabylonWorkspace/core/FeatureManagerClass.tsx(107,7): error TS2367: This comparison appears to be unintentional because the types 'string' and 'FeatureCategory' have no overlap.
+components/BabylonWorkspace/FeatureButton.tsx(27,11): error TS2322: Type 'ComponentType<{ className?: string | undefined; }>' is not assignable to type 'ReactNode'.
+components/BabylonWorkspace/features/CameraControls.tsx(157,18): error TS2339: Property 'updateState' does not exist on type 'WorkspaceContextType'.
+components/BabylonWorkspace/features/CameraControls.tsx(180,54): error TS2339: Property 'rotation' does not exist on type 'Camera'.
+components/BabylonWorkspace/features/CameraControls.tsx(191,24): error TS2345: Argument of type '{ dimension: readonly [3]; rank: 1; _x: number; _y: number; _z: number; _isDirty: boolean; } | { x: number; y: number; z: number; }' is not assignable to parameter of type 'Vector3'.
+components/BabylonWorkspace/features/CameraControls.tsx(205,26): error TS2345: Argument of type '{ x: number; y: number; z: number; }' is not assignable to parameter of type 'Vector3'.
+components/BabylonWorkspace/features/CameraControls.tsx(206,26): error TS2345: Argument of type '{ x: number; y: number; z: number; }' is not assignable to parameter of type 'Vector3'.
+components/BabylonWorkspace/features/CameraControls.tsx(226,19): error TS2339: Property 'cameraMode' does not exist on type 'WorkspaceState'.
+components/BabylonWorkspace/features/CameraControls.tsx(231,61): error TS2339: Property 'cameraMode' does not exist on type 'WorkspaceState'.
+components/BabylonWorkspace/features/CameraControls.tsx(257,24): error TS2345: Argument of type '{ x: number; y: number; z: number; }' is not assignable to parameter of type 'Vector3'.
+components/BabylonWorkspace/features/CameraControls.tsx(291,32): error TS2339: Property 'cameraMode' does not exist on type 'WorkspaceState'.
+components/BabylonWorkspace/features/CameraControls.tsx(300,32): error TS2339: Property 'cameraMode' does not exist on type 'WorkspaceState'.
+components/BabylonWorkspace/features/CameraControls.tsx(309,32): error TS2339: Property 'cameraMode' does not exist on type 'WorkspaceState'.
+components/BabylonWorkspace/features/CameraControlsFixed.tsx(179,54): error TS2339: Property 'rotation' does not exist on type 'Camera'.
+components/BabylonWorkspace/features/LightingControls.tsx(187,21): error TS2339: Property 'getTypeName' does not exist on type 'Light'.
+components/BabylonWorkspace/features/LightingControls.tsx(188,25): error TS2339: Property 'position' does not exist on type 'Light'.
+components/BabylonWorkspace/features/LightingControls.tsx(189,26): error TS2339: Property 'direction' does not exist on type 'Light'.
+components/BabylonWorkspace/features/LightingControlsFixed.tsx(193,27): error TS2339: Property 'position' does not exist on type 'Light'.
+components/BabylonWorkspace/features/ObjectControls.tsx(154,18): error TS2749: 'Cube' refers to a value, but is being used as a type here. Did you mean 'typeof Cube'?
+components/BabylonWorkspace/features/ObjectControls.tsx(429,11): error TS2322: Type '{ position: Vector3; rotation: Vector3; scale: Vector3; color: Color3; opacity: number; wireframe: boolean; castShadows: boolean; receiveShadows: boolean; ... 6 more ...; type: ObjectType; } | ... 10 more ... | { ...; }' is not assignable to type 'ObjectProperties'.
+components/BabylonWorkspace/RefactoredBabylonWorkspaceFixed.tsx(410,30): error TS7009: 'new' expression, whose target lacks a construct signature, implicitly has an 'any' type.
+components/BabylonWorkspace/RefactoredBabylonWorkspaceFixed.tsx(430,48): error TS2554: Expected 1 arguments, but got 2.
+components/BabylonWorkspace/RefactoredBabylonWorkspaceFixed.tsx(658,13): error TS2322: Type 'import("d:/NaViz-main/NaViz-main/Naviz/components/GeoWorkspaceArea").default[]' is not assignable to type 'import("d:/NaViz-main/NaViz-main/Naviz/components/types/index").GeoWorkspaceArea[]'.
+components/BabylonWorkspace/RefactoredBabylonWorkspaceFixed.tsx(682,13): error TS2322: Type '{ sceneManager: { scene: Scene; }; onClose: () => void; }' is not assignable to type 'IntrinsicAttributes & AICoDesignerProps'.
+components/BabylonWorkspace/RefactoredBabylonWorkspaceFixed.tsx(799,34): error TS2740: Type '{ state: { selectedMesh: Mesh | null; leftPanelVisible: boolean; rightPanelVisible: boolean; bottomPanelVisible: boolean; moveActive: boolean; rotateActive: boolean; scaleActive: boolean; ... 12 more ...; camera: ArcRotateCamera | null; }; ... 16 more ...; setSelectedWorkspaceId: (id: string) => void; }' is missing the following properties from type 'WorkspaceContextType': dispatch, togglePanel, setToolActive, toggleFeature, and 4 more.
+components/BabylonWorkspace/uiSegments.tsx(941,7): error TS2322: Type '(featureId: string | number, enabled: boolean) => void' is not assignable to type '(id: string) => void'.
+components/ToolPage.tsx(31,50): error TS2339: Property 'status' does not exist on type '{ readonly title: "Flood Simulation"; readonly description: "Model floodplains, rainfall, and water build-up inside NAVIZ to test resilience strategies."; readonly focus: "Use this tool while the Babylon workspace is active to compare barrier placements and drainage fixes."; readonly status: "Workspace-only feature"...'.

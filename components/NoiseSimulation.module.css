@@ -1,0 +1,240 @@
+.sourceEditor {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  background: #334155;
+  padding: 12px;
+  border-radius: 8px;
+  color: #f1f5f9;
+  width: 280px;
+  z-index: 1000;
+}
+
+.sourceEditor h4 {
+  margin: 0 0 8px 0;
+}
+
+.sourceEditor label {
+  display: block;
+  margin-bottom: 6px;
+}
+
+.sourceEditor input {
+  width: 100%;
+  padding: 4px;
+  margin-top: 2px;
+}
+
+.directionalSettings {
+  margin-bottom: 12px;
+}
+
+.directionalSettings h5 {
+  margin: 8px 0 4px 0;
+  font-size: 12px;
+}
+
+.directionalSettings label {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 11px;
+}
+
+.directionalSettings input {
+  width: 100%;
+  padding: 2px;
+  margin-top: 2px;
+  font-size: 11px;
+}
+
+.editorButtons {
+  display: flex;
+  gap: 4px;
+}
+
+.editorButtons button {
+  flex: 1;
+  padding: 6px;
+  border: none;
+  border-radius: 4px;
+  color: white;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.removeButton {
+  background: #dc2626;
+}
+
+.closeButton {
+  background: #6b7280;
+}
+
+.container {
+  padding: 16px;
+  background: #1e293b;
+  border: 1px solid #334155;
+  border-radius: 8px;
+  color: #f1f5f9;
+}
+
+.container h3 {
+  margin: 0 0 16px 0;
+  font-size: 16px;
+}
+
+.simulationToggle {
+  margin-bottom: 16px;
+}
+
+.simulationToggle button {
+  padding: 8px 16px;
+  border: none;
+  border-radius: 4px;
+  color: white;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.activeButton {
+  background: #dc2626;
+}
+
+.inactiveButton {
+  background: #10b981;
+}
+
+.sourceTypeSelection {
+  margin-bottom: 16px;
+}
+
+.sourceTypeSelection h4 {
+  margin: 0 0 8px 0;
+  font-size: 14px;
+}
+
+.typeButtons {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 4px;
+}
+
+.typeButtons button {
+  padding: 6px;
+  border: 1px solid #475569;
+  border-radius: 4px;
+  color: #f1f5f9;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.selectedType {
+  background: #3b82f6;
+}
+
+.defaultType {
+  background: #334155;
+}
+
+.noiseControls {
+  border-top: 1px solid #334155;
+  padding-top: 16px;
+  margin-bottom: 16px;
+}
+
+.noiseControls h4 {
+  margin: 0 0 12px 0;
+  font-size: 14px;
+}
+
+.thresholdControl {
+  margin-bottom: 12px;
+}
+
+.thresholdControl label {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 12px;
+}
+
+.thresholdControl input {
+  width: 100%;
+}
+
+.noiseMapControl {
+  margin-bottom: 12px;
+}
+
+.noiseMapControl label {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 12px;
+}
+
+.instructions {
+  border-top: 1px solid #334155;
+  padding-top: 16px;
+  margin-bottom: 16px;
+}
+
+.instructions h4 {
+  margin: 0 0 8px 0;
+  font-size: 14px;
+}
+
+.instructions div {
+  font-size: 12px;
+  color: #94a3b8;
+  margin-bottom: 8px;
+}
+
+.statistics {
+  border-top: 1px solid #334155;
+  padding-top: 16px;
+  margin-bottom: 16px;
+}
+
+.statistics h4 {
+  margin: 0 0 8px 0;
+  font-size: 14px;
+}
+
+.statistics div {
+  font-size: 12px;
+  color: #94a3b8;
+}
+
+.controlButtons {
+  border-top: 1px solid #334155;
+  padding-top: 16px;
+}
+
+.controlButtons div:first-child {
+  display: flex;
+  gap: 8px;
+}
+
+.controlButtons button {
+  flex: 1;
+  padding: 8px;
+  border: 1px solid #ef4444;
+  border-radius: 4px;
+  color: #f1f5f9;
+  font-size: 14px;
+}
+
+.clearButton {
+  background: #dc2626;
+  cursor: pointer;
+}
+
+.clearButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.footerText {
+  font-size: 12px;
+  color: #94a3b8;
+  margin-top: 8px;
+}

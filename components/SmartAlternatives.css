@@ -1,0 +1,172 @@
+/* SmartAlternatives.css */
+
+.smart-alternatives-panel {
+  position: absolute;
+  top: 400px;
+  right: 10px;
+  width: 320px;
+  background: rgba(0, 0, 0, 0.9);
+  border-radius: 8px;
+  padding: 15px;
+  color: white;
+  font-size: 12px;
+  z-index: 1000;
+  max-height: 50vh;
+  overflow-y: auto;
+}
+
+.smart-alternatives-header {
+  margin: 0 0 15px 0;
+  color: #9C27B0;
+}
+
+.current-material-info {
+  margin-bottom: 15px;
+  padding: 10px;
+  background: #333;
+  border-radius: 6px;
+}
+
+.current-material-title {
+  font-weight: bold;
+  margin-bottom: 5px;
+}
+
+.current-material-details {
+  font-size: 10px;
+  color: #ccc;
+}
+
+.sort-options {
+  margin-bottom: 15px;
+}
+
+.sort-buttons {
+  display: flex;
+  gap: 5px;
+}
+
+.sort-button {
+  flex: 1;
+  padding: 6px;
+  background: #333;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 10px;
+}
+
+.sort-button.selected {
+  background: #9C27B0;
+}
+
+.alternatives-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.alternative-item {
+  padding: 12px;
+  background: #333;
+  border-radius: 6px;
+  cursor: pointer;
+  border: 1px solid #555;
+  transition: all 0.2s ease;
+}
+
+.alternative-item.selected {
+  background: #9C27B0;
+}
+
+.alternative-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: start;
+  margin-bottom: 8px;
+}
+
+.alternative-name {
+  font-weight: bold;
+  flex: 1;
+}
+
+.alternative-cost {
+  font-size: 11px;
+  color: #4CAF50;
+  font-weight: bold;
+}
+
+.alternative-stats {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 8px;
+  font-size: 10px;
+}
+
+.eco-impact {
+  color: #4CAF50; /* default green */
+}
+
+.eco-impact.fair {
+  color: #FFC107;
+}
+
+.eco-impact.poor {
+  color: #FF9800;
+}
+
+.durability {
+  color: #2196F3;
+}
+
+.availability-high {
+  color: #4CAF50;
+}
+
+.availability-medium {
+  color: #FF9800;
+}
+
+.availability-low {
+  color: #F44336;
+}
+
+.alternative-supplier {
+  font-size: 10px;
+  color: #ccc;
+  margin-bottom: 8px;
+}
+
+.alternative-reasoning {
+  font-size: 9px;
+  color: #bbb;
+}
+
+.alternative-reasoning-title {
+  font-weight: bold;
+  margin-bottom: 3px;
+}
+
+.alternative-reasoning-list {
+  margin: 0;
+  padding-left: 15px;
+}
+
+.alternative-compatibility {
+  font-size: 9px;
+  color: #4CAF50;
+  margin-top: 5px;
+}
+
+.no-alternatives-message {
+  text-align: center;
+  padding: 20px;
+  color: #ccc;
+}
+
+.loading-message {
+  text-align: center;
+  padding: 20px;
+}
