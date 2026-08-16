@@ -491,6 +491,14 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
           if (cancelled) return;
           const newMeshes = scene.meshes.filter((m) => !meshesBefore.has(m));
           loadedModelMeshesRef.current = newMeshes;
+          // Some exported CAD/BIM files mark certain nodes hidden (e.g. glTF's
+          // KHR_node_visibility, from an alternate design option or hidden layer in the
+          // source tool) - those load with isVisible=false and silently don't render,
+          // while still being enabled/pickable, so clicking that empty-looking spot
+          // selected an invisible mesh with no way to ever see it. This app has no UI for
+          // toggling hidden layers back on, so treat "hidden in the source file" as a
+          // loader quirk to override rather than a real feature.
+          newMeshes.forEach((m) => { m.isVisible = true; });
           // Register the real loaded meshes as a BIM model so Cost Estimator,
           // ROI Calculator, Budget Tier Comparison, and Ergonomic/Energy/
           // Shadow Analysis (all of which look up bimManager.getModelById())
@@ -720,11 +728,22 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
       // currentModelId stuck on the generic 'default-model' placeholder.
       setCurrentModelId(`local-${file.name.replace(/[^a-z0-9]+/gi, '-').toLowerCase()}`);
       import('@babylonjs/core/Loading/sceneLoader').then(({ SceneLoader }) => {
+        const meshesBefore = new Set(sceneRef.current!.meshes);
         // Pass the File object directly rather than a blob: URL. A blob URL has no
         // file extension, so Babylon can't reliably pick the right loader plugin for
         // non-GLB formats (OBJ/STL/FBX); File objects carry file.name, which Babylon
         // uses to detect the extension correctly for every supported format.
         SceneLoader.Append('', file, sceneRef.current!, () => {
+          // Some exported CAD/BIM files mark certain nodes hidden (e.g. glTF's
+          // KHR_node_visibility, from an alternate design option or hidden layer in the
+          // source tool) - those load with isVisible=false and silently don't render,
+          // while still being enabled/pickable, so clicking that empty-looking spot
+          // selected an invisible mesh with no way to ever see it. This app has no UI for
+          // toggling hidden layers back on, so treat "hidden in the source file" as a
+          // loader quirk to override rather than a real feature.
+          sceneRef.current!.meshes.forEach((m) => {
+            if (!meshesBefore.has(m)) m.isVisible = true;
+          });
           showToast.dismiss(toastId);
           showToast.success(`Model loaded: ${file.name}`);
           const s = sceneRef.current;
@@ -1627,7 +1646,7 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
     // teleport/AR-scale helper meshes) so clicking a tool's own visual aid doesn't
     // accidentally "select" it as if it were part of the design.
     const isSelectableMesh = (mesh: AbstractMesh) =>
-      mesh.isEnabled() && mesh.isPickable &&
+      mesh.isEnabled() && mesh.isVisible && mesh.isPickable &&
       !/^(ground|ceiling_light|measure_|annotation_pin_|cursor_|collab_|sound_privacy_marker_|__root__)/i.test(mesh.name || '');
 
     const observer = scene.onPointerObservable.add((pointerInfo) => {
