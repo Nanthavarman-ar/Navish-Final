@@ -63,6 +63,13 @@ const MaterialEditor: React.FC<MaterialEditorProps> = ({ sceneManager, selectedM
   // WebGL rasterization can't derive that from the material alone.
   const [giSettings, setGiSettings] = useState({ enabled: false, luminance: 5, radius: 3 });
 
+  // Client-friendly default: Type/Color/Opacity + Apply is the whole panel most people ever
+  // need (pick "Glass", pick a color, done) - everything below (textures, UV tiling,
+  // metallic/roughness, reflection/refraction, emissive lighting/GI) is real, working
+  // functionality but reads as intimidating technical jargon to a non-technical client, so
+  // it's tucked behind this toggle rather than always on screen.
+  const [showAdvanced, setShowAdvanced] = useState(false);
+
   const isEmissiveNamed = (name: string) => name.toLowerCase().includes('emissive');
 
   const buildMaterialStates = (): MaterialInterfaces.MaterialState[] => {
@@ -495,6 +502,15 @@ const MaterialEditor: React.FC<MaterialEditorProps> = ({ sceneManager, selectedM
         pbr.subSurface.refractionIntensity = 1;
         pbr.subSurface.tintColor = new BABYLON.Color3(0.9, 0.95, 1);
         pbr.transparencyMode = BABYLON.PBRMaterial.PBRMATERIAL_ALPHABLEND;
+        // This used to leave alpha at the reset default of 1 (fully opaque), relying
+        // entirely on subSurface refraction to read as "glass" - refraction needs a scene
+        // environment texture to actually refract anything, and this workspace's scene
+        // never sets one up (checked: no scene.environmentTexture anywhere). Without it,
+        // "Advanced/Refractive" glass rendered as a plain solid object - looked completely
+        // broken. A real (if less physically fancy) alpha blend guarantees it's visibly
+        // see-through regardless of whether an environment is ever added later; refraction
+        // still layers on top and adds real distortion once one is.
+        pbr.alpha = 0.35;
         break;
       case 'foliage':
         pbr.backFaceCulling = false;
@@ -880,6 +896,23 @@ const MaterialEditor: React.FC<MaterialEditorProps> = ({ sceneManager, selectedM
         </div>
       )}
 
+      {/* Advanced toggle - everything below this point (textures, UV tiling, metallic/
+          roughness, reflection/refraction, emissive lighting) is real and working, but is
+          the kind of technical control a client walkthrough doesn't need to see by default. */}
+      {selectedMaterial && selectedMaterial.type !== 'node' && (
+        <button
+          type="button"
+          onClick={() => setShowAdvanced(v => !v)}
+          className="w-full mb-4 py-1.5 px-3 flex items-center justify-between bg-gray-800 hover:bg-gray-700 rounded-lg border border-gray-600 text-xs font-semibold text-gray-300"
+          aria-expanded={showAdvanced}
+        >
+          <span>Advanced Settings</span>
+          <span className="text-gray-500">{showAdvanced ? '▲ Hide' : '▼ Show'}</span>
+        </button>
+      )}
+
+      {showAdvanced && (
+      <>
       {/* Texture - applies an image directly onto the currently selected material,
           upgrading it to PBR automatically if a Normal map needs it. */}
       {selectedMaterial && selectedMaterial.type !== 'custom' && (
@@ -986,6 +1019,8 @@ const MaterialEditor: React.FC<MaterialEditorProps> = ({ sceneManager, selectedM
           )}
         </div>
       )}
+      </>
+      )}
 
       {/* Water Properties - WaterMaterial doesn't share StandardMaterial/PBRMaterial's
           color/metallic/roughness model, so it gets its own dedicated controls instead
@@ -1041,6 +1076,8 @@ const MaterialEditor: React.FC<MaterialEditorProps> = ({ sceneManager, selectedM
               />
               <span className="text-xs text-gray-400">Pick color</span>
             </div>
+            {showAdvanced && (
+            <>
             <div className="flex gap-2">
             <input
               type="range"
@@ -1093,9 +1130,15 @@ const MaterialEditor: React.FC<MaterialEditorProps> = ({ sceneManager, selectedM
               <span className="text-xs">G:{materialProperties.diffuseColor.g.toFixed(2)}</span>
               <span className="text-xs">B:{materialProperties.diffuseColor.b.toFixed(2)}</span>
             </div>
+            </>
+            )}
           </div>
 
-          {/* Emissive Color */}
+          {/* Emissive Color - kept simple (behind Advanced): "make it glow" is intuitive with
+              just a color + intensity, but the nested GI/Luminance/Radius/firefly panel below
+              it is squarely technical, so the whole Emissive block lives behind Advanced. */}
+          {showAdvanced && (
+          <>
           <div>
             <label className="block text-xs mb-1">Emissive Color</label>
             <div className="flex gap-2 items-center mb-1">
@@ -1171,9 +1214,11 @@ const MaterialEditor: React.FC<MaterialEditorProps> = ({ sceneManager, selectedM
               </>
             )}
           </div>
+          </>
+          )}
 
           {/* Metallic/Roughness for PBR */}
-          {selectedMaterial.type === 'pbr' && (
+          {showAdvanced && selectedMaterial.type === 'pbr' && (
             <>
               <div>
                 <label className="block text-xs mb-1">Metallic: {materialProperties.metallic.toFixed(2)}</label>
@@ -1251,7 +1296,7 @@ const MaterialEditor: React.FC<MaterialEditorProps> = ({ sceneManager, selectedM
           )}
 
           {/* Specular Power for Standard */}
-          {selectedMaterial.type === 'standard' && (
+          {showAdvanced && selectedMaterial.type === 'standard' && (
             <div>
               <label className="block text-xs mb-1">Specular Power: {materialProperties.specularPower}</label>
               <input
@@ -1269,9 +1314,11 @@ const MaterialEditor: React.FC<MaterialEditorProps> = ({ sceneManager, selectedM
             </div>
           )}
 
-          {/* Alpha */}
+          {/* Opacity (alpha) - kept simple/always visible: "how see-through is it" is the
+              one physically-intuitive control a client understands without any PBR
+              background, and it's directly what makes glass/water/curtains look right. */}
           <div>
-            <label className="block text-xs mb-1">Alpha: {materialProperties.alpha.toFixed(2)}</label>
+            <label className="block text-xs mb-1">Opacity: {materialProperties.alpha.toFixed(2)}</label>
             <input
               type="range"
               min="0"
@@ -1280,9 +1327,9 @@ const MaterialEditor: React.FC<MaterialEditorProps> = ({ sceneManager, selectedM
               value={materialProperties.alpha}
               onChange={(e) => handlePropertyChange('alpha', parseFloat(e.target.value))}
               className="w-full"
-              aria-label="Alpha"
-              title="Alpha"
-              placeholder="Alpha"
+              aria-label="Opacity"
+              title="Opacity"
+              placeholder="Opacity"
             />
           </div>
 

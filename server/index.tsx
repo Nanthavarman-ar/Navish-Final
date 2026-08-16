@@ -967,20 +967,21 @@ app.post('/make-server-cf230d31/upload-model', async (c) => {
 
     const formData = await c.req.formData();
     const file = formData.get('file') as File;
+    const thumbnailFile = formData.get('thumbnail') as File | null;
     const title = formData.get('title') as string;
     const description = formData.get('description') as string;
     const tags = String(formData.get('tags') || '');
     const assignedClientsRaw = JSON.parse(formData.get('assignedClients') as string || '[]');
-    
+
     if (!file) {
       return c.json({ error: 'No file provided' }, 400);
     }
     const assignedClients = isAdmin ? assignedClientsRaw : [username];
-    
+
     // Upload file to Supabase Storage
     const fileName = `${Date.now()}-${file.name}`;
     const filePath = `models/${fileName}`;
-    
+
     const { data: uploadData, error: uploadError } = await supabase.storage
       .from('make-cf230d31-models')
       .upload(filePath, file);
@@ -1004,7 +1005,27 @@ app.post('/make-server-cf230d31/upload-model', async (c) => {
     const { data: signedUrlData } = await supabase.storage
       .from('make-cf230d31-models')
       .createSignedUrl(filePath, 60 * 60 * 24 * 365); // 1 year expiry
-    
+
+    // Thumbnail is optional and user-supplied at upload time - there is no automatic
+    // model-to-image rendering on the server, so without this the model has no thumbnail
+    // at all until one is manually picked here.
+    let thumbnailUrl: string | undefined;
+    if (thumbnailFile && thumbnailFile.size > 0) {
+      const thumbFileName = `${Date.now()}-${thumbnailFile.name}`;
+      const thumbPath = `thumbnails/${thumbFileName}`;
+      const { error: thumbUploadError } = await supabase.storage
+        .from('make-cf230d31-models')
+        .upload(thumbPath, thumbnailFile);
+      if (thumbUploadError) {
+        console.error('Thumbnail upload error:', thumbUploadError);
+      } else {
+        const { data: thumbSignedUrlData } = await supabase.storage
+          .from('make-cf230d31-models')
+          .createSignedUrl(thumbPath, 60 * 60 * 24 * 365);
+        thumbnailUrl = thumbSignedUrlData?.signedUrl;
+      }
+    }
+
     // Store model metadata
     const modelId = `model_${Date.now()}`;
     const modelData = {
@@ -1021,9 +1042,10 @@ app.post('/make-server-cf230d31/upload-model', async (c) => {
       assignedClients,
       uploadDate: new Date().toISOString(),
       views: 0,
-      signedUrl: signedUrlData?.signedUrl
+      signedUrl: signedUrlData?.signedUrl,
+      thumbnail: thumbnailUrl
     };
-    
+
     await kv.set(`model:${modelId}`, modelData);
     
     // Update assigned clients

@@ -19,8 +19,12 @@
       "dest": "https://naviz-backend-staging.up.railway.app/socket.io/$1"
     },
     {
-      "src": "/(.*)",
+      "src": "/(.*\\.[a-zA-Z0-9]+)",
       "dest": "/$1"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/index.html"
     }
   ],
   "outputDirectory": "dist",

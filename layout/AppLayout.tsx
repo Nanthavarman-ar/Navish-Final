@@ -14,6 +14,7 @@ import { UserUploadPage } from '../components/UserUploadPage';
 import BabylonErrorBoundary from '../components/BabylonErrorBoundary';
 import { Toaster } from '../components/ui/sonner';
 import { useAuth, useApp } from '../contexts';
+import { LAST_MODEL_ID_KEY } from '../contexts/AppContext';
 import { apiCall } from '../hooks/useApi';
 import { showToast } from '../components/utils/toast';
 import type { Scene } from '@babylonjs/core';
@@ -40,6 +41,14 @@ const RouteLoadingFallback = () => (
     <div className="animate-spin w-8 h-8 border-2 border-cyan-500 border-t-transparent rounded-full"></div>
   </div>
 );
+
+// The workspace viewer (BabylonWorkspace) reads selectedModel.modelUrl, but the /models
+// API returns the file location as signedUrl - passing the raw record through without this
+// mapping leaves modelUrl undefined and the workspace has nothing to load.
+const withModelUrl = (model: any) => ({
+  ...model,
+  modelUrl: model?.modelUrl || model?.signedUrl || model?.url || model?.fileUrl || null,
+});
 
 const toolPageSlugs = Object.keys(toolPageDefinitions) as ToolPageId[];
 
@@ -122,7 +131,7 @@ const ToolPageRoute: React.FC = () => {
 
 export default function AppLayout() {
   const { user, loading } = useAuth();
-  const { currentPage, setCurrentPage, setSelectedModel } = useApp();
+  const { currentPage, setCurrentPage, selectedModel, setSelectedModel } = useApp();
   const location = useLocation();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -145,7 +154,7 @@ export default function AppLayout() {
         const model = (data.models || []).find((m: any) => String(m.id) === sharedModelId);
         if (cancelled) return;
         if (model) {
-          setSelectedModel(model);
+          setSelectedModel(withModelUrl(model));
         } else {
           showToast.error('Shared model not found', 'It may have been removed or you may not have access to it.');
         }
@@ -158,6 +167,40 @@ export default function AppLayout() {
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams, currentPath, user]);
+
+  // Restores the last model that was open when the app is refreshed/reopened.
+  // selectedModel lives only in memory (see AppContext), so it resets to null on every
+  // remount; without this the workspace always came back empty even though the model was
+  // still sitting in storage. Skips when a shared-link ?model= id is present (handled above)
+  // or a model is already loaded.
+  useEffect(() => {
+    if (currentPath !== '/workspace' || !user || selectedModel || searchParams.get('model')) return;
+
+    let lastModelId: string | null = null;
+    try {
+      lastModelId = localStorage.getItem(LAST_MODEL_ID_KEY);
+    } catch {
+      return;
+    }
+    if (!lastModelId) return;
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const data = await apiCall('/models');
+        const model = (data.models || []).find((m: any) => String(m.id) === lastModelId);
+        if (cancelled) return;
+        if (model) {
+          setSelectedModel(withModelUrl(model));
+        }
+      } catch (error) {
+        console.error('Failed to restore last opened model:', error);
+      }
+    })();
+
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentPath, user, selectedModel, searchParams]);
   // Was defaulted to true, so the panel auto-opened on every load with no user action -
   // the actual "open" button (bottom of this section) only renders once it's closed,
   // meaning it looked like there was no dedicated button to open it at all. Every other

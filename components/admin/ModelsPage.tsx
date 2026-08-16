@@ -503,7 +503,7 @@ export function ModelsPage() {
                   />
                   <div className="w-16 h-16 rounded-lg overflow-hidden flex-shrink-0">
                     <ImageWithFallback
-                      src={model.thumbnail}
+                      src={model.thumbnail || `https://images.unsplash.com/photo-1586023492125-27b2c045efd7?w=300&h=200&fit=crop`}
                       alt={model.name}
                       className="w-full h-full object-cover"
                     />

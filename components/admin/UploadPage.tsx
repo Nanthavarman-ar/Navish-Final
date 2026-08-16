@@ -42,6 +42,12 @@ interface UploadFile {
   convertedSize?: string;
   optimizations?: string[];
   errorMessage?: string;
+  thumbnailFile?: File;
+  thumbnailPreviewUrl?: string;
+  // The real model record returned by the server once uploaded - used for Preview
+  // instead of a local blob mock, since only this has the real id/signedUrl/thumbnail
+  // that will still be there after a refresh.
+  uploadedModel?: any;
 }
 
 export function UploadPage() {
@@ -119,7 +125,25 @@ export function UploadPage() {
   };
 
   const removeFile = (fileId: string) => {
-    setUploadFiles(prev => prev.filter(f => f.id !== fileId));
+    setUploadFiles(prev => {
+      const target = prev.find(f => f.id === fileId);
+      if (target?.thumbnailPreviewUrl) {
+        URL.revokeObjectURL(target.thumbnailPreviewUrl);
+      }
+      return prev.filter(f => f.id !== fileId);
+    });
+  };
+
+  const handleThumbnailSelect = (fileId: string, thumbnailFile: File | undefined) => {
+    setUploadFiles(prev => prev.map(f => {
+      if (f.id !== fileId) return f;
+      if (f.thumbnailPreviewUrl) URL.revokeObjectURL(f.thumbnailPreviewUrl);
+      return {
+        ...f,
+        thumbnailFile,
+        thumbnailPreviewUrl: thumbnailFile ? URL.createObjectURL(thumbnailFile) : undefined
+      };
+    }));
   };
 
   const startUpload = async () => {
@@ -140,6 +164,9 @@ export function UploadPage() {
         // Create FormData
         const formData = new FormData();
         formData.append('file', uploadFile.file);
+        if (uploadFile.thumbnailFile) {
+          formData.append('thumbnail', uploadFile.thumbnailFile);
+        }
         formData.append('title', modelTitle);
         formData.append('description', modelDescription);
         formData.append('tags', modelTags);
@@ -175,12 +202,14 @@ export function UploadPage() {
           clearInterval(progressInterval);
 
           if (response.ok) {
-            setUploadFiles(prev => prev.map(f => 
-              f.id === uploadFile.id ? { 
-                ...f, 
-                progress: 100, 
+            const body = await response.json().catch(() => null);
+            setUploadFiles(prev => prev.map(f =>
+              f.id === uploadFile.id ? {
+                ...f,
+                progress: 100,
                 status: 'complete',
-                convertedSize: (uploadFile.file.size / (1024 * 1024)).toFixed(1) + ' MB'
+                convertedSize: (uploadFile.file.size / (1024 * 1024)).toFixed(1) + ' MB',
+                uploadedModel: body?.model
               } : f
             ));
           } else {
@@ -251,28 +280,17 @@ export function UploadPage() {
   };
 
   const handlePreviewModel = (uploadFile: UploadFile) => {
-    const modelUrl = URL.createObjectURL(uploadFile.file);
-    // blob: URLs have no file extension for the 3D viewer to detect the format
-    // from, so it must come from the real filename - a hardcoded 'glTF' here
-    // previously made the viewer guess wrong and fail to parse the file.
-    const extensionMatch = /\.([a-zA-Z0-9]+)$/.exec(uploadFile.file.name);
-    const format = extensionMatch ? extensionMatch[1].toLowerCase() : 'glb';
-    const mockModel = {
-      id: uploadFile.id,
-      name: modelTitle || uploadFile.file.name.replace(/\.[^/.]+$/, ''),
-      description: modelDescription || 'Uploaded 3D model',
-      thumbnail: 'https://images.unsplash.com/photo-1586023492125-27b2c045efd7?w=300&h=200&fit=crop',
-      tags: modelTags.split(',').map(tag => tag.trim()).filter(Boolean),
-      uploadDate: new Date().toISOString().split('T')[0],
-      uploader: 'admin',
-      size: uploadFile.convertedSize || (uploadFile.file.size / (1024 * 1024)).toFixed(1) + ' MB',
-      format,
-      fileName: uploadFile.file.name,
-      assignedClients: selectedClients,
-      views: 0,
-      modelUrl
-    };
-    setSelectedModel(mockModel);
+    // Use the real record the server returned on upload (real id + signedUrl + thumbnail).
+    // A local blob: URL mock was used here before, which broke on refresh/reopen (blob
+    // URLs die with the tab) and had an id that never matched the real stored model.
+    if (!uploadFile.uploadedModel) {
+      showToast.error('Model not ready to preview', 'Please wait for the upload to finish.');
+      return;
+    }
+    setSelectedModel({
+      ...uploadFile.uploadedModel,
+      modelUrl: uploadFile.uploadedModel.signedUrl,
+    });
     navigate('/workspace');
   };
 
@@ -475,6 +493,44 @@ export function UploadPage() {
                           </Button>
                         )}
                       </div>
+
+                      {uploadFile.status === 'pending' && (
+                        <div className="flex items-center gap-3 mb-3 p-2 rounded-md bg-slate-900/50 border border-slate-700">
+                          <div className="w-12 h-12 rounded overflow-hidden bg-slate-700 flex-shrink-0 flex items-center justify-center">
+                            {uploadFile.thumbnailPreviewUrl ? (
+                              <img src={uploadFile.thumbnailPreviewUrl} alt="Thumbnail preview" className="w-full h-full object-cover" />
+                            ) : (
+                              <FileType className="w-5 h-5 text-gray-500" />
+                            )}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <Label htmlFor={`thumbnail-${uploadFile.id}`} className="text-white text-sm cursor-pointer">
+                              {uploadFile.thumbnailFile ? 'Change thumbnail' : 'Choose thumbnail image (optional)'}
+                            </Label>
+                            <p className="text-xs text-gray-500 truncate">
+                              {uploadFile.thumbnailFile ? uploadFile.thumbnailFile.name : 'PNG or JPG shown in the model library'}
+                            </p>
+                            <input
+                              id={`thumbnail-${uploadFile.id}`}
+                              type="file"
+                              accept="image/*"
+                              onChange={(e) => handleThumbnailSelect(uploadFile.id, e.target.files?.[0])}
+                              className="hidden"
+                            />
+                          </div>
+                          {uploadFile.thumbnailFile && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleThumbnailSelect(uploadFile.id, undefined)}
+                              className="text-gray-400 hover:text-white"
+                              title="Remove thumbnail"
+                            >
+                              <X className="w-4 h-4" />
+                            </Button>
+                          )}
+                        </div>
+                      )}
 
                       <div className="space-y-2">
                         <div className="flex items-center justify-between text-sm">
