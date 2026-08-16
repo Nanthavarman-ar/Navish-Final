@@ -8,6 +8,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Label } from '../ui/label';
 import { Alert, AlertDescription } from '../ui/alert';
 import { supabase, projectId } from '../../supabase/client';
+import { apiCall } from '../../hooks/useApi';
 import { showToast } from '../utils/toast';
 import {
   Search,
@@ -55,61 +56,11 @@ interface FormErrors {
   [key: string]: string;
 }
 
-// Mock clients data
-const mockClients: Client[] = [
-  {
-    id: 'mock-1',
-    username: 'client1',
-    name: 'John Smith',
-    email: 'john.smith@company.com',
-    phone: '+1 (555) 123-4567',
-    company: 'Smith Industries',
-    location: 'New York, NY',
-    createdDate: '2024-12-15',
-    assignedModels: 4,
-    lastActive: '2025-01-07',
-    status: 'active'
-  },
-  {
-    id: 'mock-2',
-    username: 'client2',
-    name: 'Sarah Johnson',
-    email: 'sarah.j@designstudio.com',
-    phone: '+1 (555) 987-6543',
-    company: 'Johnson Design Studio',
-    location: 'Los Angeles, CA',
-    createdDate: '2024-11-20',
-    assignedModels: 2,
-    lastActive: '2025-01-06',
-    status: 'active'
-  },
-  {
-    id: 'mock-3',
-    username: 'client3',
-    name: 'Michael Brown',
-    email: 'mbrown@architects.com',
-    phone: '+1 (555) 456-7890',
-    company: 'Brown Architects',
-    location: 'Chicago, IL',
-    createdDate: '2024-10-05',
-    assignedModels: 7,
-    lastActive: '2024-12-28',
-    status: 'inactive'
-  },
-  {
-    id: 'mock-4',
-    username: 'client4',
-    name: 'Emily Davis',
-    email: 'emily@interiordesign.com',
-    phone: '+1 (555) 234-5678',
-    company: 'Davis Interiors',
-    location: 'Miami, FL',
-    createdDate: '2024-09-12',
-    assignedModels: 3,
-    lastActive: '2025-01-05',
-    status: 'active'
-  }
-];
+interface AssignableModel {
+  id: string;
+  name: string;
+  assignedClients: string[];
+}
 
 export function ClientsPage() {
   const navigate = useNavigate();
@@ -119,6 +70,10 @@ export function ClientsPage() {
   const [isCreating, setIsCreating] = useState(false);
   const [clients, setClients] = useState<Client[]>([]);
   const [isLoadingClients, setIsLoadingClients] = useState(true);
+  const [clientsError, setClientsError] = useState<string | null>(null);
+  const [assignModelsDialog, setAssignModelsDialog] = useState<{ open: boolean; clientUsername: string; clientName: string; searchTerm: string; selectedModelIds: string[] }>({ open: false, clientUsername: '', clientName: '', searchTerm: '', selectedModelIds: [] });
+  const [availableModels, setAvailableModels] = useState<AssignableModel[]>([]);
+  const [isLoadingModels, setIsLoadingModels] = useState(false);
   const [newClient, setNewClient] = useState<NewClientForm>({
     name: '',
     username: '',
@@ -132,6 +87,7 @@ export function ClientsPage() {
 
   const loadClients = React.useCallback(async () => {
     setIsLoadingClients(true);
+    setClientsError(null);
     try {
       const { data: { session } } = await supabase.auth.getSession();
       const accessToken = session?.access_token;
@@ -160,9 +116,14 @@ export function ClientsPage() {
       }));
       setClients(normalized);
     } catch (error) {
+      // This used to fall back to hardcoded sample clients ("John Smith" etc) on any
+      // fetch error, including a transient blip - identical to the same anti-pattern in
+      // ModelsPage.tsx, and just as misleading: a real admin's user list would silently
+      // vanish behind 4 fake accounts with only an auto-dismissing toast as a clue. Now
+      // the real (possibly empty, on first failure) list stays and an explicit
+      // error+retry state renders below instead.
       console.error('Failed to load clients from backend:', error);
-      showToast.warning('Could not load live client data', 'Showing sample data instead');
-      setClients(mockClients);
+      setClientsError(error instanceof Error ? error.message : 'Failed to load clients');
     } finally {
       setIsLoadingClients(false);
     }
@@ -172,18 +133,15 @@ export function ClientsPage() {
     loadClients();
   }, [loadClients]);
   
-  // Mock models for assignment
-  const mockModels = [
-    { id: 1, name: 'Modern Chair v2.glb', category: 'Furniture' },
-    { id: 2, name: 'Conference Table.glb', category: 'Furniture' },
-    { id: 3, name: 'Office Lamp.fbx', category: 'Lighting' }
-  ];
-
   const filteredClients = clients.filter(client =>
     client.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     client.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
     client.company.toLowerCase().includes(searchTerm.toLowerCase()) ||
     client.username.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  const filteredAvailableModels = availableModels.filter(model =>
+    model.name.toLowerCase().includes(assignModelsDialog.searchTerm.toLowerCase())
   );
 
   const validateForm = () => {
@@ -310,14 +268,70 @@ export function ClientsPage() {
     showToast.success(`User ${newStatus === 'active' ? 'activated' : 'deactivated'}`);
   };
 
-  const handleAssignModels = (clientId: string) => {
-    const count = Math.floor(Math.random() * 3) + 1;
-    setClients(prev => prev.map(c => 
-      c.id === clientId 
-        ? { ...c, assignedModels: c.assignedModels + count }
-        : c
-    ));
-    showToast.success(`${count} models assigned successfully`);
+  // Was entirely fake: picked a random 1-3 count, bumped the client's local
+  // assignedModels number, and showed a success toast - no backend call at all, so
+  // nothing was ever actually assigned and the "assignment" vanished on next reload.
+  // Now opens a real dialog backed by /models and /assign-model, the same endpoint
+  // ModelsPage.tsx's (working) assign dialog uses.
+  const handleAssignModels = (client: Client) => {
+    setAssignModelsDialog({ open: true, clientUsername: client.username, clientName: client.name, searchTerm: '', selectedModelIds: [] });
+    setIsLoadingModels(true);
+    apiCall('/models')
+      .then((data) => {
+        const modelsList: AssignableModel[] = (data.models || []).map((m: any) => ({
+          id: String(m.id),
+          name: m.name || 'Untitled model',
+          assignedClients: Array.isArray(m.assignedClients) ? m.assignedClients : []
+        }));
+        setAvailableModels(modelsList);
+        setAssignModelsDialog(prev => ({
+          ...prev,
+          selectedModelIds: modelsList.filter(m => m.assignedClients.includes(client.username)).map(m => m.id)
+        }));
+      })
+      .catch((error) => {
+        console.error('Failed to load models for assignment:', error);
+        showToast.error('Could not load model list');
+      })
+      .finally(() => setIsLoadingModels(false));
+  };
+
+  const toggleModelAssignment = (modelId: string) => {
+    setAssignModelsDialog(prev => ({
+      ...prev,
+      selectedModelIds: prev.selectedModelIds.includes(modelId)
+        ? prev.selectedModelIds.filter(id => id !== modelId)
+        : [...prev.selectedModelIds, modelId]
+    }));
+  };
+
+  const confirmModelAssignment = async () => {
+    const { clientUsername, clientName, selectedModelIds } = assignModelsDialog;
+    if (!clientUsername) return;
+    try {
+      // /assign-model replaces a model's *entire* assignedClients list, so only touch
+      // models whose checked state actually changed, merging this client in/out of
+      // whichever other clients that model already had.
+      const changed = availableModels.filter(model =>
+        selectedModelIds.includes(model.id) !== model.assignedClients.includes(clientUsername)
+      );
+      await Promise.all(changed.map(model => {
+        const nowAssigned = selectedModelIds.includes(model.id);
+        const newAssignedClients = nowAssigned
+          ? [...model.assignedClients, clientUsername]
+          : model.assignedClients.filter(u => u !== clientUsername);
+        return apiCall('/assign-model', {
+          method: 'POST',
+          body: JSON.stringify({ modelId: model.id, clientUsernames: newAssignedClients }),
+        });
+      }));
+      showToast.success(`Updated model access for ${clientName}`);
+      await loadClients();
+    } catch (error) {
+      console.error('Failed to update model assignments:', error);
+      showToast.error('Failed to update model access');
+    }
+    setAssignModelsDialog({ open: false, clientUsername: '', clientName: '', searchTerm: '', selectedModelIds: [] });
   };
 
   const handleChangePassword = (clientId: string) => {
@@ -612,7 +626,7 @@ export function ClientsPage() {
                   <Button
                     size="sm"
                     variant="outline"
-                    onClick={() => handleAssignModels(client.id)}
+                    onClick={() => handleAssignModels(client)}
                     className="border-blue-400 text-blue-400 hover:bg-blue-400 hover:text-white"
                   >
                     <Box className="w-4 h-4 mr-1" />
@@ -651,7 +665,16 @@ export function ClientsPage() {
             ))}
           </div>
           
-          {!isLoadingClients && filteredClients.length === 0 && (
+          {!isLoadingClients && clientsError && clients.length === 0 && (
+            <div className="text-center py-8">
+              <div className="text-white text-lg mb-2">Couldn't load users</div>
+              <p className="text-gray-500 text-sm mb-4">{clientsError}</p>
+              <Button onClick={() => loadClients()} className="bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-400 hover:to-blue-400">
+                Retry
+              </Button>
+            </div>
+          )}
+          {!isLoadingClients && !clientsError && filteredClients.length === 0 && (
             <div className="text-center py-8">
               <div className="text-gray-400 text-lg mb-2">No users found</div>
               <p className="text-gray-500">Try adjusting your search terms</p>
@@ -659,6 +682,79 @@ export function ClientsPage() {
           )}
         </CardContent>
       </Card>
+
+      <Dialog open={assignModelsDialog.open} onOpenChange={(open) => setAssignModelsDialog(prev => ({ ...prev, open }))}>
+        <DialogContent className="bg-slate-800 border-slate-700/80 text-white max-w-md">
+          <DialogHeader>
+            <DialogTitle>Assign Models to {assignModelsDialog.clientName}</DialogTitle>
+            <DialogDescription>
+              Search and select which models this user can access.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label htmlFor="modelSearch">Search Models</Label>
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+                <Input
+                  id="modelSearch"
+                  placeholder="Search by model name..."
+                  value={assignModelsDialog.searchTerm}
+                  onChange={(e) => setAssignModelsDialog(prev => ({ ...prev, searchTerm: e.target.value }))}
+                  className="pl-10 bg-slate-700 border-slate-600"
+                />
+              </div>
+            </div>
+
+            <div className="max-h-60 overflow-y-auto space-y-2">
+              {isLoadingModels && (
+                <div className="flex items-center justify-center py-6 text-gray-400 gap-2">
+                  <div className="animate-spin w-4 h-4 border-2 border-cyan-500 border-t-transparent rounded-full" />
+                  Loading models...
+                </div>
+              )}
+              {!isLoadingModels && filteredAvailableModels.map((model) => {
+                const isSelected = assignModelsDialog.selectedModelIds.includes(model.id);
+                return (
+                  <div key={model.id} className="flex items-center space-x-3 p-2 bg-slate-700/30 rounded">
+                    <input
+                      type="checkbox"
+                      id={`assign-model-${model.id}`}
+                      checked={isSelected}
+                      onChange={() => toggleModelAssignment(model.id)}
+                      className="rounded border-slate-600"
+                    />
+                    <label htmlFor={`assign-model-${model.id}`} className="flex-1 cursor-pointer text-white font-medium">
+                      {model.name}
+                    </label>
+                  </div>
+                );
+              })}
+              {!isLoadingModels && filteredAvailableModels.length === 0 && (
+                <div className="text-center py-4 text-gray-400">
+                  No models found matching your search
+                </div>
+              )}
+            </div>
+
+            <div className="flex gap-3 pt-4">
+              <Button
+                onClick={confirmModelAssignment}
+                className="flex-1 bg-blue-600 hover:bg-blue-700"
+              >
+                Save Access ({assignModelsDialog.selectedModelIds.length} model{assignModelsDialog.selectedModelIds.length !== 1 ? 's' : ''})
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => setAssignModelsDialog({ open: false, clientUsername: '', clientName: '', searchTerm: '', selectedModelIds: [] })}
+                className="border-slate-600"
+              >
+                Cancel
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

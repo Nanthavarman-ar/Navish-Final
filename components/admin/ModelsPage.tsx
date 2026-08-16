@@ -26,88 +26,6 @@ import {
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '../ui/dialog';
 import { Label } from '../ui/label';
 
-// Mock models data
-const mockModels = [
-  {
-    id: 1,
-    name: 'Modern Conference Table',
-    description: 'High-poly conference table with premium materials',
-    thumbnail: 'https://images.unsplash.com/photo-1586023492125-27b2c045efd7?w=300&h=200&fit=crop',
-    tags: ['furniture', 'office', 'modern'],
-    uploadDate: '2025-01-15',
-    uploader: 'admin',
-    size: '12.4 MB',
-    format: 'glTF',
-    assignedClients: ['client1', 'client2'],
-    views: 45
-  },
-  {
-    id: 2,
-    name: 'Executive Office Chair',
-    description: 'Ergonomic executive chair with leather finish',
-    thumbnail: 'https://images.unsplash.com/photo-1506439773649-6e0eb8cfb237?w=300&h=200&fit=crop',
-    tags: ['furniture', 'chair', 'leather'],
-    uploadDate: '2025-01-14',
-    uploader: 'admin',
-    size: '8.7 MB',
-    format: 'glTF',
-    assignedClients: ['client1'],
-    views: 32
-  },
-  {
-    id: 3,
-    name: 'Reception Desk Setup',
-    description: 'Complete reception area with desk and seating',
-    thumbnail: 'https://images.unsplash.com/photo-1497366216548-37526070297c?w=300&h=200&fit=crop',
-    tags: ['furniture', 'reception', 'complete'],
-    uploadDate: '2025-01-12',
-    uploader: 'admin',
-    size: '24.1 MB',
-    format: 'glTF',
-    assignedClients: ['client2'],
-    views: 28
-  },
-  {
-    id: 4,
-    name: 'Meeting Room Setup',
-    description: 'Full meeting room with table, chairs, and decor',
-    thumbnail: 'https://images.unsplash.com/photo-1497366811353-6870744d04b2?w=300&h=200&fit=crop',
-    tags: ['room', 'meeting', 'complete'],
-    uploadDate: '2025-01-10',
-    uploader: 'admin',
-    size: '45.3 MB',
-    format: 'glTF',
-    assignedClients: ['client1', 'client2'],
-    views: 67
-  },
-  {
-    id: 5,
-    name: 'Modern Sofa Set',
-    description: 'Modular sofa set with multiple configurations',
-    thumbnail: 'https://images.unsplash.com/photo-1555041469-a586c61ea9bc?w=300&h=200&fit=crop',
-    tags: ['furniture', 'sofa', 'modular'],
-    uploadDate: '2025-01-08',
-    uploader: 'admin',
-    size: '18.9 MB',
-    format: 'glTF',
-    assignedClients: [],
-    views: 15
-  },
-  {
-    id: 6,
-    name: 'Standing Desk',
-    description: 'Adjustable height standing desk with cable management',
-    thumbnail: 'https://images.unsplash.com/photo-1631679706909-1844bbd07221?w=300&h=200&fit=crop',
-    tags: ['furniture', 'desk', 'adjustable'],
-    uploadDate: '2025-01-05',
-    uploader: 'admin',
-    size: '6.2 MB',
-    format: 'glTF',
-    assignedClients: ['client1'],
-    views: 23
-  }
-];
-
 export function ModelsPage() {
   const navigate = useNavigate();
   const { setSelectedModel } = useApp();
@@ -120,18 +38,21 @@ export function ModelsPage() {
 
   // Fetch models from backend
   const { data: modelsResponse, loading, error, refetch } = useApi<{ models: any[] }>('/models');
-  const [models, setModels] = useState(mockModels);
+  const [models, setModels] = useState<any[]>([]);
 
-  // Use API data if available, otherwise fall back to the sample data `models` already
-  // defaults to - matching ClientsPage.tsx's pattern (toast + mock fallback) instead of
-  // blocking the entire page behind a hard error screen when the backend is unreachable.
+  // Real data only - this used to fall back to hardcoded sample models ("Modern
+  // Conference Table" etc) on any fetch error, including a transient blip (cold Edge
+  // Function start, a momentary 401 during token refresh). That made a real upload
+  // look like it had vanished: the admin would navigate away and back, hit one flaky
+  // fetch, and see 6 fake models with no sign their actual upload ever existed, with
+  // only a toast that auto-dismisses in a few seconds as the only clue. Now `models`
+  // only ever reflects what the server actually returned, and a failed fetch shows an
+  // explicit retry state below instead of silently substituting fake data.
   React.useEffect(() => {
     if (modelsResponse?.models) {
       setModels(modelsResponse.models);
-    } else if (error) {
-      showToast.warning('Could not load live model data', 'Showing sample data instead');
     }
-  }, [modelsResponse, error]);
+  }, [modelsResponse]);
 
   const filteredModels = models.filter(model => {
     const matchesSearch = model.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -300,6 +221,22 @@ export function ModelsPage() {
           <div className="text-center">
             <div className="animate-spin w-12 h-12 border-2 border-cyan-500 border-t-transparent rounded-full mx-auto mb-4"></div>
             <p className="text-white text-lg">Loading models...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (error && models.length === 0) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-center py-12">
+          <div className="text-center max-w-md">
+            <p className="text-white text-lg mb-2">Couldn't load your models</p>
+            <p className="text-gray-400 text-sm mb-4">{error || 'The server request failed.'}</p>
+            <Button onClick={() => refetch()} className="bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-400 hover:to-blue-400">
+              Retry
+            </Button>
           </div>
         </div>
       </div>

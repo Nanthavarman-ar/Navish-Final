@@ -57,7 +57,11 @@ export function UploadPage() {
   const [modelTitle, setModelTitle] = useState('');
   const [modelDescription, setModelDescription] = useState('');
   const [modelTags, setModelTags] = useState('');
-  const [selectedClients, setSelectedClients] = useState<number[]>([]);
+  // The server's /upload-model handler (and /assign-model, and GET /models' own
+  // assignedClients filtering) all identify clients by username, not their Supabase
+  // Auth UUID - selecting by client.id here silently assigned to nobody, since no
+  // client's username ever equals a UUID.
+  const [selectedClients, setSelectedClients] = useState<string[]>([]);
   const [isDragOver, setIsDragOver] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -241,11 +245,11 @@ export function UploadPage() {
     }
   };
 
-  const handleClientToggle = (clientId: number) => {
+  const handleClientToggle = (clientUsername: string) => {
     setSelectedClients(prev =>
-      prev.includes(clientId)
-        ? prev.filter(id => id !== clientId)
-        : [...prev, clientId]
+      prev.includes(clientUsername)
+        ? prev.filter(u => u !== clientUsername)
+        : [...prev, clientUsername]
     );
   };
 
@@ -424,8 +428,8 @@ export function UploadPage() {
                   <div key={client.id} className="flex items-center space-x-3">
                     <Checkbox
                       id={`client-${client.id}`}
-                      checked={selectedClients.includes(client.id)}
-                      onCheckedChange={() => handleClientToggle(client.id)}
+                      checked={selectedClients.includes(client.username)}
+                      onCheckedChange={() => handleClientToggle(client.username)}
                       className="border-slate-600 data-[state=checked]:bg-purple-500"
                     />
                     <Label 
