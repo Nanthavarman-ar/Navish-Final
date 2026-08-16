@@ -191,7 +191,15 @@ export function ClientsPage() {
     
     if (!newClient.name.trim()) newErrors.name = 'Name is required';
     if (!newClient.username.trim()) newErrors.username = 'Username is required';
-    if (!newClient.email.trim()) newErrors.email = 'Email is required';
+    if (!newClient.email.trim()) {
+      newErrors.email = 'Email is required';
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(newClient.email.trim())) {
+      // Previously only checked "non-empty" - a malformed address (e.g. a stray comma
+      // instead of a dot, like "name@gmail,com") passed this form fine and only failed
+      // later at the Supabase signup call with an opaque backend error, making it look
+      // like the form itself couldn't accept a Gmail address at all.
+      newErrors.email = 'Enter a valid email address (e.g. name@example.com)';
+    }
     if (!newClient.password || newClient.password.length < 6) newErrors.password = 'Password must be at least 6 characters';
     
     // Check if username already exists
