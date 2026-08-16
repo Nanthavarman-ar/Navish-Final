@@ -242,10 +242,13 @@ export class BIMManager {
     return this.createMockBIMModel(modelId, 'AutoCAD Import', 'autocad');
   }
 
-  // Parse IFC file (Industry Foundation Classes)
+  // Parse IFC file (Industry Foundation Classes) - real parsing via web-ifc, an open-source
+  // WASM IFC engine. Unlike Revit/AutoCAD (proprietary, no legal local parser), IFC is an
+  // open standard this can genuinely read: real geometry, real element names/types, not a
+  // mock building.
   private async parseIFCFile(file: File, modelId: string): Promise<BIMModel> {
-    // IFC parsing would require a proper IFC parser library
-    return this.createMockBIMModel(modelId, 'IFC Import', 'ifc');
+    const { parseIFCToBIMModel } = await import('./utils/ifcParser');
+    return parseIFCToBIMModel(file, modelId, this.scene);
   }
 
   // Parse custom format
@@ -493,6 +496,20 @@ export class BIMManager {
 
       if (!this.scene) {
         throw new Error('Scene not available for mesh creation');
+      }
+
+      // Real geometry (e.g. from the IFC parser) is already built and assigned before this
+      // runs - only fall through to the generic primitive-per-type shapes below for elements
+      // that don't have real geometry of their own (the mock/demo model).
+      if (element.mesh instanceof Mesh) {
+        const material = new StandardMaterial(`${element.id}_material`, this.scene);
+        material.diffuseColor = this.getElementColor(element);
+        element.mesh.material = material;
+        element.visible = true;
+        if (element.type === 'wall' && this.wallGroup) {
+          element.mesh.parent = this.wallGroup;
+        }
+        return;
       }
 
       let mesh: Mesh;
@@ -974,7 +991,10 @@ export class BIMManager {
   // Enable clash detection
   enableClashDetection(): void {
     this.config.clashDetectionEnabled = true;
-    this.performClashDetection();
+    // Fire-and-forget: performClashDetection is async (it yields periodically so it can't
+    // block the main thread - see its own comment), and nothing here needs to wait for it to
+    // finish. this.clashes/getClashes() reflect whatever's been found once it completes.
+    void this.performClashDetection();
     console.log('Clash detection enabled');
   }
 
@@ -993,60 +1013,76 @@ export class BIMManager {
     console.log('Clash detection disabled');
   }
 
-  // Perform clash detection
-  private performClashDetection(): void {
+  // Perform clash detection. Was a naive synchronous all-pairs O(n^2) scan over every element
+  // in every model - on a model with a few thousand elements that's millions of bounding-box
+  // checks done synchronously on the main thread, which is a multi-second UI freeze the
+  // instant Clash Detection is enabled. Fixed two ways:
+  //  1. Sweep-and-prune broad phase: sort by min.x once, then only compare a mesh against
+  //     others whose X range could still overlap (break out as soon as it can't) - for
+  //     typical, spatially-distributed BIM geometry this rules out the vast majority of pairs
+  //     without ever touching Y/Z, turning O(n^2) into roughly O(n log n) in practice.
+  //  2. Yield periodically (chunked async loop) so even a pathological worst case (e.g. every
+  //     element's bounding box overlapping on X) can't block the main thread for more than a
+  //     chunk's worth of work at a time.
+  private async performClashDetection(): Promise<void> {
     if (!this.config.clashDetectionEnabled) return;
 
     this.clashes = [];
 
-    // Get all meshes from all models
-    const allMeshes: (Mesh | InstancedMesh)[] = [];
+    interface BoundedMesh { mesh: Mesh | InstancedMesh; min: Vector3; max: Vector3 }
+    const boundedMeshes: BoundedMesh[] = [];
     this.models.forEach(model => {
       model.elements.forEach(element => {
         if (element.mesh) {
-          allMeshes.push(element.mesh);
+          const box = element.mesh.getBoundingInfo().boundingBox;
+          boundedMeshes.push({ mesh: element.mesh, min: box.minimumWorld, max: box.maximumWorld });
         }
       });
     });
 
-    // Simple clash detection (intersection check)
-    for (let i = 0; i < allMeshes.length; i++) {
-      for (let j = i + 1; j < allMeshes.length; j++) {
-        const mesh1 = allMeshes[i];
-        const mesh2 = allMeshes[j];
+    boundedMeshes.sort((a, b) => a.min.x - b.min.x);
 
-        // Check for intersection (simplified)
-        if (this.checkMeshIntersection(mesh1, mesh2)) {
+    const CHUNK_PAIR_LIMIT = 200; // comparisons per tick - keeps each chunk well under one frame
+    let pairsSinceYield = 0;
+
+    for (let i = 0; i < boundedMeshes.length; i++) {
+      const a = boundedMeshes[i];
+      for (let j = i + 1; j < boundedMeshes.length; j++) {
+        const b = boundedMeshes[j];
+        // Sorted by min.x: once b starts after a ends on X, nothing further in this inner
+        // loop can overlap a on X either.
+        if (b.min.x > a.max.x) break;
+
+        if (
+          a.max.y >= b.min.y && a.min.y <= b.max.y &&
+          a.max.z >= b.min.z && a.min.z <= b.max.z
+        ) {
           const clash: BIMClash = {
             id: `clash_${this.clashes.length}`,
             type: 'intersection',
             severity: 'critical',
-            elements: [mesh1.id, mesh2.id],
-            description: `Intersection detected between ${mesh1.id} and ${mesh2.id}`,
-            position: mesh1.position.add(mesh2.position).scale(0.5)
+            elements: [a.mesh.id, b.mesh.id],
+            description: `Intersection detected between ${a.mesh.id} and ${b.mesh.id}`,
+            position: a.mesh.position.add(b.mesh.position).scale(0.5)
           };
-
           this.clashes.push(clash);
           this.createClashHighlight(clash);
+        }
+
+        pairsSinceYield++;
+        if (pairsSinceYield >= CHUNK_PAIR_LIMIT) {
+          pairsSinceYield = 0;
+          await new Promise<void>((resolve) => setTimeout(resolve, 0));
+          // Bail out if the feature was disabled while this scan was still mid-flight (e.g.
+          // on a very large model) - disableClashDetection() already cleared this.clashes and
+          // the highlight group, so continuing would silently repopulate both after the user
+          // turned the feature off.
+          if (!this.config.clashDetectionEnabled) return;
         }
       }
     }
 
     console.log(`Clash detection complete: ${this.clashes.length} clashes found`);
-  }
-
-  // Check if two meshes intersect (simplified bounding box check)
-  private checkMeshIntersection(mesh1: Mesh | InstancedMesh, mesh2: Mesh | InstancedMesh): boolean {
-    const bounds1 = mesh1.getBoundingInfo().boundingBox;
-    const bounds2 = mesh2.getBoundingInfo().boundingBox;
-
-    // Check if bounding boxes intersect
-    return bounds1.maximumWorld.x >= bounds2.minimumWorld.x &&
-           bounds1.minimumWorld.x <= bounds2.maximumWorld.x &&
-           bounds1.maximumWorld.y >= bounds2.minimumWorld.y &&
-           bounds1.minimumWorld.y <= bounds2.maximumWorld.y &&
-           bounds1.maximumWorld.z >= bounds2.minimumWorld.z &&
-           bounds1.minimumWorld.z <= bounds2.maximumWorld.z;
   }
 
   // Create visual highlight for clash

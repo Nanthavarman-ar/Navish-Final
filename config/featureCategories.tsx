@@ -74,7 +74,7 @@ export const featureCategories: FeaturesByCategory = {
     { id: 'showAIAdvisor', name: 'AI Advisor', description: 'Get AI design suggestions', icon: Brain, category: 'AI and Automation', enabledByDefault: false },
     { id: 'showVoiceAssistant', name: 'Voice Assistant', description: 'Control via voice commands', hotkey: 'V', icon: Mic, category: 'AI and Automation', enabledByDefault: false },
     { id: 'showGestureDetection', name: 'Gesture Detection', description: 'Interact using hand gestures', icon: Hand, category: 'AI and Automation', enabledByDefault: false },
-    { id: 'showGestureInspector', name: 'Gesture Inspector', description: 'Monitor gesture recognition events', icon: Hand, category: 'AI and Automation', enabledByDefault: false }
+    { id: 'showGestureInspector', name: 'Gesture Inspector', description: 'Preview gesture event log (test data - no camera recognition yet)', icon: Hand, category: 'AI and Automation', enabledByDefault: false }
   ],
   "AR and Spatial": [
     { id: 'showVR', name: 'VR Mode', description: 'Enter virtual reality mode', hotkey: 'F11', icon: Gamepad2, category: 'AR and Spatial', enabledByDefault: false },

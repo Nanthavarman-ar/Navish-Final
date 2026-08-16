@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { Suspense } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
@@ -12,6 +12,25 @@ import {
 } from 'lucide-react';
 import { LegoButton } from './LegoButton';
 import { LegoBuildAnimation } from './LegoBuildAnimation';
+// Real 3D (Babylon.js) build animation, lazy-loaded so the ~1MB+ engine isn't in the initial
+// page bundle - the SVG LegoBuildAnimation above renders instantly as the Suspense fallback
+// and is what most users briefly see before this chunk finishes streaming in.
+const LegoHouseScene = React.lazy(() => import('./LegoHouseScene').then((m) => ({ default: m.LegoHouseScene })));
+
+// Fixed (not re-randomized per render) star positions/timings so the twinkle field doesn't
+// jump around on every re-render - each star gets its own size/delay/min-max opacity so the
+// field doesn't pulse in visible unison.
+const STAR_FIELD = Array.from({ length: 40 }, (_, i) => {
+  const seed = i * 137.5; // golden-angle spacing for a natural, non-grid scatter
+  return {
+    left: `${(seed * 1.9) % 100}%`,
+    top: `${(seed * 2.7) % 100}%`,
+    size: 2 + (i % 3),
+    delay: (i % 10) * 0.4,
+    duration: 2.8 + (i % 5) * 0.6,
+    maxOpacity: 0.5 + (i % 4) * 0.15,
+  };
+});
 
 // Splits a headline into words that each drop in and "snap" into place with a spring
 // bounce, staggered left to right - the LEGO-brick assembly feel applied to text
@@ -52,6 +71,25 @@ export function HeroSection() {
           backgroundSize: '48px 48px',
         }}
       />
+      {/* Animated color + motion layer - the grid/gradient above were static, which read as
+          flat/one-color. This adds real drifting color and a twinkling star field. */}
+      <div className="ambient-glow" aria-hidden><span className="ambient-glow-blob" /></div>
+      <div className="starfield" aria-hidden>
+        {STAR_FIELD.map((star, i) => (
+          <span
+            key={i}
+            style={{
+              left: star.left,
+              top: star.top,
+              width: star.size,
+              height: star.size,
+              animationDelay: `${star.delay}s`,
+              animationDuration: `${star.duration}s`,
+              ['--star-max' as string]: star.maxOpacity,
+            } as React.CSSProperties}
+          />
+        ))}
+      </div>
       <div className="relative z-10 max-w-6xl mx-auto px-6 py-20">
         <div className="grid lg:grid-cols-[1.15fr_1fr] gap-12 items-center">
           <div className="text-center lg:text-left">
@@ -109,9 +147,13 @@ export function HeroSection() {
             </div>
           </div>
 
-          {/* Signature visual: a house assembling itself from LEGO bricks */}
+          {/* Signature visual: a house assembling itself from LEGO bricks, falling into place
+              with an elastic bounce - real 3D (Babylon.js), lazy-loaded behind the instant
+              SVG version so first paint isn't blocked on the 3D engine downloading. */}
           <div className="flex justify-center lg:justify-end">
-            <LegoBuildAnimation className="w-full max-w-md drop-shadow-[0_20px_40px_rgba(34,211,238,0.15)]" />
+            <Suspense fallback={<LegoBuildAnimation className="w-full max-w-md drop-shadow-[0_20px_40px_rgba(34,211,238,0.15)]" />}>
+              <LegoHouseScene className="w-full max-w-md aspect-[8/7] drop-shadow-[0_20px_40px_rgba(34,211,238,0.15)]" />
+            </Suspense>
           </div>
         </div>
 

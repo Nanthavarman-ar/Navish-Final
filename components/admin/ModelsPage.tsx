@@ -121,13 +121,17 @@ export function ModelsPage() {
   // Fetch models from backend
   const { data: modelsResponse, loading, error, refetch } = useApi<{ models: any[] }>('/models');
   const [models, setModels] = useState(mockModels);
-  
-  // Use API data if available, otherwise use mock data
+
+  // Use API data if available, otherwise fall back to the sample data `models` already
+  // defaults to - matching ClientsPage.tsx's pattern (toast + mock fallback) instead of
+  // blocking the entire page behind a hard error screen when the backend is unreachable.
   React.useEffect(() => {
     if (modelsResponse?.models) {
       setModels(modelsResponse.models);
+    } else if (error) {
+      showToast.warning('Could not load live model data', 'Showing sample data instead');
     }
-  }, [modelsResponse]);
+  }, [modelsResponse, error]);
 
   const filteredModels = models.filter(model => {
     const matchesSearch = model.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -296,22 +300,6 @@ export function ModelsPage() {
           <div className="text-center">
             <div className="animate-spin w-12 h-12 border-2 border-cyan-500 border-t-transparent rounded-full mx-auto mb-4"></div>
             <p className="text-white text-lg">Loading models...</p>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="space-y-6">
-        <div className="flex items-center justify-center py-12">
-          <div className="text-center">
-            <p className="text-red-400 text-lg mb-4">Failed to load models</p>
-            <p className="text-gray-400 mb-4">{error}</p>
-            <Button onClick={refetch} variant="outline">
-              Try Again
-            </Button>
           </div>
         </div>
       </div>

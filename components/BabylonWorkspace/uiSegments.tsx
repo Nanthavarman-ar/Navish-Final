@@ -252,7 +252,7 @@ export const LoadingOverlay: React.FC<{
 
   return (
     <div className="absolute inset-0 bg-black/50 flex items-center justify-center z-50 overflow-hidden">
-      <div className="ambient-glow" aria-hidden />
+      <div className="ambient-glow" aria-hidden><span className="ambient-glow-blob" /></div>
       <Card className="bg-black/80 text-white border-gray-600 relative z-10">
         <CardContent className="p-6 text-center">
           <div className="animate-spin w-8 h-8 border-2 border-cyan-500 border-t-transparent rounded-full mx-auto mb-4"></div>
@@ -395,21 +395,20 @@ const DomainSelectorOverlay: React.FC<{ visible: boolean; onClose: () => void }>
   );
 };
 
+// Honest framing: there is no camera/hand-tracking pipeline anywhere in this codebase that
+// classifies real gestures on desktop (WebXR hand-tracking exists for VR sessions via
+// XRManager, but nothing turns joint positions into named gestures like "swipe"/"pinch").
+// This panel previously showed a "Listening"/"Paused" status implying live monitoring, with
+// a "Simulate" button that just injected random fake events - misleading about what's real.
+// It's now explicitly labeled a manual test log rather than pretending to monitor anything.
 const GestureInspectorOverlay: React.FC<{ visible: boolean; onClose: () => void }> = ({ visible, onClose }) => {
-  const [history, setHistory] = useState(() =>
-    gestureSamples.slice(0, 3).map((gesture, index) => ({
-      id: `${gesture}-${index}`,
-      gesture,
-      timestamp: new Date(Date.now() - index * 60000).toLocaleTimeString(),
-    }))
-  );
-  const [listening, setListening] = useState(true);
+  const [history, setHistory] = useState<{ id: string; gesture: string; timestamp: string }[]>([]);
 
   if (!visible) {
     return null;
   }
 
-  const handleSimulateGesture = () => {
+  const handleLogTestGesture = () => {
     const sample = gestureSamples[Math.floor(Math.random() * gestureSamples.length)];
     const entry = {
       id: `${sample}-${Date.now()}`,
@@ -417,20 +416,12 @@ const GestureInspectorOverlay: React.FC<{ visible: boolean; onClose: () => void 
       timestamp: new Date().toLocaleTimeString(),
     };
     setHistory(prev => [entry, ...prev].slice(0, 5));
-    showToast.info(`Gesture detected: ${sample}`);
-  };
-
-  const toggleListening = () => {
-    setListening(prev => {
-      const next = !prev;
-      showToast.info(`Gesture monitoring ${next ? 'resumed' : 'paused'}`);
-      return next;
-    });
+    showToast.info(`Test gesture logged: ${sample}`);
   };
 
   const clearHistory = () => {
     setHistory([]);
-    showToast.info('Gesture history cleared');
+    showToast.info('Gesture log cleared');
   };
 
   return (
@@ -445,7 +436,7 @@ const GestureInspectorOverlay: React.FC<{ visible: boolean; onClose: () => void 
         </Button>
       </div>
       <div className="text-[11px] text-slate-400">
-        Status: <span className="font-semibold text-slate-100">{listening ? 'Listening' : 'Paused'}</span>
+        No camera-based gesture recognition is wired up yet - use "Log Test Gesture" below to preview how detected gestures would appear here.
       </div>
       <div className="mt-2 max-h-36 space-y-1 overflow-y-auto text-[12px]">
         {history.length > 0 ? (
@@ -456,15 +447,12 @@ const GestureInspectorOverlay: React.FC<{ visible: boolean; onClose: () => void 
             </div>
           ))
         ) : (
-          <div className="text-slate-500 text-[11px]">No gestures yet.</div>
+          <div className="text-slate-500 text-[11px]">No gestures logged yet.</div>
         )}
       </div>
       <div className="mt-3 flex items-center justify-between gap-2">
-        <Button size="sm" variant="outline" onClick={toggleListening}>
-          {listening ? 'Pause' : 'Listen'}
-        </Button>
-        <Button size="sm" variant="outline" onClick={handleSimulateGesture}>
-          Simulate
+        <Button size="sm" variant="outline" onClick={handleLogTestGesture}>
+          Log Test Gesture
         </Button>
         <Button size="sm" variant="outline" onClick={clearHistory}>
           Clear
@@ -574,6 +562,7 @@ interface CustomPanelsSegmentProps {
   workspaceState: {
     selectedMesh: any;
   };
+  updateState: (updates: any) => void;
   sustainabilityReport?: {
     greenScore: number;
     energyEfficiency: number;
@@ -755,8 +744,154 @@ const NavigationControlsSegment: React.FC<Pick<CustomPanelsSegmentProps, 'featur
   </>
 );
 
-const SimulationAnalysisSegment: React.FC<Pick<CustomPanelsSegmentProps, 'featureStates' | 'sceneRef' | 'engineRef' | 'disableFeature' | 'workspaceState' | 'onFloodToggle' | 'floodOn' | 'onFloodLevelChange' | 'onFloodWaveSpeedChange' | 'sustainabilityReport' | 'siteContextManagerRef' | 'geoSyncManagerRef' | 'moodSceneManagerRef' | 'audioManagerRef'>> = ({
-  featureStates, sceneRef, engineRef, disableFeature, workspaceState, onFloodToggle, floodOn = false, onFloodLevelChange, onFloodWaveSpeedChange, sustainabilityReport, siteContextManagerRef, geoSyncManagerRef, moodSceneManagerRef, audioManagerRef
+// Position/Scale fields write straight to the live mesh (Babylon renders the change on its
+// own render loop - no React re-render needed for the 3D scene to update), while local state
+// keeps the number inputs controlled and in sync when a different mesh gets selected. This
+// used to be read-only text ("Position: 1.00, 2.00, 3.00") despite the feature being named
+// and described as an *editor* - Material Editor already covers materials, so this adds the
+// remaining transform + visibility properties rather than duplicating that.
+const PropertyInspectorPanel: React.FC<{ mesh: any; meshCount: number; lightCount: number; onClose: () => void }> = ({ mesh, meshCount, lightCount, onClose }) => {
+  const [position, setPosition] = useState({ x: 0, y: 0, z: 0 });
+  const [scale, setScale] = useState({ x: 1, y: 1, z: 1 });
+  const [visible, setVisible] = useState(true);
+
+  useEffect(() => {
+    if (!mesh) return;
+    setPosition({ x: mesh.position.x, y: mesh.position.y, z: mesh.position.z });
+    setScale({ x: mesh.scaling.x, y: mesh.scaling.y, z: mesh.scaling.z });
+    setVisible(mesh.isVisible);
+  }, [mesh]);
+
+  const updatePosition = (axis: 'x' | 'y' | 'z', value: number) => {
+    if (!mesh || Number.isNaN(value)) return;
+    mesh.position[axis] = value;
+    setPosition((p) => ({ ...p, [axis]: value }));
+  };
+  const updateScale = (axis: 'x' | 'y' | 'z', value: number) => {
+    if (!mesh || Number.isNaN(value) || value === 0) return;
+    mesh.scaling[axis] = value;
+    setScale((s) => ({ ...s, [axis]: value }));
+  };
+  const toggleVisible = () => {
+    if (!mesh) return;
+    const next = !visible;
+    mesh.isVisible = next;
+    setVisible(next);
+  };
+
+  const numberField = (label: string, value: number, onChange: (v: number) => void) => (
+    <label className="flex items-center gap-1 text-slate-400">
+      {label}
+      <input
+        type="number"
+        step={0.1}
+        value={Number.isFinite(value) ? Number(value.toFixed(3)) : 0}
+        onChange={(e) => onChange(parseFloat(e.target.value))}
+        className="w-14 bg-slate-900 border border-slate-600 rounded px-1 py-0.5 text-slate-200"
+      />
+    </label>
+  );
+
+  return (
+    <Card className="fixed top-4 left-4 z-50 w-72 bg-slate-800 border-slate-600 text-white">
+      <CardHeader className="pb-2">
+        <div className="flex justify-between items-center">
+          <CardTitle className="text-base">Property Inspector</CardTitle>
+          <Button size="sm" variant="ghost" onClick={onClose}>✕</Button>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-2">
+        {mesh ? (
+          <div className="text-xs space-y-2">
+            <div className="flex items-center justify-between">
+              <p className="font-medium text-slate-200 truncate">{mesh.name}</p>
+              <Button size="sm" variant="ghost" className="h-6 px-2" onClick={toggleVisible}>
+                {visible ? 'Visible' : 'Hidden'}
+              </Button>
+            </div>
+            <div>
+              <p className="text-slate-500 mb-1">Position</p>
+              <div className="flex gap-2">
+                {numberField('X', position.x, (v) => updatePosition('x', v))}
+                {numberField('Y', position.y, (v) => updatePosition('y', v))}
+                {numberField('Z', position.z, (v) => updatePosition('z', v))}
+              </div>
+            </div>
+            <div>
+              <p className="text-slate-500 mb-1">Scale</p>
+              <div className="flex gap-2">
+                {numberField('X', scale.x, (v) => updateScale('x', v))}
+                {numberField('Y', scale.y, (v) => updateScale('y', v))}
+                {numberField('Z', scale.z, (v) => updateScale('z', v))}
+              </div>
+            </div>
+            <p className="text-slate-400">Material: {mesh.material?.name || 'None'}</p>
+          </div>
+        ) : (
+          <p className="text-slate-300 text-xs">Click a mesh in the scene to inspect its properties.</p>
+        )}
+        <p className="text-slate-500 text-xs pt-1">Objects: {meshCount} | Lights: {lightCount}</p>
+      </CardContent>
+    </Card>
+  );
+};
+
+// Clicking a row selects that mesh (mirrors clicking it in the 3D view) and the eye icon
+// toggles visibility - was a plain non-interactive name list despite being named/described as
+// a scene *manager*.
+const SceneBrowserPanel: React.FC<{ scene: any; selectedMesh: any; onSelect: (mesh: any) => void; onClose: () => void }> = ({ scene, selectedMesh, onSelect, onClose }) => {
+  const [, forceUpdate] = useState(0);
+  const meshes = scene.meshes.filter((m: any) => !m.name.startsWith('__'));
+
+  const toggleVisible = (m: any, e: React.MouseEvent) => {
+    e.stopPropagation();
+    m.isVisible = !m.isVisible;
+    forceUpdate((n) => n + 1);
+  };
+
+  return (
+    <Card className="fixed top-4 right-4 z-50 w-72 max-h-80 overflow-y-auto bg-slate-800 border-slate-600 text-white">
+      <CardHeader className="pb-2">
+        <div className="flex justify-between items-center">
+          <CardTitle className="text-base">Scene Browser</CardTitle>
+          <Button size="sm" variant="ghost" onClick={onClose}>✕</Button>
+        </div>
+      </CardHeader>
+      <CardContent>
+        <div className="space-y-1 text-xs max-h-48 overflow-y-auto">
+          {meshes.slice(0, 20).map((m: any) => (
+            <button
+              key={m.uniqueId}
+              type="button"
+              onClick={() => onSelect(m)}
+              className={`w-full flex items-center justify-between gap-2 p-1 rounded truncate text-left transition-colors ${
+                selectedMesh?.uniqueId === m.uniqueId ? 'bg-cyan-600/40 border border-cyan-500/50' : 'bg-slate-700/50 hover:bg-slate-700'
+              }`}
+              title={m.name}
+            >
+              <span className="truncate">{m.name}</span>
+              <span
+                role="button"
+                tabIndex={0}
+                onClick={(e) => toggleVisible(m, e)}
+                className={`shrink-0 px-1 rounded ${m.isVisible ? 'text-slate-300' : 'text-slate-600'}`}
+                title={m.isVisible ? 'Hide' : 'Show'}
+              >
+                {m.isVisible ? '👁' : '🚫'}
+              </span>
+            </button>
+          ))}
+          {meshes.length > 20 && (
+            <p className="text-slate-500 text-xs">+ {meshes.length - 20} more</p>
+          )}
+        </div>
+      </CardContent>
+    </Card>
+  );
+};
+
+const SimulationAnalysisSegment: React.FC<Pick<CustomPanelsSegmentProps, 'featureStates' | 'sceneRef' | 'engineRef' | 'disableFeature' | 'workspaceState' | 'updateState' | 'onFloodToggle' | 'floodOn' | 'onFloodLevelChange' | 'onFloodWaveSpeedChange' | 'sustainabilityReport' | 'siteContextManagerRef' | 'geoSyncManagerRef' | 'moodSceneManagerRef' | 'audioManagerRef'>> = ({
+  featureStates, sceneRef, engineRef, disableFeature, workspaceState, updateState, onFloodToggle, floodOn = false, onFloodLevelChange, onFloodWaveSpeedChange, sustainabilityReport, siteContextManagerRef, geoSyncManagerRef, moodSceneManagerRef, audioManagerRef
 }) => {
   return (
     <>
@@ -783,46 +918,20 @@ const SimulationAnalysisSegment: React.FC<Pick<CustomPanelsSegmentProps, 'featur
         </Suspense>
       )}
       {featureStates.showPropertyInspector && sceneRef.current && (
-        <Card className="fixed top-4 left-4 z-50 w-72 bg-slate-800 border-slate-600 text-white">
-          <CardHeader className="pb-2">
-            <div className="flex justify-between items-center">
-              <CardTitle className="text-base">Property Inspector</CardTitle>
-              <Button size="sm" variant="ghost" onClick={() => disableFeature('showPropertyInspector')}>✕</Button>
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            {workspaceState?.selectedMesh ? (
-              <div className="text-xs space-y-1">
-                <p className="font-medium text-slate-200">{workspaceState.selectedMesh.name}</p>
-                <p className="text-slate-400">Position: {workspaceState.selectedMesh.position.x.toFixed(2)}, {workspaceState.selectedMesh.position.y.toFixed(2)}, {workspaceState.selectedMesh.position.z.toFixed(2)}</p>
-                <p className="text-slate-400">Material: {workspaceState.selectedMesh.material?.name || 'None'}</p>
-              </div>
-            ) : (
-              <p className="text-slate-300 text-xs">Click a mesh in the scene to inspect its properties.</p>
-            )}
-            <p className="text-slate-500 text-xs pt-1">Objects: {sceneRef.current.meshes.length} | Lights: {sceneRef.current.lights.length}</p>
-          </CardContent>
-        </Card>
+        <PropertyInspectorPanel
+          mesh={workspaceState?.selectedMesh}
+          meshCount={sceneRef.current.meshes.length}
+          lightCount={sceneRef.current.lights.length}
+          onClose={() => disableFeature('showPropertyInspector')}
+        />
       )}
       {featureStates.showSceneBrowser && sceneRef.current && (
-        <Card className="fixed top-4 right-4 z-50 w-72 max-h-80 overflow-y-auto bg-slate-800 border-slate-600 text-white">
-          <CardHeader className="pb-2">
-            <div className="flex justify-between items-center">
-              <CardTitle className="text-base">Scene Browser</CardTitle>
-              <Button size="sm" variant="ghost" onClick={() => disableFeature('showSceneBrowser')}>✕</Button>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-1 text-xs max-h-48 overflow-y-auto">
-              {sceneRef.current.meshes.filter((m: any) => !m.name.startsWith('__')).slice(0, 20).map((m: any) => (
-                <div key={m.uniqueId} className="p-1 rounded bg-slate-700/50 truncate" title={m.name}>{m.name}</div>
-              ))}
-              {sceneRef.current.meshes.length > 20 && (
-                <p className="text-slate-500 text-xs">+ {sceneRef.current.meshes.length - 20} more</p>
-              )}
-            </div>
-          </CardContent>
-        </Card>
+        <SceneBrowserPanel
+          scene={sceneRef.current}
+          selectedMesh={workspaceState?.selectedMesh}
+          onSelect={(mesh) => updateState({ selectedMesh: mesh })}
+          onClose={() => disableFeature('showSceneBrowser')}
+        />
       )}
       {featureStates.showSiteContextGenerator && sceneRef.current && (
         <Suspense fallback={null}>
@@ -1185,6 +1294,35 @@ const MultiUserStatus: React.FC<{ collabManagerRef?: React.RefObject<any> }> = (
   return <>Connected · {participantCount} participant{participantCount !== 1 ? 's' : ''}</>;
 };
 
+// Voice chat itself (enableVoiceChat/getUserMedia/WebRTC) was always real - the gap was that
+// once enabled there was no ongoing indicator that the mic was live, and no way to mute
+// without disabling the whole feature. This panel gives it both.
+const VoiceChatPanel: React.FC<{ collabManagerRef?: React.RefObject<any>; onClose: () => void }> = ({ collabManagerRef, onClose }) => {
+  const [muted, setMuted] = useState(false);
+
+  const toggleMute = () => {
+    const next = !muted;
+    collabManagerRef?.current?.setVoiceChatMuted(next);
+    setMuted(next);
+  };
+
+  return (
+    <div className="fixed bottom-4 left-4 z-50 bg-slate-800 p-4 rounded-lg border border-slate-600 w-60">
+      <h3 className="text-white mb-2 flex items-center gap-2">
+        <span className={`w-2 h-2 rounded-full ${muted ? 'bg-slate-500' : 'bg-red-500 animate-pulse'}`} />
+        Voice Chat
+      </h3>
+      <p className="text-slate-300 text-sm">{muted ? 'Microphone muted' : 'Microphone live'}</p>
+      <div className="flex gap-2 mt-3">
+        <Button size="sm" variant={muted ? 'outline' : 'default'} onClick={toggleMute} className="flex-1">
+          {muted ? 'Unmute' : 'Mute'}
+        </Button>
+        <Button size="sm" variant="outline" onClick={onClose}>Close</Button>
+      </div>
+    </div>
+  );
+};
+
 const CollaborationFeaturesSegment: React.FC<Pick<CustomPanelsSegmentProps, 'featureStates' | 'sceneRef' | 'disableFeature' | 'collabManagerRef' | 'currentModelId'>> = ({
   featureStates, sceneRef, disableFeature, collabManagerRef, currentModelId
 }) => (
@@ -1209,6 +1347,9 @@ const CollaborationFeaturesSegment: React.FC<Pick<CustomPanelsSegmentProps, 'fea
     )}
     {featureStates.showSharing && sceneRef.current && (
       <SharingPanelContent onClose={() => disableFeature('showSharing')} currentModelId={currentModelId} />
+    )}
+    {featureStates.showVoiceChat && sceneRef.current && (
+      <VoiceChatPanel collabManagerRef={collabManagerRef} onClose={() => disableFeature('showVoiceChat')} />
     )}
   </>
 );
@@ -1407,6 +1548,7 @@ interface RenderCustomPanelsProps {
   onFloodLevelChange?: (level: number) => void;
   onFloodWaveSpeedChange?: (speed: number) => void;
   workspaceState: { selectedMesh: any };
+  updateState: (updates: any) => void;
   sustainabilityReport?: CustomPanelsSegmentProps['sustainabilityReport'];
 }
 

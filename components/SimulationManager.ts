@@ -1,4 +1,4 @@
-import { Engine, Scene, Mesh, Vector3, Color3, StandardMaterial, PBRMaterial, TransformNode, ParticleSystem, Texture, Color4, HemisphericLight } from '@babylonjs/core';
+import { Engine, Scene, Mesh, Vector3, Color3, StandardMaterial, PBRMaterial, TransformNode } from '@babylonjs/core';
 import { FeatureManager } from './FeatureManager';
 import { CostEstimator } from './CostEstimator';
 
@@ -25,9 +25,6 @@ export interface SimulationConfig {
   furnitureClearanceEnabled?: boolean;
   lightingMoodBoardsEnabled?: boolean;
   soundPrivacyEnabled?: boolean;
-  // Weather simulations
-  snowSimulationEnabled?: boolean;
-  rainSimulationEnabled?: boolean;
 }
 
 export interface MaintenanceIssue {
@@ -240,23 +237,6 @@ export class SimulationManager {
   private congestionData: CongestionData[] = [];
   private trafficParkingGroup: TransformNode | null = null;
 
-  // Weather Simulation Data
-  private snowData: any[] = [];
-  private rainData: any[] = [];
-  private snowGroup: TransformNode | null = null;
-  private rainGroup: TransformNode | null = null;
-
-  // Weather Enhancement Data
-  private rainSplashSystem: ParticleSystem | null = null;
-  private snowAccumulationMeshes: Mesh[] = [];
-  private rainParticleSystem: ParticleSystem | null = null;
-  private groundMaterialBackups: Map<Mesh, { diffuse: Color3; specular: Color3; specularPower: number }> = new Map();
-  private weatherLighting: HemisphericLight | null = null;
-  private windDirection: Vector3 = new Vector3(0.5, 0, 0.5);
-  private windStrength: number = 0.1;
-  private weatherTransitionTime: number = 0;
-  private isWeatherTransitioning: boolean = false;
-
   constructor(engine: Engine, scene: Scene, featureManager: FeatureManager) {
     this.engine = engine;
     this.scene = scene;
@@ -276,8 +256,6 @@ export class SimulationManager {
       floodSimulationEnabled: false,
       geoClimateEnabled: false,
       trafficParkingEnabled: false,
-      snowSimulationEnabled: false,
-      rainSimulationEnabled: false,
       ergonomicTestingEnabled: false,
       furnitureClearanceEnabled: false,
       lightingMoodBoardsEnabled: false,
@@ -312,13 +290,6 @@ export class SimulationManager {
     // Traffic & Parking simulation group
     this.trafficParkingGroup = new TransformNode('traffic_parking', this.scene);
     this.trafficParkingGroup.setEnabled(false);
-
-    // Weather simulation groups
-    this.snowGroup = new TransformNode('snow_simulation', this.scene);
-    this.snowGroup.setEnabled(false);
-
-    this.rainGroup = new TransformNode('rain_simulation', this.scene);
-    this.rainGroup.setEnabled(false);
 
     // Geo-context simulation groups
     this.shadowGroup = new TransformNode('shadow_analysis', this.scene);
@@ -479,14 +450,6 @@ export class SimulationManager {
       this.simulateTrafficParking();
     }
 
-    // Weather simulations
-    if (this.config.snowSimulationEnabled) {
-      this.simulateSnow();
-    }
-    if (this.config.rainSimulationEnabled) {
-      this.simulateRain();
-    }
-
     // Geo-context simulations (shadow, wind tunnel, flood, geo-climate)
     if (this.config.shadowAnalysisEnabled) {
       this.simulateShadowAnalysis();
@@ -628,347 +591,6 @@ export class SimulationManager {
     // Update visual representations
     this.updateTrafficParkingVisualization();
   }
-
-  // Weather simulation methods
-  private simulateSnow(): void {
-    console.log('Running snow simulation step...');
-
-    // Generate snow data
-    this.generateSnowData();
-
-    // Update visual representations
-    this.updateSnowVisualization();
-  }
-
-  // Set snow intensity for particle system
-  setSnowIntensity(intensity: number): void {
-    if ((this as any).snowParticleSystem) {
-      const baseEmitRate = 500;
-      (this as any).snowParticleSystem.emitRate = baseEmitRate * intensity;
-      console.log(`Snow intensity set to ${intensity}`);
-    }
-  }
-
-  private simulateRain(): void {
-    if (!this.rainParticleSystem) {
-      this.startRainSimulation();
-    }
-    this.updateRainVisualization();
-  }
-
-  /** Start rain simulation with realistic particles and ground-identified wetness */
-  startRainSimulation(): void {
-    if (this.rainParticleSystem) return;
-    this.identifyAndApplyGroundWetness(true);
-    this.createRainParticleSystem();
-    const rain = this.rainParticleSystem as ParticleSystem | null;
-    if (rain) {
-      rain.start();
-    }
-  }
-
-  /** Stop rain simulation and restore ground materials */
-  stopRainSimulation(): void {
-    if (this.rainParticleSystem) {
-      this.rainParticleSystem.stop();
-      this.rainParticleSystem.dispose();
-      this.rainParticleSystem = null;
-    }
-    this.identifyAndApplyGroundWetness(false);
-  }
-
-  /** Identify ground/floor meshes and apply or restore wetness effect */
-  private identifyAndApplyGroundWetness(wet: boolean): void {
-    const groundMeshes = this.identifyGroundMeshes();
-    groundMeshes.forEach(mesh => {
-      const material = mesh.material as StandardMaterial;
-      if (!material) return;
-      if (wet) {
-        this.groundMaterialBackups.set(mesh, {
-          diffuse: material.diffuseColor.clone(),
-          specular: material.specularColor.clone(),
-          specularPower: material.specularPower
-        });
-        material.diffuseColor = new Color3(0.45, 0.48, 0.55);
-        material.specularColor = new Color3(0.35, 0.38, 0.45);
-        material.specularPower = 160;
-      } else {
-        const backup = this.groundMaterialBackups.get(mesh);
-        if (backup) {
-          material.diffuseColor = backup.diffuse;
-          material.specularColor = backup.specular;
-          material.specularPower = backup.specularPower;
-          this.groundMaterialBackups.delete(mesh);
-        }
-      }
-    });
-  }
-
-  /** Identify ground/floor meshes by name and geometry (horizontal, low Y) */
-  private identifyGroundMeshes(): Mesh[] {
-    const candidates: Mesh[] = [];
-    const exclude = (n: string) => n.startsWith('measure_') || n.startsWith('preview_') || n.startsWith('measurement_') || /^defaultBox$/i.test(n);
-    for (const mesh of this.scene.meshes) {
-      if (!(mesh instanceof Mesh) || !mesh.isVisible || exclude(mesh.name || '')) continue;
-      const name = (mesh.name || '').toLowerCase();
-      const isNamedGround = /ground|floor|terrain|pavement|road|sidewalk|slab/.test(name);
-      if (isNamedGround) {
-        candidates.push(mesh);
-        continue;
-      }
-      mesh.computeWorldMatrix(true);
-      const b = mesh.getBoundingInfo();
-      const min = b.boundingBox.minimumWorld, max = b.boundingBox.maximumWorld;
-      const h = max.y - min.y;
-      const w = Math.max(max.x - min.x, max.z - min.z);
-      if (h < w * 0.15 && min.y < 2) candidates.push(mesh);
-    }
-    return candidates;
-  }
-
-  /** Set rain intensity (1 = normal, 0.5 = light, 2 = heavy) */
-  setRainIntensity(intensity: number): void {
-    if (this.rainParticleSystem) {
-      const baseEmitRate = 1200;
-      this.rainParticleSystem.emitRate = baseEmitRate * Math.max(0.1, intensity);
-    }
-  }
-
-  // Weather simulation data generation methods
-  private generateSnowData(): void {
-    // Clear existing data
-    this.snowData = [];
-
-    // Create particle system for snow
-    this.createSnowParticleSystem();
-
-    // Generate snow accumulation data
-    for (let i = 0; i < 25; i++) {
-      const position = new Vector3(
-        (Math.random() - 0.5) * 60,
-        8 + Math.random() * 4, // Higher starting position for falling effect
-        (Math.random() - 0.5) * 60
-      );
-
-      const snowDepth = Math.random() * 0.3; // meters
-      const accumulationRate = 0.005 + Math.random() * 0.01; // m/hour
-      const meltingRate = Math.random() * 0.002; // m/hour
-      const fallSpeed = 0.5 + Math.random() * 1.5; // m/s
-
-      const snowData = {
-        id: `snow_${i}`,
-        position,
-        snowDepth,
-        accumulationRate,
-        meltingRate,
-        fallSpeed,
-        visible: false,
-        particleSystem: null as any
-      };
-
-      this.snowData.push(snowData);
-      this.createSnowMesh(snowData);
-    }
-
-    // Update ground wetness for snow
-    this.updateGroundForSnow();
-  }
-
-  private createSnowParticleSystem(): void {
-    // Create enhanced particle system for falling snow with improved effects
-    const particleSystem = new ParticleSystem("snowParticles", 6000, this.scene);
-
-    // Create improved snow texture with soft edges and slight sparkle
-    const snowTexture = new Texture("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==", this.scene);
-    particleSystem.particleTexture = snowTexture;
-
-    // Set emitter to cover the entire scene area with better distribution
-    particleSystem.emitter = new Vector3(0, 25, 0); // Emit from higher above the scene
-    particleSystem.minEmitBox = new Vector3(-50, 0, -50);
-    particleSystem.maxEmitBox = new Vector3(50, 0, 50);
-
-    // Enhanced particle appearance with more realistic snow colors and sparkle
-    particleSystem.color1 = new Color4(0.98, 0.98, 1.0, 0.95); // Very light blue-white with high opacity
-    particleSystem.color2 = new Color4(1.0, 1.0, 1.0, 0.8); // Pure white with good transparency
-    particleSystem.colorDead = new Color4(0.9, 0.9, 0.98, 0.0); // Fade to light blue transparent
-
-    // More varied particle sizes for realistic snow distribution
-    particleSystem.minSize = 0.008;
-    particleSystem.maxSize = 0.15;
-
-    // Longer lifetime for slower falling snow with variation
-    particleSystem.minLifeTime = 12.0;
-    particleSystem.maxLifeTime = 18.0;
-
-    // Base emission rate (will be scaled by intensity)
-    particleSystem.emitRate = 400;
-
-    // Particle direction with enhanced wind influence
-    const windInfluence = this.windDirection.scale(this.windStrength * 0.5);
-    particleSystem.direction1 = new Vector3(-0.2, -1, -0.2).add(windInfluence);
-    particleSystem.direction2 = new Vector3(0.2, -1, 0.2).add(windInfluence);
-
-    // Varied particle speeds with more realistic range
-    particleSystem.minEmitPower = 0.5;
-    particleSystem.maxEmitPower = 3.0;
-
-    // Gravity effect with wind resistance simulation
-    particleSystem.gravity = new Vector3(
-      this.windDirection.x * this.windStrength * 0.1,
-      -1.2,
-      this.windDirection.z * this.windStrength * 0.1
-    );
-
-    // Update speed for smooth animation
-    particleSystem.updateSpeed = 0.02;
-
-    // Blend mode for transparency
-    particleSystem.blendMode = ParticleSystem.BLENDMODE_STANDARD;
-
-    // Add particle system to scene and start
-    particleSystem.start();
-
-    // Store reference for intensity control
-    (this as any).snowParticleSystem = particleSystem;
-
-    // Add to snow group for organization
-    if (this.snowGroup) {
-      // Note: Particle systems don't have a parent property, but we can track them separately
-    }
-
-    console.log('Enhanced snow particle system created and started with improved textures and animations');
-  }
-
-  private createRainParticleSystem(): void {
-    const { minEmitBox, maxEmitBox, emitterPos } = this.getRainEmitterBounds();
-    const particleSystem = new ParticleSystem("rainParticles", 4000, this.scene);
-
-    const rainTexture = new Texture("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==", this.scene);
-    particleSystem.particleTexture = rainTexture;
-
-    particleSystem.emitter = emitterPos;
-    particleSystem.minEmitBox = minEmitBox;
-    particleSystem.maxEmitBox = maxEmitBox;
-
-    particleSystem.color1 = new Color4(0.5, 0.65, 0.9, 0.5);
-    particleSystem.color2 = new Color4(0.6, 0.75, 0.95, 0.25);
-    particleSystem.colorDead = new Color4(0.7, 0.8, 0.95, 0);
-
-    particleSystem.minSize = 0.008;
-    particleSystem.maxSize = 0.04;
-
-    particleSystem.minLifeTime = 1.5;
-    particleSystem.maxLifeTime = 3.5;
-
-    particleSystem.emitRate = 1200;
-
-    const windX = this.windDirection.x * this.windStrength * 0.3;
-    const windZ = this.windDirection.z * this.windStrength * 0.3;
-    particleSystem.direction1 = new Vector3(-0.05 + windX, -1, -0.05 + windZ);
-    particleSystem.direction2 = new Vector3(0.05 + windX, -1, 0.05 + windZ);
-
-    particleSystem.minEmitPower = 6;
-    particleSystem.maxEmitPower = 14;
-
-    particleSystem.gravity = new Vector3(0, -6, 0);
-
-    particleSystem.updateSpeed = 0.02;
-    particleSystem.blendMode = ParticleSystem.BLENDMODE_STANDARD;
-
-    this.rainParticleSystem = particleSystem;
-  }
-
-  /** Get emitter bounds from identified ground meshes or scene fallback */
-  private getRainEmitterBounds(): { minEmitBox: Vector3; maxEmitBox: Vector3; emitterPos: Vector3 } {
-    const grounds = this.identifyGroundMeshes();
-    let minX = Infinity, minZ = Infinity, maxX = -Infinity, maxZ = -Infinity, maxY = -Infinity;
-    grounds.forEach(m => {
-      m.computeWorldMatrix(true);
-      const b = m.getBoundingInfo();
-      const min = b.boundingBox.minimumWorld, max = b.boundingBox.maximumWorld;
-      minX = Math.min(minX, min.x); minZ = Math.min(minZ, min.z);
-      maxX = Math.max(maxX, max.x); maxZ = Math.max(maxZ, max.z);
-      maxY = Math.max(maxY, max.y);
-    });
-    if (minX === Infinity) {
-      minX = -25; maxX = 25; minZ = -25; maxZ = 25; maxY = 0;
-    }
-    const pad = 5;
-    const halfW = (maxX - minX) / 2 + pad;
-    const halfD = (maxZ - minZ) / 2 + pad;
-    return {
-      minEmitBox: new Vector3(-halfW, 0, -halfD),
-      maxEmitBox: new Vector3(halfW, 0, halfD),
-      emitterPos: new Vector3((minX + maxX) / 2, maxY + 15, (minZ + maxZ) / 2)
-    };
-  }
-
-  private updateGroundForSnow(): void {
-    // Find ground meshes and apply wetness effect
-    this.scene.meshes.forEach(mesh => {
-      if (mesh.name.toLowerCase().includes('ground') || mesh.name.toLowerCase().includes('floor')) {
-        const material = mesh.material as StandardMaterial;
-        if (material) {
-          // Apply snow-covered ground effect
-          material.diffuseColor = new Color3(0.8, 0.8, 0.9); // Light blue-gray for snow-covered ground
-          material.specularColor = new Color3(0.1, 0.1, 0.2);
-          material.specularPower = 64;
-        }
-      }
-    });
-  }
-
-
-  // Weather visualization update methods
-  private updateSnowVisualization(): void {
-    this.snowData.forEach(data => {
-      if (data.mesh) {
-        this.updateSnowMesh(data);
-      }
-    });
-  }
-
-  private updateRainVisualization(): void {
-  }
-
-  // Weather mesh creation methods
-  private createSnowMesh(data: any): void {
-    const mesh = Mesh.CreateCylinder(`${data.id}_snow`, data.snowDepth, 0.5, 0.5, 8, 1, this.scene);
-    mesh.position = data.position;
-
-    const material = new StandardMaterial(`${data.id}_snow_material`, this.scene);
-    material.diffuseColor = new Color3(0.9, 0.9, 1.0); // Light blue-white
-    material.emissiveColor = new Color3(0.1, 0.1, 0.2);
-    mesh.material = material;
-
-    if (this.snowGroup) {
-      mesh.parent = this.snowGroup;
-    }
-
-    data.mesh = mesh;
-    data.visible = false;
-  }
-
-  // Weather mesh update methods
-  private updateSnowMesh(data: any): void {
-    if (!data.mesh) return;
-
-    const material = data.mesh.material as StandardMaterial;
-    if (!material) return;
-
-    // Update snow depth based on accumulation/melting
-    data.snowDepth += (data.accumulationRate - data.meltingRate) * (this.config.updateInterval / 3600000); // Convert to hours
-    data.snowDepth = Math.max(0, data.snowDepth);
-
-    // Update mesh scale
-    const scale = Math.max(0.1, data.snowDepth * 2);
-    data.mesh.scaling = new Vector3(scale, data.snowDepth, scale);
-
-    // Update color based on depth
-    const whiteness = Math.min(1, data.snowDepth / 0.3);
-    material.diffuseColor = new Color3(0.9 - whiteness * 0.1, 0.9 - whiteness * 0.1, 1.0);
-  }
-
 
   private generateTrafficFlowData(): void {
     this.trafficFlowData = [];
@@ -1788,11 +1410,7 @@ export class SimulationManager {
   }
 
   updateConfig(newConfig: Partial<SimulationConfig>) {
-    const prevRain = this.config.rainSimulationEnabled;
     this.config = { ...this.config, ...newConfig };
-    if (prevRain && !this.config.rainSimulationEnabled) {
-      this.stopRainSimulation();
-    }
     if (this.updateIntervalId !== null) {
       this.stopSimulation();
       this.startSimulation();
@@ -2381,33 +1999,6 @@ export class SimulationManager {
     }
   }
 
-  // Weather simulation visualization toggles
-  toggleSnowVisualization(): void {
-    if (this.snowGroup) {
-      const isVisible = this.snowGroup.isEnabled();
-      this.snowGroup.setEnabled(!isVisible);
-
-      this.snowData.forEach(data => {
-        data.visible = !isVisible;
-      });
-
-      console.log(`Snow visualization ${!isVisible ? 'enabled' : 'disabled'}`);
-    }
-  }
-
-  toggleRainVisualization(): void {
-    if (this.rainGroup) {
-      const isVisible = this.rainGroup.isEnabled();
-      this.rainGroup.setEnabled(!isVisible);
-
-      this.rainData.forEach(data => {
-        data.visible = !isVisible;
-      });
-
-      console.log(`Rain visualization ${!isVisible ? 'enabled' : 'disabled'}`);
-    }
-  }
-
   getTrafficFlowData(): TrafficFlowData[] {
     return [...this.trafficFlowData];
   }
@@ -2422,10 +2013,6 @@ export class SimulationManager {
 
   dispose() {
     this.stopSimulation();
-
-    const snowPs = (this as any).snowParticleSystem;
-    if (snowPs && snowPs.dispose) snowPs.dispose();
-    this.stopRainSimulation();
 
     // Dispose maintenance meshes
     this.maintenanceIssues.forEach(issue => {
@@ -2503,12 +2090,6 @@ export class SimulationManager {
       this.trafficParkingGroup.dispose();
     }
 
-    if (this.snowGroup) {
-      this.snowGroup.dispose();
-    }
-    if (this.rainGroup) {
-      this.rainGroup.dispose();
-    }
     if (this.shadowGroup) {
       this.shadowGroup.dispose();
     }

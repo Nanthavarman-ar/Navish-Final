@@ -203,7 +203,7 @@ const LeftPanel: React.FC<LeftPanelProps> = ({
       transition={{ duration: 0.3, ease: "easeOut" }}
       className="absolute inset-y-0 left-0 z-30 w-[85vw] max-w-[320px] sm:relative sm:z-auto sm:w-80 sm:max-w-none h-full bg-gray-900 border-r border-gray-700 flex flex-col text-white overflow-hidden pointer-events-auto shadow-2xl sm:shadow-none"
     >
-      <div className="ambient-glow" aria-hidden />
+      <div className="ambient-glow" aria-hidden><span className="ambient-glow-blob" /></div>
       {/* Header - relative z-10 so buttons stay above any overflow content */}
       <CardHeader className="flex-shrink-0 border-b border-gray-700 bg-gray-800/90 backdrop-blur-sm relative z-10">
         <div className="flex items-center justify-between">
@@ -474,16 +474,24 @@ const LeftPanel: React.FC<LeftPanelProps> = ({
   );
 };
 
-// Helper functions for category data
+// Helper functions for category data. Keyed by the real category names from
+// config/featureCategories.tsx - these previously used keys from an earlier version of the
+// app (navigation/simulation/ai/analysis/collaboration/immersive/tools) that don't match any
+// current category name, so every category silently fell back to the same gray color, the
+// same P3 priority, and no description - the whole panel read as flat/monotone with the P1-3
+// filter tabs unable to differentiate anything (everything was "P3").
 const getCategoryColor = (category: string): string => {
   const colors: Record<string, string> = {
-    navigation: 'blue',
-    simulation: 'green',
-    ai: 'purple',
-    analysis: 'orange',
-    collaboration: 'pink',
-    immersive: 'cyan',
-    tools: 'teal',
+    'core workspace': 'blue',
+    'ui and controls': 'gray',
+    'ai and automation': 'purple',
+    'ar and spatial': 'cyan',
+    'simulations and analysis': 'green',
+    'tools and editors': 'orange',
+    'auto furnish & ar anchor': 'pink',
+    'audio and multimedia': 'teal',
+    'collaboration and multi-user': 'slate',
+    'geo and location': 'blue',
     default: 'gray'
   };
   return colors[category.toLowerCase()] || colors.default;
@@ -491,13 +499,16 @@ const getCategoryColor = (category: string): string => {
 
 const getCategoryPriority = (category: string): number => {
   const priorities: Record<string, number> = {
-    navigation: 1,
-    simulation: 2,
-    ai: 3,
-    analysis: 2,
-    collaboration: 3,
-    immersive: 1,
-    tools: 2,
+    'core workspace': 1,
+    'ui and controls': 2,
+    'ai and automation': 3,
+    'ar and spatial': 1,
+    'simulations and analysis': 2,
+    'tools and editors': 1,
+    'auto furnish & ar anchor': 3,
+    'audio and multimedia': 3,
+    'collaboration and multi-user': 2,
+    'geo and location': 3,
     default: 3
   };
   return priorities[category.toLowerCase()] || priorities.default;
@@ -505,13 +516,16 @@ const getCategoryPriority = (category: string): number => {
 
 const getCategoryDescription = (category: string): string => {
   const descriptions: Record<string, string> = {
-    navigation: 'Camera and movement controls',
-    simulation: 'Physics and environmental simulations',
-    ai: 'Artificial intelligence features',
-    analysis: 'Data analysis and visualization',
-    collaboration: 'Multi-user and sharing tools',
-    immersive: 'VR/AR and spatial experiences',
-    tools: 'Utility and helper tools'
+    'core workspace': 'Materials, measuring, BIM, and transform tools',
+    'ui and controls': 'Shortcuts, domain scoping, and presentation mode',
+    'ai and automation': 'AI advisor, voice assistant, and gesture input',
+    'ar and spatial': 'VR/AR entry, spatial audio, and haptics',
+    'simulations and analysis': 'Weather, flood, wind, cost, and compliance analysis',
+    'tools and editors': 'Import, export, annotations, and version history',
+    'auto furnish & ar anchor': 'AI furnishing and shared AR anchors',
+    'audio and multimedia': 'Voice chat and in-scene audio',
+    'collaboration and multi-user': 'Real-time multi-user editing, chat, and sharing',
+    'geo and location': 'Device GPS and geographic data sync'
   };
   return descriptions[category.toLowerCase()] || '';
 };

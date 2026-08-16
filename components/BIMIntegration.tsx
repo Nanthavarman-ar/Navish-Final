@@ -1,6 +1,7 @@
 import React, { useState, useRef, useCallback } from 'react';
 import { Scene, Mesh } from '@babylonjs/core';
 import { BIMManager, BIMModel, BIMElement, BIMClash } from './BIMManager';
+import { showToast } from './utils/toast';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
@@ -56,6 +57,12 @@ const BIMIntegration: React.FC<BIMIntegrationProps> = ({
     const file = event.target.files?.[0];
     if (!file || !localBimManager) return;
 
+    // importBIMModel(file, source) always defaulted to 'custom' (JSON) here since no source
+    // was ever passed - a real .ifc upload silently got run through the JSON parser and
+    // failed. Detect it from the extension instead.
+    const extension = file.name.split('.').pop()?.toLowerCase();
+    const source = extension === 'ifc' ? 'ifc' : 'custom';
+
     setIsImporting(true);
     setImportProgress(0);
 
@@ -65,12 +72,13 @@ const BIMIntegration: React.FC<BIMIntegrationProps> = ({
         setImportProgress(prev => Math.min(prev + 10, 90));
       }, 200);
 
-      const importedModel = await localBimManager.importBIMModel(file);
+      const importedModel = await localBimManager.importBIMModel(file, source);
       clearInterval(progressInterval);
       setImportProgress(100);
 
       setModels(prev => [...prev, importedModel]);
       setSelectedModel(importedModel);
+      showToast.success(`Imported ${importedModel.name}`, `${importedModel.elements.length} elements`);
 
       // Delay to show completion
       setTimeout(() => {
@@ -80,6 +88,8 @@ const BIMIntegration: React.FC<BIMIntegrationProps> = ({
 
     } catch (error) {
       console.error('BIM import failed:', error);
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      showToast.error('BIM import failed', message);
       setIsImporting(false);
       setImportProgress(0);
     }
@@ -180,15 +190,16 @@ const BIMIntegration: React.FC<BIMIntegrationProps> = ({
                 <input
                   ref={fileInputRef}
                   type="file"
-                  accept=".json"
+                  accept=".json,.ifc"
                   onChange={handleFileImport}
                   className="hidden"
                   title="Import BIM file"
                 />
               </div>
               <p className="text-xs text-muted-foreground">
-                Supports Naviz JSON BIM exports. Native Revit (.rvt), AutoCAD (.dwg), and IFC
-                import aren't implemented yet.
+                Supports Naviz JSON BIM exports and IFC (.ifc). Native Revit (.rvt) and
+                AutoCAD (.dwg) import aren't supported - both are proprietary formats with no
+                local parser; the only real path is a paid Autodesk cloud conversion service.
               </p>
 
               {isImporting && (

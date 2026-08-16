@@ -2344,7 +2344,6 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
           const configMap: Record<string, Record<string, boolean>> = {
             showFloodSimulation: { floodSimulationEnabled: true },
             showWindTunnelSimulation: { windTunnelEnabled: true },
-            showWeather: { snowSimulationEnabled: false, rainSimulationEnabled: false },
           };
           const updates = configMap[id];
           if (updates) {
@@ -2619,7 +2618,6 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
           const configMap: Record<string, Record<string, boolean>> = {
             showFloodSimulation: { floodSimulationEnabled: false },
             showWindTunnelSimulation: { windTunnelEnabled: false },
-            showWeather: { snowSimulationEnabled: false, rainSimulationEnabled: false },
           };
           const updates = configMap[id];
           if (updates) {
@@ -2652,10 +2650,10 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
         // panel's own unmount effect once disableFeature (above) hides it - see the enable
         // branch comment for why nothing needs to happen here.
         if (id === 'showWeather') {
-          if (simulationManagerRef.current) {
-            simulationManagerRef.current.stopRainSimulation();
-            simulationManagerRef.current.updateConfig({ rainSimulationEnabled: false });
-          }
+          // The real rain/snow implementation lives entirely in this file (onRainToggle/
+          // onSnowToggle below) - SimulationManager's own duplicate rain/snow subsystem was
+          // permanently inert (showWeather always forced its config flags to false) and has
+          // been removed.
           setRainOn(false);
         }
 
@@ -3187,7 +3185,8 @@ const getCategoryDescription = (categoryName: string): string => {
               floodOn,
               onFloodLevelChange,
               onFloodWaveSpeedChange,
-              workspaceState
+              workspaceState,
+              updateState
             })}
             {renderFloatingToolbar({
               workspaceState,

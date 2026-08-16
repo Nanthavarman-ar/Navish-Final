@@ -83,9 +83,11 @@ pids/
 .nuxt
 dist
 
-# Gatsby files
+# Gatsby files (this project uses Vite, not Gatsby - "public" here would otherwise silently
+# gitignore Vite's static-assets source directory, e.g. public/wasm/web-ifc.wasm, since Vite
+# uses that same folder name for a completely different purpose: committed source assets
+# copied verbatim into the build, not Gatsby's generated build output)
 .cache/
-public
 
 # Vuepress build output
 .vuepress/dist
