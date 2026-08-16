@@ -1965,20 +1965,26 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
       try {
         const { centerX, centerZ, topY, halfExtent } = computePrecipitationBounds(scene);
 
-        const ps = new ParticleSystem('weatherSnowParticles', 3000, scene);
+        const ps = new ParticleSystem('weatherSnowParticles', 6000, scene);
         ps.particleTexture = createSnowflakeTexture(scene);
         ps.emitter = new Vector3(centerX, topY, centerZ);
         ps.minEmitBox = new Vector3(-halfExtent, 0, -halfExtent);
         ps.maxEmitBox = new Vector3(halfExtent, 0, halfExtent);
-        ps.color1 = new Color4(1, 1, 1, 0.95);
-        ps.color2 = new Color4(0.95, 0.95, 1, 0.8);
-        ps.colorDead = new Color4(1, 1, 1, 0);
+        // Pure white at low speed/density read as almost invisible against the app's
+        // default pale/overcast sky - barely-there specks that never moved enough to
+        // notice, which is what "snow doesn't work" actually was. A cooler, slightly
+        // dimmer tint keeps snow looking natural while giving it real contrast against
+        // a light sky, and bigger/denser/faster particles below make it unmistakably
+        // "falling snow" instead of static dust.
+        ps.color1 = new Color4(0.85, 0.91, 1.0, 0.95);
+        ps.color2 = new Color4(0.7, 0.8, 0.95, 0.85);
+        ps.colorDead = new Color4(0.8, 0.87, 1.0, 0);
         const snowSizeScale = Math.max(halfExtent / 15, 1) * particleSize;
-        ps.minSize = 0.1 * snowSizeScale;
-        ps.maxSize = 0.3 * snowSizeScale;
+        ps.minSize = 0.22 * snowSizeScale;
+        ps.maxSize = 0.55 * snowSizeScale;
         ps.minLifeTime = 4;
         ps.maxLifeTime = 8;
-        ps.emitRate = 400 * rainIntensity; // quantity - snow is naturally sparser than rain
+        ps.emitRate = 900 * rainIntensity; // quantity - snow is naturally sparser than rain
         // Snow drifts sideways as it falls rather than dropping in a near-straight line -
         // the wide direction spread plus a slow angular spin is what actually reads as
         // "snow" instead of "rain but white and slower".
@@ -1986,9 +1992,9 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
         ps.direction2 = new Vector3(0.6, -1, 0.6);
         ps.minAngularSpeed = 0;
         ps.maxAngularSpeed = Math.PI / 2;
-        ps.minEmitPower = 1 * rainIntensity; // fall speed
-        ps.maxEmitPower = 2.5 * rainIntensity;
-        ps.gravity = new Vector3(0, -0.9, 0);
+        ps.minEmitPower = 2 * rainIntensity; // fall speed
+        ps.maxEmitPower = 4 * rainIntensity;
+        ps.gravity = new Vector3(0, -1.4, 0);
         ps.updateSpeed = 0.015;
         ps.blendMode = ParticleSystem.BLENDMODE_STANDARD;
         // Stop snow at the roof/ground instead of falling straight through into the
@@ -2033,9 +2039,9 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
     }
     const snow = weatherSnowRef.current;
     if (snow) {
-      snow.emitRate = 400 * rainIntensity;
-      snow.minEmitPower = 1 * rainIntensity;
-      snow.maxEmitPower = 2.5 * rainIntensity;
+      snow.emitRate = 900 * rainIntensity;
+      snow.minEmitPower = 2 * rainIntensity;
+      snow.maxEmitPower = 4 * rainIntensity;
     }
   }, [rainIntensity]);
 
@@ -2053,8 +2059,8 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
     }
     const snow = weatherSnowRef.current;
     if (snow) {
-      snow.minSize = 0.1 * sizeScale;
-      snow.maxSize = 0.3 * sizeScale;
+      snow.minSize = 0.22 * sizeScale;
+      snow.maxSize = 0.55 * sizeScale;
     }
   }, [particleSize]);
 
@@ -2681,7 +2687,15 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
           // onSnowToggle below) - SimulationManager's own duplicate rain/snow subsystem was
           // permanently inert (showWeather always forced its config flags to false) and has
           // been removed.
-          setRainOn(false);
+          //
+          // This branch also runs whenever the panel is closed via anything other than its
+          // own Close button (the W keyboard shortcut, the sidebar Weather toggle) - it used
+          // to only reset the rainOn flag (never snowOn, and never actually stopped either
+          // particle system), so rain/snow kept silently falling with no panel left to turn
+          // them off from. Route through the real toggle functions so both the visual effect
+          // and its state flag are actually cleared, matching what the Close button does.
+          onRainToggle(false);
+          onSnowToggle(false);
         }
 
         // Collaboration Features
