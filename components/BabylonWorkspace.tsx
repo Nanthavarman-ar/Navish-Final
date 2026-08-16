@@ -1360,8 +1360,16 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
 
       } catch (error) {
         console.error('Failed to initialize Babylon.js scene:', error);
-        showToast.error('Failed to initialize 3D workspace. WebGL may not be supported.');
-        setCanvasError('Failed to initialize 3D workspace. WebGL may not be supported.');
+        // This catch spans engine/scene/camera/lighting/pipeline setup, so a bug in any
+        // one of those (not just an actually-missing WebGL context) lands here too.
+        // Surfacing the real message instead of a blanket "WebGL may not be supported"
+        // is the difference between a debuggable report and a dead end.
+        const detail = error instanceof Error ? error.message : String(error);
+        const message = Engine.isSupported()
+          ? `Failed to initialize 3D workspace: ${detail}`
+          : 'Failed to initialize 3D workspace. WebGL may not be supported on this browser/device.';
+        showToast.error(message);
+        setCanvasError(message);
       }
     };
 

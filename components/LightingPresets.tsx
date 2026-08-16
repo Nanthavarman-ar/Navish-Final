@@ -15,6 +15,31 @@ const HDRI_DB_NAME = 'naviz-lighting';
 const HDRI_STORE_NAME = 'hdri';
 const HDRI_KEY = 'current';
 
+// Everything below (preset choice, custom sun/ambient sliders, exposure, exterior/
+// interior mode, flat/procedural sky) previously lived only in useState with no
+// persistence at all, unlike the HDRI file above - so switching lighting worked fine
+// in the moment but silently reset back to the hardcoded defaults on every reload/reopen.
+const LIGHTING_SETTINGS_KEY = 'naviz:lightingSettings';
+
+interface PersistedLightingSettings {
+  mode: 'exterior' | 'interior';
+  selectedPreset: string;
+  customIntensity: number;
+  customAngle: number;
+  ambientIntensity: number;
+  exposure: number;
+  skyMode: 'flat' | 'procedural';
+}
+
+function loadPersistedLightingSettings(): Partial<PersistedLightingSettings> {
+  try {
+    const raw = localStorage.getItem(LIGHTING_SETTINGS_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
+  }
+}
+
 interface StoredHdri {
   blob: Blob;
   fileName: string;
@@ -82,12 +107,13 @@ interface LightingPresetsProps {
 }
 
 const LightingPresets: React.FC<LightingPresetsProps> = ({ scene, onPresetChange, workspaceArea }) => {
-  const [mode, setMode] = useState<'exterior' | 'interior'>('exterior');
-  const [selectedPreset, setSelectedPreset] = useState<string>('day');
-  const [customIntensity, setCustomIntensity] = useState(1.0);
-  const [customAngle, setCustomAngle] = useState(45);
-  const [ambientIntensity, setAmbientIntensity] = useState(0.3);
-  const [exposure, setExposure] = useState(1.0);
+  const persistedLighting = useRef(loadPersistedLightingSettings()).current;
+  const [mode, setMode] = useState<'exterior' | 'interior'>(persistedLighting.mode ?? 'exterior');
+  const [selectedPreset, setSelectedPreset] = useState<string>(persistedLighting.selectedPreset ?? 'day');
+  const [customIntensity, setCustomIntensity] = useState(persistedLighting.customIntensity ?? 1.0);
+  const [customAngle, setCustomAngle] = useState(persistedLighting.customAngle ?? 45);
+  const [ambientIntensity, setAmbientIntensity] = useState(persistedLighting.ambientIntensity ?? 0.3);
+  const [exposure, setExposure] = useState(persistedLighting.exposure ?? 1.0);
   const [realWorldTimeMode, setRealWorldTimeMode] = useState(false);
   interface InteriorLight {
     id: string;
@@ -104,7 +130,7 @@ const LightingPresets: React.FC<LightingPresetsProps> = ({ scene, onPresetChange
 
   // Sky: flat color (original behavior), a real procedural sky dome (like
   // Enscape's built-in sun/sky), or an imported real-world HDRI.
-  const [skyMode, setSkyMode] = useState<'flat' | 'procedural' | 'hdri'>('flat');
+  const [skyMode, setSkyMode] = useState<'flat' | 'procedural' | 'hdri'>(persistedLighting.skyMode ?? 'flat');
   const [hdriFileName, setHdriFileName] = useState<string | null>(null);
   // "Sky Brightness" is purely visual (how bright the background dome looks);
   // "Environment Lighting" is how much the HDRI actually lights/reflects onto other
@@ -157,6 +183,12 @@ const LightingPresets: React.FC<LightingPresetsProps> = ({ scene, onPresetChange
       hemi.intensity = preset.ambientIntensity;
       hemi.groundColor = preset.groundColor;
     }
+    // Keep the Custom sliders (the values that get persisted below and reapplied on
+    // mount) in sync with whatever preset was just clicked - previously these two
+    // control paths were disconnected, so a preset choice never survived a reload.
+    setCustomIntensity(preset.sunIntensity);
+    setCustomAngle(preset.sunAngle);
+    setAmbientIntensity(preset.ambientIntensity);
     onPresetChange?.(preset);
   }, [scene, realWorldTimeMode, onPresetChange]);
 
@@ -179,6 +211,28 @@ const LightingPresets: React.FC<LightingPresetsProps> = ({ scene, onPresetChange
 
   useEffect(() => { applyCustomExterior(); }, [customIntensity, customAngle, ambientIntensity]);
   useEffect(() => { if (scene) scene.imageProcessingConfiguration.exposure = exposure; }, [scene, exposure]);
+
+  // Persist lighting choices so they survive a reload/reopen instead of silently
+  // snapping back to the hardcoded defaults. skyMode is only saved as 'flat'/'procedural'
+  // here - 'hdri' is skipped because the actual HDRI file has its own restore path above
+  // (loadHdriFromDb) which sets skyMode itself once the file is confirmed to still exist.
+  useEffect(() => {
+    try {
+      const previous = loadPersistedLightingSettings();
+      const next: PersistedLightingSettings = {
+        mode,
+        selectedPreset,
+        customIntensity,
+        customAngle,
+        ambientIntensity,
+        exposure,
+        skyMode: skyMode === 'hdri' ? (previous.skyMode ?? 'flat') : skyMode,
+      };
+      localStorage.setItem(LIGHTING_SETTINGS_KEY, JSON.stringify(next));
+    } catch {
+      // localStorage unavailable (private browsing, etc) - lighting still works in-session
+    }
+  }, [mode, selectedPreset, customIntensity, customAngle, ambientIntensity, exposure, skyMode]);
 
   // Time Simulation (merged from the old standalone Sun Study panel): scrub
   // any hour/month to preview shadow movement, independent of the real
