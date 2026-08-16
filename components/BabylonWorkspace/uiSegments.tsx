@@ -632,9 +632,16 @@ const CoreFeaturesSegment: React.FC<Pick<CustomPanelsSegmentProps, 'featureState
       </div>
       </Suspense>
     )}
-    {featureStates.showLighting && sceneRef.current && (
+    {sceneRef.current && (
+      // Kept mounted (visibility toggled via CSS) instead of conditionally rendered on
+      // featureStates.showLighting - LightingPresets owns real Babylon scene resources
+      // (the procedural sky dome mesh, the HDRI skybox/texture) that its own effects
+      // dispose on unmount. Gating the whole component on panel visibility meant closing
+      // this panel didn't just hide the UI, it destroyed whichever sky/lighting effect
+      // was currently active in the 3D scene - reopening the panel could never show it
+      // as still selected because it had actually been torn down.
       <Suspense fallback={<div className="fixed bottom-4 left-4 z-50 w-96 max-w-[90vw] h-48 bg-slate-900/95 rounded-xl animate-pulse border border-slate-600" />}>
-      <div className="fixed top-20 bottom-4 left-4 z-50 w-96 max-w-[90vw] flex flex-col bg-slate-900/95 backdrop-blur-sm border border-slate-600 rounded-xl shadow-2xl pointer-events-auto overflow-hidden">
+      <div className={`fixed top-20 bottom-4 left-4 z-50 w-96 max-w-[90vw] flex-col bg-slate-900/95 backdrop-blur-sm border border-slate-600 rounded-xl shadow-2xl pointer-events-auto overflow-hidden ${featureStates.showLighting ? 'flex' : 'hidden'}`}>
         <div className="flex justify-between items-center px-4 py-3 border-b border-slate-600 bg-slate-800/80 shrink-0">
           <span className="text-sm font-semibold text-slate-200 flex items-center gap-2">
             <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" /> Lighting
