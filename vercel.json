@@ -23,11 +23,6 @@
       "dest": "/$1"
     }
   ],
-  "functions": {
-    "src/**/*.js": {
-      "runtime": "nodejs20.x"
-    }
-  },
   "outputDirectory": "dist",
   "installCommand": "npm ci",
   "buildCommand": "npm run build",

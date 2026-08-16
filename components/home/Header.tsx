@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect, Suspense } from 'react';
 import { Link } from 'react-router-dom';
 import { Button } from '../ui/button';
+import { LegoButton } from './LegoButton';
 import { ChevronRight, Maximize2, Smartphone, Move, MousePointer, Monitor, Tablet, Square } from 'lucide-react';
 import { useApp } from '../../contexts/AppContext';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../ui/dialog';
@@ -191,20 +192,13 @@ export function Header() {
           NAVIZ
         </Link>
         <div className="flex gap-4">
-          <Button
-            onClick={() => setWorkspaceModalOpen(true)}
-            variant="outline"
-            className="border-cyan-400 text-cyan-400 hover:bg-cyan-400 hover:text-black transition-all duration-300"
-          >
+          <LegoButton size="sm" variant="outline" onClick={() => setWorkspaceModalOpen(true)}>
             Workspace
-          </Button>
+          </LegoButton>
           <Link to="/login">
-            <Button
-              variant="outline"
-              className="border-cyan-400 text-cyan-400 hover:bg-cyan-400 hover:text-black transition-all duration-300"
-            >
+            <LegoButton size="sm" variant="outline">
               Sign In
-            </Button>
+            </LegoButton>
           </Link>
         </div>
       </div>
