@@ -40,6 +40,17 @@ export class SwimMode {
   private swimAnimationGroup: BABYLON.AnimationGroup | null = null;
   private particleSystem: BABYLON.ParticleSystem | null = null;
   private rippleEffect: BABYLON.Mesh | null = null;
+  private railGlowLayer: BABYLON.GlowLayer | null = null;
+
+  // Stored so dispose() can actually remove these - previously none of them were kept, so
+  // dispose() couldn't detach any of them: every Enable/Disable cycle of Underwater Mode left
+  // one more onBeforeRenderObservable callback (still calling update(), still moving the
+  // camera via buoyancy/swim physics), one more keydown/keyup action, and one more pointer
+  // listener permanently running, fighting the newest instance's own input/physics.
+  private updateObserver: BABYLON.Observer<BABYLON.Scene> | null = null;
+  private keyDownAction: BABYLON.ExecuteCodeAction | null = null;
+  private keyUpAction: BABYLON.ExecuteCodeAction | null = null;
+  private pointerObserver: BABYLON.Observer<BABYLON.PointerInfo> | null = null;
 
   constructor(scene: BABYLON.Scene, camera: BABYLON.Camera, underwaterMode: UnderwaterMode, options: SwimModeOptions) {
     this.scene = scene;
@@ -54,7 +65,7 @@ export class SwimMode {
     this.setupAnimations();
 
     // Register update loop
-    this.scene.onBeforeRenderObservable.add(() => this.update());
+    this.updateObserver = this.scene.onBeforeRenderObservable.add(() => this.update());
   }
 
   /**
@@ -64,20 +75,18 @@ export class SwimMode {
     this.scene.actionManager = this.scene.actionManager || new BABYLON.ActionManager(this.scene);
 
     // Keyboard input
-    this.scene.actionManager.registerAction(
-      new BABYLON.ExecuteCodeAction(BABYLON.ActionManager.OnKeyDownTrigger, (evt) => {
-        this.inputMap[evt.sourceEvent.key.toLowerCase()] = true;
-      })
-    );
+    this.keyDownAction = new BABYLON.ExecuteCodeAction(BABYLON.ActionManager.OnKeyDownTrigger, (evt) => {
+      this.inputMap[evt.sourceEvent.key.toLowerCase()] = true;
+    });
+    this.scene.actionManager.registerAction(this.keyDownAction);
 
-    this.scene.actionManager.registerAction(
-      new BABYLON.ExecuteCodeAction(BABYLON.ActionManager.OnKeyUpTrigger, (evt) => {
-        this.inputMap[evt.sourceEvent.key.toLowerCase()] = false;
-      })
-    );
+    this.keyUpAction = new BABYLON.ExecuteCodeAction(BABYLON.ActionManager.OnKeyUpTrigger, (evt) => {
+      this.inputMap[evt.sourceEvent.key.toLowerCase()] = false;
+    });
+    this.scene.actionManager.registerAction(this.keyUpAction);
 
     // Touch/pointer input for mobile
-    this.scene.onPointerObservable.add((pointerInfo) => {
+    this.pointerObserver = this.scene.onPointerObservable.add((pointerInfo) => {
       if (pointerInfo.type === BABYLON.PointerEventTypes.POINTERDOWN) {
         // Handle touch input for swimming direction
         this.handlePointerInput(pointerInfo);
@@ -131,13 +140,15 @@ export class SwimMode {
       rail.material = this.railMaterial;
       rail.isVisible = false; // Hidden by default, shown when needed
 
-      // Add glow effect for visibility
-      const glowLayer = new BABYLON.GlowLayer("railGlow", this.scene);
-      glowLayer.addIncludedOnlyMesh(rail);
-      glowLayer.intensity = 0.5;
-
       this.exitRails.push(rail);
     }
+
+    // One shared glow layer for all rails, not one per rail (a GlowLayer is a full-screen
+    // post-process effect, not per-mesh state - creating 8 of them was both wasteful and,
+    // since none were ever disposed, a real leak on every Underwater Mode toggle).
+    this.railGlowLayer = new BABYLON.GlowLayer("railGlow", this.scene);
+    this.railGlowLayer.intensity = 0.5;
+    this.exitRails.forEach((rail) => this.railGlowLayer!.addIncludedOnlyMesh(rail));
   }
 
   /**
@@ -584,6 +595,24 @@ export class SwimMode {
    * Dispose resources
    */
   public dispose(): void {
+    // Detach the render-loop update, keyboard actions, and pointer listener registered in the
+    // constructor/setupInput() - previously nothing here removed them, so every Enable/Disable
+    // cycle left the old instance's callbacks permanently running alongside the next instance's.
+    if (this.updateObserver) {
+      this.scene.onBeforeRenderObservable.remove(this.updateObserver);
+      this.updateObserver = null;
+    }
+    if (this.scene.actionManager) {
+      if (this.keyDownAction) this.scene.actionManager.unregisterAction(this.keyDownAction);
+      if (this.keyUpAction) this.scene.actionManager.unregisterAction(this.keyUpAction);
+    }
+    this.keyDownAction = null;
+    this.keyUpAction = null;
+    if (this.pointerObserver) {
+      this.scene.onPointerObservable.remove(this.pointerObserver);
+      this.pointerObserver = null;
+    }
+
     // Dispose animations
     if (this.swimAnimationGroup) {
       this.swimAnimationGroup.dispose();
@@ -601,6 +630,11 @@ export class SwimMode {
       }
     });
     this.exitRails = [];
+
+    if (this.railGlowLayer) {
+      this.railGlowLayer.dispose();
+      this.railGlowLayer = null;
+    }
 
     if (this.comfortZone) {
       this.comfortZone.dispose();

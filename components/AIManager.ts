@@ -60,6 +60,7 @@ export class AIManager {
   private currentLanguage: string = 'en-US';
   private isListening: boolean = false;
   private hiddenDetailsEnabled: boolean = false;
+  private gestureDetectionEnabled: boolean = false;
   private toggleFeature?: (featureId: string, enabled: boolean) => void;
   private femaleVoice: SpeechSynthesisVoice | null = null;
   private loadVoiceHandler: (() => void) | null = null;
@@ -246,31 +247,45 @@ export class AIManager {
     this.speak(`Hidden details ${status}.`);
   }
 
-  // Gesture Detection (WebXR check)
-  public toggleGestureDetection(): void {
-    if ('xr' in navigator) {
-      const xr = (navigator as any).xr;
-      if (xr) {
-        // Check if WebXR is supported
-        xr.isSessionSupported('immersive-ar').then((supported: boolean) => {
-          if (supported) {
-            console.log('Gesture detection enabled with WebXR support');
-            this.speak('Gesture detection enabled. WebXR supported.');
-          } else {
-            console.log('Gesture detection enabled but WebXR not fully supported');
-            this.speak('Gesture detection enabled. Limited WebXR support.');
-          }
-        }).catch(() => {
-          console.log('Gesture detection enabled without WebXR');
-          this.speak('Gesture detection enabled. WebXR not available.');
-        });
-      } else {
+  // Gesture Detection (WebXR check). enableGestureDetection/disableGestureDetection are the
+  // real API - callers (BabylonWorkspace.tsx's feature toggle handler) were calling these
+  // exact method names before they existed on this class, which threw a TypeError on every
+  // attempt to turn Gesture Detection or AI Co-Designer on or off.
+  public enableGestureDetection(): void {
+    if (this.gestureDetectionEnabled) return;
+    this.gestureDetectionEnabled = true;
+
+    if ('xr' in navigator && (navigator as any).xr) {
+      (navigator as any).xr.isSessionSupported('immersive-ar').then((supported: boolean) => {
+        if (supported) {
+          console.log('Gesture detection enabled with WebXR support');
+          this.speak('Gesture detection enabled. WebXR supported.');
+        } else {
+          console.log('Gesture detection enabled but WebXR not fully supported');
+          this.speak('Gesture detection enabled. Limited WebXR support.');
+        }
+      }).catch(() => {
         console.log('Gesture detection enabled without WebXR');
         this.speak('Gesture detection enabled. WebXR not available.');
-      }
+      });
     } else {
       console.log('Gesture detection enabled without WebXR');
       this.speak('Gesture detection enabled. WebXR not supported in this browser.');
+    }
+  }
+
+  public disableGestureDetection(): void {
+    if (!this.gestureDetectionEnabled) return;
+    this.gestureDetectionEnabled = false;
+    console.log('Gesture detection disabled');
+    this.speak('Gesture detection disabled.');
+  }
+
+  public toggleGestureDetection(): void {
+    if (this.gestureDetectionEnabled) {
+      this.disableGestureDetection();
+    } else {
+      this.enableGestureDetection();
     }
   }
 

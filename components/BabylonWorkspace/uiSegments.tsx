@@ -251,8 +251,9 @@ export const LoadingOverlay: React.FC<{
   if (isInitialized) return null;
 
   return (
-    <div className="absolute inset-0 bg-black/50 flex items-center justify-center z-50">
-      <Card className="bg-black/80 text-white border-gray-600">
+    <div className="absolute inset-0 bg-black/50 flex items-center justify-center z-50 overflow-hidden">
+      <div className="ambient-glow" aria-hidden />
+      <Card className="bg-black/80 text-white border-gray-600 relative z-10">
         <CardContent className="p-6 text-center">
           <div className="animate-spin w-8 h-8 border-2 border-cyan-500 border-t-transparent rounded-full mx-auto mb-4"></div>
           <p>Initializing 3D Workspace....</p>
@@ -271,9 +272,11 @@ interface KeyboardShortcutsHelpProps {
 const keyboardShortcutsList = [
   { keys: 'Ctrl+1/2/3', label: 'Switch layout modes' },
   { keys: 'Ctrl+H/J/K', label: 'Toggle panels' },
-  { keys: 'W/F/T/N', label: 'Simulation controls' },
-  { keys: 'A/U/C/V', label: 'AI helpers' },
+  { keys: 'W/F', label: 'Weather / flood simulation' },
+  { keys: 'T', label: 'Measurement tool' },
+  { keys: 'A/U', label: 'AI helpers' },
   { keys: 'X/Z', label: 'VR/AR modes' },
+  { keys: 'Ctrl+Z', label: 'Undo' },
   { keys: 'Esc', label: 'Close this overlay' },
 ];
 
@@ -299,11 +302,6 @@ export const KeyboardShortcutsHelp: React.FC<KeyboardShortcutsHelpProps> = ({
 
   return (
     <div className="fixed bottom-4 right-4 z-50 flex flex-col items-end gap-2 text-xs">
-      <div className="flex items-center gap-2">
-        <Button size="sm" variant="outline" className="rounded-full w-8 h-8 p-0" title="Keyboard Shortcuts">
-          ?
-        </Button>
-      </div>
       <div className="w-64 bg-slate-900/90 text-white p-3 rounded-lg border border-slate-800 shadow-xl space-y-2">
         <div className="text-[11px] font-semibold tracking-[0.2em] uppercase text-slate-400">Keyboard shortcuts</div>
         <div className="space-y-1 text-[12px]">
@@ -1162,6 +1160,31 @@ const SharingPanelContent: React.FC<{ onClose: () => void; currentModelId?: stri
 
 const ChatPanel = React.lazy(() => import('../ChatPanel'));
 
+// collabManagerRef.current is assigned unconditionally at scene-init time, before connect()
+// is ever called and regardless of whether it succeeds - so a plain truthiness check on the
+// ref (the previous implementation) always read as "Connected", even offline / mid-connect /
+// after a failed connection. getIsConnected() is the real socket state, but it's a plain
+// class field the manager mutates internally (not React state), so it has to be polled to
+// reflect updates - same pattern ChatPanel.tsx already uses for the same manager.
+const MultiUserStatus: React.FC<{ collabManagerRef?: React.RefObject<any> }> = ({ collabManagerRef }) => {
+  const [connected, setConnected] = useState(() => !!collabManagerRef?.current?.getIsConnected());
+  const [participantCount, setParticipantCount] = useState(0);
+
+  useEffect(() => {
+    const poll = () => {
+      const mgr = collabManagerRef?.current;
+      setConnected(!!mgr?.getIsConnected());
+      setParticipantCount(mgr ? mgr.getUsers().length + 1 : 0);
+    };
+    poll();
+    const pollId = setInterval(poll, 1000);
+    return () => clearInterval(pollId);
+  }, [collabManagerRef]);
+
+  if (!connected) return <>Connecting...</>;
+  return <>Connected · {participantCount} participant{participantCount !== 1 ? 's' : ''}</>;
+};
+
 const CollaborationFeaturesSegment: React.FC<Pick<CustomPanelsSegmentProps, 'featureStates' | 'sceneRef' | 'disableFeature' | 'collabManagerRef' | 'currentModelId'>> = ({
   featureStates, sceneRef, disableFeature, collabManagerRef, currentModelId
 }) => (
@@ -1170,11 +1193,7 @@ const CollaborationFeaturesSegment: React.FC<Pick<CustomPanelsSegmentProps, 'fea
       <div className="fixed top-4 left-4 z-50 bg-slate-800 p-4 rounded-lg border border-slate-600 w-56">
         <h3 className="text-white mb-2">Multi-User Collaboration</h3>
         <p className="text-slate-300 text-sm">
-          {collabManagerRef?.current ? (
-            <>Connected · {collabManagerRef.current.getUsers().length + 1} participant{collabManagerRef.current.getUsers().length !== 0 ? 's' : ''}</>
-          ) : (
-            'Connecting...'
-          )}
+          <MultiUserStatus collabManagerRef={collabManagerRef} />
         </p>
         <p className="text-slate-500 text-xs mt-1">Open Chat or Sharing from the feature list to interact.</p>
         <Button size="sm" variant="outline" onClick={() => disableFeature('showMultiUser')} className="mt-2">Close</Button>
@@ -1301,7 +1320,6 @@ interface RenderLeftPanelProps {
 
 interface RenderTopBarProps {
   fps: number;
-  realTimeEnabled: boolean;
   activeFeatures: Set<string>;
   topBarVisible?: boolean;
   onToggleTopBar?: () => void;
@@ -1311,24 +1329,13 @@ interface RenderTopBarProps {
   onToggleRightPanel?: () => void;
   cameraMode: 'orbit' | 'fly' | 'walk' | undefined;
   viewMode?: 'walk' | 'orbit' | 'dollhouse' | 'vr' | 'ar';
-  gridVisible: boolean;
-  wireframeEnabled: boolean;
-  statsVisible: boolean;
-  floorPlanVisible?: boolean;
   workspaceId?: string;
-  handleToggleRealTime: () => void;
   handleCameraModeChange: (mode: 'orbit' | 'fly' | 'walk' | undefined) => void;
   onViewModeChange?: (mode: 'walk' | 'orbit' | 'dollhouse' | 'vr' | 'ar') => void;
-  handleToggleGrid: () => void;
-  handleToggleWireframe: () => void;
-  handleToggleStats: () => void;
-  onToggleFloorPlan?: () => void;
-  onSave?: () => void;
   onImport?: () => void;
   onExport?: () => void;
   onScreenshot?: (format?: 'png' | 'jpeg') => void;
   onAutoZoom?: () => void;
-  onSettings?: () => void;
   onHelp?: () => void;
   onShare?: () => void;
 }
@@ -1353,8 +1360,10 @@ interface RenderBottomPanelProps {
 }
 
 interface RenderFloatingToolbarProps {
-  workspaceState: { showFloatingToolbar: boolean; moveActive: boolean; rotateActive: boolean; scaleActive: boolean; cameraActive: boolean; perspectiveActive: boolean };
+  workspaceState: { showFloatingToolbar: boolean; cameraActive: boolean; perspectiveActive: boolean };
   updateState: (updates: any) => void;
+  transformMode: 'none' | 'position' | 'rotation' | 'scale';
+  setTransformMode: (updater: (m: 'none' | 'position' | 'rotation' | 'scale') => 'none' | 'position' | 'rotation' | 'scale') => void;
 }
 
 interface RenderCustomPanelsProps {
@@ -1425,7 +1434,6 @@ export const renderTopBar = (props: RenderTopBarProps) => (
   <React.Suspense fallback={<div className="p-2">Loading Top Bar...</div>}>
     <SimpleWorkspaceTopBar
       fps={props.fps}
-      realTimeEnabled={props.realTimeEnabled}
       activeFeatures={props.activeFeatures.size}
       topBarVisible={props.topBarVisible}
       onToggleTopBar={props.onToggleTopBar}
@@ -1435,24 +1443,13 @@ export const renderTopBar = (props: RenderTopBarProps) => (
       onToggleRightPanel={props.onToggleRightPanel}
       cameraMode={props.cameraMode ?? 'orbit'}
       viewMode={props.viewMode ?? 'orbit'}
-      gridVisible={props.gridVisible}
-      wireframeEnabled={props.wireframeEnabled}
-      statsVisible={props.statsVisible}
-      floorPlanVisible={props.floorPlanVisible}
       workspaceId={props.workspaceId}
-      onToggleRealTime={props.handleToggleRealTime}
       onCameraModeChange={(m) => props.handleCameraModeChange(m)}
       onViewModeChange={props.onViewModeChange}
-      onToggleGrid={props.handleToggleGrid}
-      onToggleWireframe={props.handleToggleWireframe}
-      onToggleStats={props.handleToggleStats}
-      onToggleFloorPlan={props.onToggleFloorPlan}
-      onSave={props.onSave}
       onImport={props.onImport}
       onExport={props.onExport}
       onScreenshot={props.onScreenshot}
       onAutoZoom={props.onAutoZoom}
-      onSettings={props.onSettings}
       onHelp={props.onHelp}
     />
   </React.Suspense>
@@ -1534,18 +1531,23 @@ export const renderBottomPanel = (props: RenderBottomPanelProps) => {
 
 export const renderFloatingToolbar = (props: RenderFloatingToolbarProps) => {
   if (!props.workspaceState.showFloatingToolbar) return null;
+  // Move/Rotate/Scale here drive the same transformMode-based GizmoManager as the bottom
+  // selection toolbar and the g/r/s hotkeys - they used to drive a separate moveActive/
+  // rotateActive/scaleActive PointerDragBehavior system instead, which could be independently
+  // active on the same mesh at the same time as the gizmo (e.g. press 'g' for the gizmo, then
+  // also click Move here), producing two conflicting drag handlers on one mesh at once.
   return (
     <React.Suspense fallback={<div className="p-2">Loading Toolbar...</div>}>
       <div className="absolute top-4 left-4 z-40 bg-gray-900/95 border border-gray-700 rounded-lg shadow-xl p-2 pointer-events-auto">
         <FloatingToolbar
-          onMoveToggle={() => props.updateState({ moveActive: !props.workspaceState.moveActive })}
-          onRotateToggle={() => props.updateState({ rotateActive: !props.workspaceState.rotateActive })}
-          onScaleToggle={() => props.updateState({ scaleActive: !props.workspaceState.scaleActive })}
+          onMoveToggle={() => props.setTransformMode((m) => m === 'position' ? 'none' : 'position')}
+          onRotateToggle={() => props.setTransformMode((m) => m === 'rotation' ? 'none' : 'rotation')}
+          onScaleToggle={() => props.setTransformMode((m) => m === 'scale' ? 'none' : 'scale')}
           onCameraToggle={() => props.updateState({ cameraActive: !props.workspaceState.cameraActive })}
           onPerspectiveToggle={() => props.updateState({ perspectiveActive: !props.workspaceState.perspectiveActive })}
-          isMoveActive={props.workspaceState.moveActive}
-          isRotateActive={props.workspaceState.rotateActive}
-          isScaleActive={props.workspaceState.scaleActive}
+          isMoveActive={props.transformMode === 'position'}
+          isRotateActive={props.transformMode === 'rotation'}
+          isScaleActive={props.transformMode === 'scale'}
           isCameraActive={props.workspaceState.cameraActive}
           isPerspectiveActive={props.workspaceState.perspectiveActive}
         />

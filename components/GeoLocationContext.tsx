@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import * as BABYLON from '@babylonjs/core';
+import { showToast } from './utils/toast';
 
 interface GeoLocation {
   latitude: number;
@@ -198,7 +199,7 @@ const GeoLocationContext: React.FC<GeoLocationContextProps> = ({
   // Get current location
   const getCurrentLocation = () => {
     if (!navigator.geolocation) {
-      alert('Geolocation is not supported by this browser.');
+      showToast.error('Geolocation is not supported by this browser.');
       return;
     }
 
@@ -232,7 +233,7 @@ const GeoLocationContext: React.FC<GeoLocationContextProps> = ({
       },
       (error) => {
         console.error('Error getting location:', error);
-        alert('Error getting location: ' + error.message);
+        showToast.error('Error getting location', error.message);
         setIsTracking(false);
       },
       {
@@ -246,7 +247,7 @@ const GeoLocationContext: React.FC<GeoLocationContextProps> = ({
   // Start location tracking
   const startLocationTracking = () => {
     if (!navigator.geolocation) {
-      alert('Geolocation is not supported by this browser.');
+      showToast.error('Geolocation is not supported by this browser.');
       return;
     }
 

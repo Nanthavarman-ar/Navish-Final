@@ -22,8 +22,18 @@ const WindTunnelSimulation: React.FC<WindTunnelSimulationProps> = ({ scene, onWi
   const [isActive, setIsActive] = useState<boolean>(false);
 
   const particleSystemRef = useRef<BABYLON.ParticleSystem | null>(null);
+  const emitterRef = useRef<BABYLON.Mesh | null>(null);
   const windVectorsRef = useRef<BABYLON.Mesh[]>([]);
   const airflowAnalysisRef = useRef<BABYLON.Mesh[]>([]);
+  // Wind direction/speed drive the particle system's direction/emit rate - keep the latest
+  // values in a ref so the per-frame render-loop callback (registered once) can read current
+  // values without needing to re-register itself on every slider change.
+  const windDirectionRef = useRef(windDirection);
+  const windSpeedRef = useRef(windSpeed);
+  const turbulenceRef = useRef(turbulence);
+  useEffect(() => { windDirectionRef.current = windDirection; }, [windDirection]);
+  useEffect(() => { windSpeedRef.current = windSpeed; }, [windSpeed]);
+  useEffect(() => { turbulenceRef.current = turbulence; }, [turbulence]);
 
   // Wind direction presets
   const windPresets = [
@@ -37,7 +47,12 @@ const WindTunnelSimulation: React.FC<WindTunnelSimulationProps> = ({ scene, onWi
     { name: 'North-West', direction: 315, speed: 4 }
   ];
 
-  // Create wind particle system
+  // Create the wind particle system once. Direction/speed changes afterwards update this
+  // same instance in place (see the [windDirection, windSpeed] effect below) rather than
+  // disposing and recreating it - recreation used to happen every single render-loop frame,
+  // which allocated a new particle system, texture, and 100x100 emitter ground mesh up to 60
+  // times a second (and leaked the old emitter mesh every time, since ParticleSystem.dispose()
+  // does not dispose the mesh assigned to .emitter).
   const createWindParticles = () => {
     const particleSystem = new BABYLON.ParticleSystem('windParticles', 1000, scene);
 
@@ -46,6 +61,7 @@ const WindTunnelSimulation: React.FC<WindTunnelSimulationProps> = ({ scene, onWi
     emitter.position.y = 10;
     emitter.isVisible = false;
     particleSystem.emitter = emitter;
+    emitterRef.current = emitter;
 
     // Particle texture (simple white dot)
     particleSystem.particleTexture = new BABYLON.Texture('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', scene);
@@ -60,33 +76,43 @@ const WindTunnelSimulation: React.FC<WindTunnelSimulationProps> = ({ scene, onWi
     particleSystem.minLifeTime = 2.0;
     particleSystem.maxLifeTime = 5.0;
 
-    particleSystem.emitRate = windSpeed * 50;
-    particleSystem.minEmitPower = windSpeed * 2;
-    particleSystem.maxEmitPower = windSpeed * 4;
-
-    // Set direction based on wind direction
-    const radDirection = (windDirection * Math.PI) / 180;
-    particleSystem.direction1 = new BABYLON.Vector3(
-      Math.sin(radDirection) * windSpeed,
-      -0.5,
-      Math.cos(radDirection) * windSpeed
-    );
-    particleSystem.direction2 = new BABYLON.Vector3(
-      Math.sin(radDirection + 0.2) * windSpeed,
-      0.5,
-      Math.cos(radDirection + 0.2) * windSpeed
-    );
-
     particleSystem.gravity = new BABYLON.Vector3(0, -1, 0);
+    applyDirectionToParticleSystem(particleSystem, windDirectionRef.current, windSpeedRef.current);
     particleSystem.start();
 
     return particleSystem;
   };
 
-  // Create wind direction vectors
+  // Update an existing particle system's emit rate/power/direction in place - used both for
+  // initial setup and for parameter changes, so changing the wind slider never has to dispose
+  // and recreate the particle system or its emitter mesh.
+  const applyDirectionToParticleSystem = (particleSystem: BABYLON.ParticleSystem, direction: number, speed: number) => {
+    particleSystem.emitRate = speed * 50;
+    particleSystem.minEmitPower = speed * 2;
+    particleSystem.maxEmitPower = speed * 4;
+
+    const radDirection = (direction * Math.PI) / 180;
+    particleSystem.direction1 = new BABYLON.Vector3(
+      Math.sin(radDirection) * speed,
+      -0.5,
+      Math.cos(radDirection) * speed
+    );
+    particleSystem.direction2 = new BABYLON.Vector3(
+      Math.sin(radDirection + 0.2) * speed,
+      0.5,
+      Math.cos(radDirection + 0.2) * speed
+    );
+  };
+
+  // Create wind direction vectors. Only called on activate and when direction/speed actually
+  // change (a handful of times per session) - not every frame.
   const createWindVectors = () => {
-    // Clear existing vectors
-    windVectorsRef.current.forEach(mesh => mesh.dispose());
+    // Clear existing vectors (and their materials - meshes only disposing left one
+    // StandardMaterial orphaned per arrow, twice per grid cell, on every previous recreate)
+    windVectorsRef.current.forEach(mesh => {
+      mesh.material?.dispose();
+      mesh.dispose();
+    });
     windVectorsRef.current = [];
 
     const vectorLength = 5;
@@ -96,7 +122,7 @@ const WindTunnelSimulation: React.FC<WindTunnelSimulationProps> = ({ scene, onWi
     for (let x = -gridSize; x <= gridSize; x++) {
       for (let z = -gridSize; z <= gridSize; z++) {
         const startPoint = new BABYLON.Vector3(x * vectorSpacing, 5, z * vectorSpacing);
-        const radDirection = (windDirection * Math.PI) / 180;
+        const radDirection = (windDirectionRef.current * Math.PI) / 180;
         const endPoint = new BABYLON.Vector3(
           startPoint.x + Math.sin(radDirection) * vectorLength,
           startPoint.y,
@@ -138,10 +164,14 @@ const WindTunnelSimulation: React.FC<WindTunnelSimulationProps> = ({ scene, onWi
     }
   };
 
-  // Analyze building openings for airflow
+  // Analyze building openings for airflow. Only called on activate and when
+  // direction/speed change - not every frame.
   const analyzeAirflow = () => {
-    // Clear existing analysis
-    airflowAnalysisRef.current.forEach(mesh => mesh.dispose());
+    // Clear existing analysis (and materials - see createWindVectors comment)
+    airflowAnalysisRef.current.forEach(mesh => {
+      mesh.material?.dispose();
+      mesh.dispose();
+    });
     airflowAnalysisRef.current = [];
 
     // Find all meshes that could be building openings (windows, doors)
@@ -166,7 +196,7 @@ const WindTunnelSimulation: React.FC<WindTunnelSimulationProps> = ({ scene, onWi
       }, scene);
 
       // Position airflow based on wind direction
-      const radDirection = (windDirection * Math.PI) / 180;
+      const radDirection = (windDirectionRef.current * Math.PI) / 180;
       const offset = new BABYLON.Vector3(
         Math.sin(radDirection) * 1.5,
         0,
@@ -185,32 +215,6 @@ const WindTunnelSimulation: React.FC<WindTunnelSimulationProps> = ({ scene, onWi
     });
   };
 
-  // Update wind simulation
-  const updateWindSimulation = () => {
-    if (!isActive) return;
-
-    // Update particle system
-    if (particleSystemRef.current) {
-      particleSystemRef.current.dispose();
-    }
-    particleSystemRef.current = createWindParticles();
-
-    // Update wind vectors
-    createWindVectors();
-
-    // Update airflow analysis
-    analyzeAirflow();
-
-    // Notify parent component
-    const windData: WindData = {
-      direction: windDirection,
-      speed: windSpeed,
-      turbulence: turbulence,
-      temperature: temperature
-    };
-    onWindChange?.(windData);
-  };
-
   // Toggle wind simulation
   const toggleWindSimulation = () => {
     setIsActive(!isActive);
@@ -222,82 +226,75 @@ const WindTunnelSimulation: React.FC<WindTunnelSimulationProps> = ({ scene, onWi
     setWindSpeed(preset.speed);
   };
 
-  useEffect(() => {
-    if (isActive) {
-      // Start continuous updates in Babylon render loop
-      scene.onBeforeRenderObservable.add(renderLoopUpdate);
-    } else {
-      // Clean up when inactive
-      scene.onBeforeRenderObservable.removeCallback(renderLoopUpdate);
-
-      if (particleSystemRef.current) {
-        particleSystemRef.current.dispose();
-        particleSystemRef.current = null;
-      }
-      windVectorsRef.current.forEach(mesh => mesh.dispose());
-      windVectorsRef.current = [];
-      airflowAnalysisRef.current.forEach(mesh => mesh.dispose());
-      airflowAnalysisRef.current = [];
-    }
-
-    return () => {
-      scene.onBeforeRenderObservable.removeCallback(renderLoopUpdate);
-
-      if (particleSystemRef.current) {
-        particleSystemRef.current.dispose();
-      }
-      windVectorsRef.current.forEach(mesh => mesh.dispose());
-      airflowAnalysisRef.current.forEach(mesh => mesh.dispose());
-    };
-  }, [isActive]);
-
-  // Function to update wind simulation continuously in render loop
-  const renderLoopUpdate = () => {
-    if (!isActive) return;
-
-    // Update particle system
-    if (particleSystemRef.current) {
-      particleSystemRef.current.dispose();
-    }
-    particleSystemRef.current = createWindParticles();
-
-    // Update wind vectors
-    createWindVectors();
-
-    // Update airflow analysis
-    analyzeAirflow();
-
-    // Apply wind force to meshes
-    applyWindForceToMeshes();
-
-    // Notify parent component
-    const windData: WindData = {
-      direction: windDirection,
-      speed: windSpeed,
-      turbulence: turbulence,
-      temperature: temperature
-    };
-    onWindChange?.(windData);
-  };
-
-  // Apply wind force to meshes in the scene
+  // Apply wind force to meshes in the scene - cheap physics-only work, safe to run every frame
   const applyWindForceToMeshes = () => {
-    const radDirection = (windDirection * Math.PI) / 180;
+    const radDirection = (windDirectionRef.current * Math.PI) / 180;
+    const speed = windSpeedRef.current;
     const forceVector = new BABYLON.Vector3(
-      Math.sin(radDirection) * windSpeed,
+      Math.sin(radDirection) * speed,
       0,
-      Math.cos(radDirection) * windSpeed
+      Math.cos(radDirection) * speed
     );
 
     scene.meshes.forEach(mesh => {
       if (mesh.physicsImpostor) {
         // Apply force with turbulence effect
-        const turbulenceFactor = 1 + (Math.random() - 0.5) * turbulence;
+        const turbulenceFactor = 1 + (Math.random() - 0.5) * turbulenceRef.current;
         const force = forceVector.scale(turbulenceFactor);
         mesh.physicsImpostor.applyForce(force, mesh.getAbsolutePosition());
       }
     });
   };
+
+  // Activate/deactivate: create everything once on activate, tear it all down on deactivate
+  // or unmount. The render-loop callback only does per-frame physics force application - no
+  // mesh/material/particle-system creation happens on the frame loop anymore.
+  useEffect(() => {
+    if (isActive) {
+      particleSystemRef.current = createWindParticles();
+      createWindVectors();
+      analyzeAirflow();
+      scene.onBeforeRenderObservable.add(applyWindForceToMeshes);
+    }
+
+    return () => {
+      scene.onBeforeRenderObservable.removeCallback(applyWindForceToMeshes);
+
+      if (particleSystemRef.current) {
+        particleSystemRef.current.dispose();
+        particleSystemRef.current = null;
+      }
+      if (emitterRef.current) {
+        emitterRef.current.dispose();
+        emitterRef.current = null;
+      }
+      windVectorsRef.current.forEach(mesh => {
+        mesh.material?.dispose();
+        mesh.dispose();
+      });
+      windVectorsRef.current = [];
+      airflowAnalysisRef.current.forEach(mesh => {
+        mesh.material?.dispose();
+        mesh.dispose();
+      });
+      airflowAnalysisRef.current = [];
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isActive]);
+
+  // Parameter changes while active: update the existing particle system in place and
+  // regenerate the (cheap, one-shot) visualization meshes - no per-frame work involved.
+  useEffect(() => {
+    if (!isActive) return;
+    if (particleSystemRef.current) {
+      applyDirectionToParticleSystem(particleSystemRef.current, windDirection, windSpeed);
+    }
+    createWindVectors();
+    analyzeAirflow();
+
+    onWindChange?.({ direction: windDirection, speed: windSpeed, turbulence, temperature });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [windDirection, windSpeed]);
 
   return (
     <div className="wind-tunnel-simulation-container">

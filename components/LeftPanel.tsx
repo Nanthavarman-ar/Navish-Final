@@ -203,8 +203,9 @@ const LeftPanel: React.FC<LeftPanelProps> = ({
       transition={{ duration: 0.3, ease: "easeOut" }}
       className="absolute inset-y-0 left-0 z-30 w-[85vw] max-w-[320px] sm:relative sm:z-auto sm:w-80 sm:max-w-none h-full bg-gray-900 border-r border-gray-700 flex flex-col text-white overflow-hidden pointer-events-auto shadow-2xl sm:shadow-none"
     >
+      <div className="ambient-glow" aria-hidden />
       {/* Header - relative z-10 so buttons stay above any overflow content */}
-      <CardHeader className="flex-shrink-0 border-b border-gray-700 bg-gray-800 relative z-10">
+      <CardHeader className="flex-shrink-0 border-b border-gray-700 bg-gray-800/90 backdrop-blur-sm relative z-10">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-1">
             {/* Aeromark: chevron to hide panel */}
@@ -317,8 +318,8 @@ const LeftPanel: React.FC<LeftPanelProps> = ({
         </div>
       </CardHeader>
 
-      {/* Content */}
-      <div className="flex-1 min-h-0 overflow-y-auto">
+      {/* Content - relative z-10 so it stacks above the absolutely-positioned ambient-glow layer */}
+      <div className="flex-1 min-h-0 overflow-y-auto relative z-10">
         {/* Category Toggles */}
         <div className="p-4 border-b border-gray-700">
           <CategoryToggles

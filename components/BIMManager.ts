@@ -99,6 +99,7 @@ export class BIMManager {
   private engine: Engine;
   private scene: Scene;
   private models: Map<string, BIMModel> = new Map();
+  private demoModelId: string | null = null;
   private config: BIMConfig;
   private hiddenDetailGroup: TransformNode | null = null;
   private isInitialized: boolean = false;
@@ -1288,12 +1289,22 @@ export class BIMManager {
     return model;
   }
 
-  // Load demo BIM model
+  // Load demo BIM model. Idempotent - returns the existing demo model (and its already-created
+  // meshes) if one was already loaded, instead of creating a fresh one every call. This used
+  // to generate a brand-new modelId (Date.now()) and a full new set of wall/floor/ceiling/
+  // wiring/plumbing/hvac meshes on every call with no cleanup of the previous set, so
+  // re-enabling the BIM Integration feature repeatedly permanently stacked duplicate,
+  // overlapping demo geometry in the scene.
   async loadDemoModel(): Promise<BIMModel> {
+    if (this.demoModelId) {
+      const existing = this.models.get(this.demoModelId);
+      if (existing) return existing;
+    }
     const modelId = `demo_model_${Date.now()}`;
     const model = this.createMockBIMModel(modelId, 'Demo BIM Model', 'custom');
     this.models.set(modelId, model);
     await this.createBIMMeshes(model);
+    this.demoModelId = modelId;
     console.log('Demo BIM model loaded');
     return model;
   }

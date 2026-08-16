@@ -46,13 +46,11 @@ const BIMIntegration: React.FC<BIMIntegrationProps> = ({
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Initialize BIM Manager if not provided
-  const [localBimManager] = useState(() => {
-    if (bimManager) return bimManager;
-    // This would need proper initialization with FeatureManager
-    // For now, return null and show message
-    return null;
-  });
+  // Derived directly from the prop (not cached in useState) so this always reflects the
+  // current bimManagerRef.current - caching it once meant every call in this component kept
+  // hitting whatever instance existed at first mount, even if the parent's ref was ever
+  // reassigned to a new manager afterwards.
+  const localBimManager = bimManager ?? null;
 
   const handleFileImport = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -182,12 +180,16 @@ const BIMIntegration: React.FC<BIMIntegrationProps> = ({
                 <input
                   ref={fileInputRef}
                   type="file"
-                  accept=".json,.ifc,.rvt,.dwg"
+                  accept=".json"
                   onChange={handleFileImport}
                   className="hidden"
                   title="Import BIM file"
                 />
               </div>
+              <p className="text-xs text-muted-foreground">
+                Supports Naviz JSON BIM exports. Native Revit (.rvt), AutoCAD (.dwg), and IFC
+                import aren't implemented yet.
+              </p>
 
               {isImporting && (
                 <div className="space-y-2">

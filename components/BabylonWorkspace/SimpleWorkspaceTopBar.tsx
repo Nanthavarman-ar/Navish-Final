@@ -6,10 +6,6 @@ import {
   Upload,
   Download,
   Camera,
-  Settings,
-  Grid3X3,
-  Layers,
-  Activity,
   HelpCircle,
   Orbit,
   Move,
@@ -24,12 +20,10 @@ import {
   ChevronDown
 } from 'lucide-react';
 import { ViewModeSelector, type ViewMode } from '../ViewModeSelector';
-import { FloorPlanOverlay } from '../FloorPlanOverlay';
 import { ShareEmbedPanel } from '../ShareEmbedPanel';
 
 interface SimpleWorkspaceTopBarProps {
   fps: number;
-  realTimeEnabled: boolean;
   activeFeatures: number;
   topBarVisible?: boolean;
   onToggleTopBar?: () => void;
@@ -39,24 +33,13 @@ interface SimpleWorkspaceTopBarProps {
   onToggleRightPanel?: () => void;
   cameraMode?: 'orbit' | 'fly' | 'walk';
   viewMode?: ViewMode;
-  gridVisible: boolean;
-  wireframeEnabled: boolean;
-  statsVisible: boolean;
-  floorPlanVisible?: boolean;
   workspaceId?: string;
-  onToggleRealTime: () => void;
   onCameraModeChange: (mode: 'orbit' | 'fly' | 'walk') => void;
   onViewModeChange?: (mode: ViewMode) => void;
-  onToggleGrid: () => void;
-  onToggleWireframe: () => void;
-  onToggleStats: () => void;
-  onToggleFloorPlan?: () => void;
   onImport?: () => void;
   onExport?: () => void;
   onScreenshot?: (format?: 'png' | 'jpeg') => void;
   onAutoZoom?: () => void;
-  onSave?: () => void;
-  onSettings?: () => void;
   onHelp?: () => void;
   onShare?: () => void;
   onChat?: () => void;
@@ -65,7 +48,6 @@ interface SimpleWorkspaceTopBarProps {
 
 export function SimpleWorkspaceTopBar({
   fps,
-  realTimeEnabled,
   activeFeatures,
   topBarVisible = true,
   onToggleTopBar,
@@ -75,26 +57,14 @@ export function SimpleWorkspaceTopBar({
   onToggleRightPanel,
   cameraMode = 'orbit',
   viewMode = 'orbit',
-  gridVisible,
-  wireframeEnabled,
-  statsVisible,
-  floorPlanVisible = false,
   workspaceId = 'workspace',
-  onToggleRealTime,
   onCameraModeChange,
   onViewModeChange,
-  onToggleGrid,
-  onToggleWireframe,
-  onToggleStats,
-  onToggleFloorPlan,
   onImport,
   onExport,
   onScreenshot,
   onAutoZoom,
-  onSave,
-  onSettings,
-  onHelp,
-  onShare
+  onHelp
 }: SimpleWorkspaceTopBarProps) {
   const noop = () => {};
   const [showSharePanel, setShowSharePanel] = useState(false);
@@ -108,7 +78,7 @@ export function SimpleWorkspaceTopBar({
 
   return (
     <div className="flex flex-col shrink-0">
-      <div className="flex items-center justify-between gap-2 py-2 px-4 bg-gray-900/95 border-b border-cyan-500/20 text-white min-h-12 flex-wrap shadow-[0_1px_0_0_rgba(34,211,238,0.08)]">
+      <div className="flex items-center justify-between gap-2 py-2 px-4 bg-gray-900/95 text-white min-h-12 flex-wrap">
         {/* Left - Panel toggles + File ops */}
         <div className="flex items-center gap-1 shrink-0">
           {onToggleTopBar && (
@@ -140,9 +110,6 @@ export function SimpleWorkspaceTopBar({
             </Button>
           )}
           <span className="w-px h-5 bg-gray-600 mx-1 shrink-0" />
-          <Button variant="ghost" size="sm" className="h-8 px-2" onClick={onSave || noop} title="Save">
-            Save
-          </Button>
           <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={onImport || noop} title="Import">
             <Upload className="w-4 h-4" />
           </Button>
@@ -162,9 +129,6 @@ export function SimpleWorkspaceTopBar({
               </DropdownMenuContent>
             </DropdownMenu>
           )}
-          <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={onSettings || noop} title="Settings">
-            <Settings className="w-4 h-4" />
-          </Button>
         </div>
 
         {/* Center - Camera / view modes - compact */}
@@ -184,26 +148,13 @@ export function SimpleWorkspaceTopBar({
               </Button>
             </>
           )}
-          <span className="w-px h-5 bg-gray-600 mx-1 shrink-0" />
           {onAutoZoom && (
-            <Button variant="ghost" size="sm" className="h-8 w-8 p-0 shrink-0" onClick={onAutoZoom} title="Fit to view (Auto Zoom)">
-              <Maximize2 className="w-4 h-4" />
-            </Button>
-          )}
-          <Button variant={gridVisible ? 'default' : 'ghost'} size="sm" className="h-8 w-8 p-0 shrink-0" onClick={onToggleGrid} title="Toggle grid">
-            <Grid3X3 className="w-4 h-4" />
-          </Button>
-          <Button variant={wireframeEnabled ? 'default' : 'ghost'} size="sm" className="h-8 w-8 p-0 shrink-0" onClick={onToggleWireframe} title="Wireframe">
-            <Layers className="w-4 h-4" />
-          </Button>
-          <Button variant={statsVisible ? 'default' : 'ghost'} size="sm" className="h-8 w-8 p-0 shrink-0" onClick={onToggleStats} title="Stats">
-            <Activity className="w-4 h-4" />
-          </Button>
-          <Button variant={realTimeEnabled ? 'default' : 'ghost'} size="sm" className="h-8 px-2 shrink-0" onClick={onToggleRealTime} title="Real-time">
-            RT
-          </Button>
-          {onToggleFloorPlan && (
-            <FloorPlanOverlay visible={floorPlanVisible} onToggle={onToggleFloorPlan} />
+            <>
+              <span className="w-px h-5 bg-gray-600 mx-1 shrink-0" />
+              <Button variant="ghost" size="sm" className="h-8 w-8 p-0 shrink-0" onClick={onAutoZoom} title="Fit to view (Auto Zoom)">
+                <Maximize2 className="w-4 h-4" />
+              </Button>
+            </>
           )}
         </div>
 
@@ -214,7 +165,7 @@ export function SimpleWorkspaceTopBar({
           <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => setShowSharePanel((v) => !v)} title="Share & Embed">
             <Share2 className="w-4 h-4" />
           </Button>
-          <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={onHelp || noop} title="Help">
+          <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={onHelp || noop} title="Keyboard shortcuts">
             <HelpCircle className="w-4 h-4" />
           </Button>
           {showSharePanel && (
@@ -224,6 +175,7 @@ export function SimpleWorkspaceTopBar({
           )}
         </div>
       </div>
+      <div className="shimmer-line" aria-hidden />
     </div>
   );
 }

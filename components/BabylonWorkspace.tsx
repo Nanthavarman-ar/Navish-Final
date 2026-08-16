@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import './BabylonWorkspace.css';
 
 // Core Babylon.js imports only (minimal for initial load)
-import { Engine, Scene, ArcRotateCamera, FreeCamera, UniversalCamera, HemisphericLight, DirectionalLight, Vector3, Vector2, Quaternion, Color3, Color4, Mesh, AbstractMesh, StandardMaterial, DefaultRenderingPipeline, SSAORenderingPipeline, HighlightLayer, PBRMaterial, Material, PointerDragBehavior, PointerInfo, PickingInfo, Camera, PointerEventTypes, Space, ParticleSystem, MeshBuilder, Texture, GizmoManager, ShadowGenerator, Ray } from '@babylonjs/core';
+import { Engine, Scene, ArcRotateCamera, FreeCamera, UniversalCamera, HemisphericLight, DirectionalLight, Vector3, Vector2, Quaternion, Color3, Color4, Mesh, AbstractMesh, StandardMaterial, DefaultRenderingPipeline, SSAORenderingPipeline, HighlightLayer, PBRMaterial, Material, PointerInfo, PickingInfo, Camera, PointerEventTypes, ParticleSystem, MeshBuilder, Texture, GizmoManager, ShadowGenerator, Ray } from '@babylonjs/core';
 import { WaterMaterial } from '@babylonjs/materials/water';
 import { PerlinNoiseProceduralTexture } from '@babylonjs/procedural-textures';
 
@@ -360,19 +360,19 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
     showFloodSimulation: false,
     showGestureDetection: false,
     showGestureInspector: false,
-    showHelpSupport: true,
     showImport: true,
     // show the shortcuts overlay initially to help users discover controls
     showKeyboardShortcuts: true,
     showDomainSelector: false,
     showLighting: true,
     showMiscellaneous: false,
-    showMove: true,
-    showNotificationSystem: true,
-    showRotate: true,
-    showScale: true,
-    showSettings: true,
-    showUndo: true,
+    // false so these don't render as "pressed" on load while transformMode is still 'none' -
+    // they used to default true while the state actually driving the tool defaulted false, so
+    // the first click toggled the feature off (already-"active"-looking button) before a
+    // second click could turn the tool on.
+    showMove: false,
+    showRotate: false,
+    showScale: false,
     showVoiceChat: false,
   };
 
@@ -395,16 +395,8 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
     setSelectedMesh,
     selectedWorkspaceId,
     setSelectedWorkspaceId,
-    realTimeEnabled,
-    setRealTimeEnabled,
     cameraMode,
     setCameraMode,
-    gridVisible,
-    setGridVisible,
-    wireframeEnabled,
-    setWireframeEnabled,
-    statsVisible,
-    setStatsVisible,
     setPerformanceMode,
     animationManager,
     handleTourSequenceCreate,
@@ -419,12 +411,6 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
     setBottomPanelVisible,
     showFloatingToolbar,
     setShowFloatingToolbar,
-    moveActive,
-    setMoveActive,
-    rotateActive,
-    setRotateActive,
-    scaleActive,
-    setScaleActive,
     cameraActive,
     setCameraActive,
     perspectiveActive,
@@ -595,23 +581,6 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
     }
   }, [setCategoryPanelVisible, enableFeature, disableFeature]);
 
-  // Define missing handlers
-  const handleToggleRealTime = useCallback(() => {
-    setRealTimeEnabled(!realTimeEnabled);
-  }, [realTimeEnabled]);
-
-  const handleToggleGrid = useCallback(() => {
-    setGridVisible(!gridVisible);
-  }, [gridVisible]);
-
-  const handleToggleWireframe = useCallback(() => {
-    setWireframeEnabled(!wireframeEnabled);
-  }, [wireframeEnabled]);
-
-  const handleToggleStats = useCallback(() => {
-    setStatsVisible(!statsVisible);
-  }, [statsVisible]);
-
   // Listen for custom event from portaled top bar expand button (bypasses closure issues)
   useEffect(() => {
     const handler = () => updateState({ topBarVisible: true });
@@ -626,9 +595,6 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
     rightPanelVisible,
     bottomPanelVisible,
     selectedMesh,
-    moveActive,
-    rotateActive,
-    scaleActive,
     cameraActive,
     perspectiveActive,
     showFloatingToolbar
@@ -665,7 +631,6 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
   const [enableGrain, setEnableGrain] = React.useState(false);
   const [enableVignette, setEnableVignette] = React.useState(false);
   const [viewMode, setViewMode] = React.useState<'walk' | 'orbit' | 'dollhouse' | 'vr' | 'ar'>('orbit');
-  const [floorPlanVisible, setFloorPlanVisible] = React.useState(false);
   const [bloomIntensity, setBloomIntensity] = React.useState(1.0);
   const [depthOfFieldFocusDistance, setDepthOfFieldFocusDistance] = React.useState(10.0);
   const [motionBlurIntensity, setMotionBlurIntensity] = React.useState(1.0);
@@ -866,11 +831,6 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
     switchCamera(cameraMode);
   }, [cameraMode, switchCamera]);
 
-  // Tool behaviors ref
-  const moveBehaviorRef = useRef<PointerDragBehavior | null>(null);
-  const rotateBehaviorRef = useRef<PointerDragBehavior | null>(null);
-  const scaleBehaviorRef = useRef<PointerDragBehavior | null>(null);
-
   // AR managers and utils refs
   const arCloudAnchorsRef = useRef<any>(null);
   const cloudAnchorManagerRef = useRef<any>(null);
@@ -911,14 +871,8 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
     sceneRef,
     cameraRef,
     selectedMesh,
-    moveActive,
-    rotateActive,
-    scaleActive,
     cameraActive,
     perspectiveActive,
-    moveBehaviorRef,
-    rotateBehaviorRef,
-    scaleBehaviorRef,
     highlightLayerRef,
     onMeshSelect,
     updateState,
@@ -1670,9 +1624,12 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
 
     const observer = scene.onPointerObservable.add((pointerInfo) => {
       if (pointerInfo.type !== PointerEventTypes.POINTERPICK) return;
-      // Don't steal the click if a mode that handles its own picking is active
-      // (teleport navigation already interprets clicks as "move here", not "select this").
-      if (featureStates.showTeleportManager) return;
+      // Don't steal the click if a mode that handles its own picking is active (teleport
+      // navigation already interprets clicks as "move here", not "select this"; the
+      // Measurement Tool interprets clicks as "place a measurement point" - this second
+      // guard used to be missing here, so clicking to measure also selected the mesh
+      // underneath, popping the Move/Rotate/Scale toolbar and Property Inspector mid-measurement).
+      if (featureStates.showTeleportManager || featureStates.showMeasurementTool) return;
 
       const pickResult = scene.pick(scene.pointerX, scene.pointerY, isSelectableMesh);
       if (pickResult?.hit && pickResult.pickedMesh) {
@@ -1681,7 +1638,7 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
     });
 
     return () => { scene.onPointerObservable.remove(observer); };
-  }, [featureStates.showTeleportManager]);
+  }, [featureStates.showTeleportManager, featureStates.showMeasurementTool]);
 
   // Desktop click-to-teleport: when active, clicking a floor/walkable surface smoothly
   // moves the camera there. This is the desktop equivalent of the VR teleportation
@@ -2216,7 +2173,12 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
         // BIM Features
         if (id === 'showBIMIntegration' && bimManagerRef.current) {
           try {
-            bimManagerRef.current.toggleHiddenDetails();
+            // toggleHiddenDetails() is a real flip, not a "set true" - calling it
+            // unconditionally on every enable meant re-enabling the feature twice silently
+            // hid the details it had just shown. Only turn it on if it isn't already.
+            if (!bimManagerRef.current.getConfig?.()?.showHiddenDetails) {
+              bimManagerRef.current.toggleHiddenDetails();
+            }
             showToast.success('Hidden details toggled');
           } catch (error) {
             console.error('Error toggling hidden details:', error);
@@ -2240,26 +2202,23 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
           }
         }
 
-        // Tool toggles
+        // Tool toggles: drive the same GizmoManager (transformMode) that the keyboard
+        // shortcuts (g/r/s) and the always-visible bottom mini-toolbar use. These buttons
+        // used to drive a separate, cruder PointerDragBehavior-based implementation
+        // (single-axis rotate, horizontal-plane-only move, mouse-delta scale, no visual
+        // handles) that could be active on the same mesh at the same time as the gizmo -
+        // dragging the mesh body would trigger the drag behavior while the gizmo's own
+        // handles were also live, producing compounding/conflicting transforms.
         if (id === 'showMove') {
-          setMoveActive(true);
-          setRotateActive(false);
-          setScaleActive(false);
-          setCameraActive(false);
+          setTransformMode('position');
           showToast.success('Move tool activated');
         }
         if (id === 'showRotate') {
-          setMoveActive(false);
-          setRotateActive(true);
-          setScaleActive(false);
-          setCameraActive(false);
+          setTransformMode('rotation');
           showToast.success('Rotate tool activated');
         }
         if (id === 'showScale') {
-          setMoveActive(false);
-          setRotateActive(false);
-          setScaleActive(true);
-          setCameraActive(false);
+          setTransformMode('scale');
           showToast.success('Scale tool activated');
         }
         if (id === 'showMinimap') showToast.success('Minimap enabled');
@@ -2375,18 +2334,10 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
           }
         }
 
-        // Cost and Analysis Features
-        if (id === 'showCost' && bimManagerRef.current) {
-          try {
-            const models = bimManagerRef.current.getAllModels();
-            const modelId = models.length > 0 ? models[0].id : 'default-model';
-            const result = bimManagerRef.current.getModelCostBreakdown(modelId);
-            console.log('Cost breakdown:', result);
-          } catch (error) {
-            console.error('Error getting cost breakdown:', error);
-            showToast.error('Failed to load cost analysis');
-          }
-        }
+        // Cost and Analysis Features: the actual Cost Estimation UI is the independent
+        // CostEstimatorWrapper panel (rendered via uiSegments.tsx), which fetches and
+        // displays its own data - this used to also fetch a cost breakdown here and
+        // console.log it, never shown anywhere, on every enable.
         // Simulation Features - sync SimulationManager config
         if (simulationManagerRef.current) {
           const sim = simulationManagerRef.current;
@@ -2404,32 +2355,13 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
         if (id === 'showFloodSimulation') {
           showToast.success('Flood simulation panel opened - use On/Off to control water');
         }
-        if (id === 'showWindTunnelSimulation' && sceneRef.current) {
-          try {
-            const particleSystem = new ParticleSystem("windParticles", 2000, sceneRef.current);
-            particleSystem.emitter = cameraRef.current ? cameraRef.current.position : Vector3.Zero();
-            particleSystem.minEmitBox = new Vector3(-10, -10, -10);
-            particleSystem.maxEmitBox = new Vector3(10, 10, 10);
-            particleSystem.color1 = new Color4(0.7, 0.8, 1.0, 1.0);
-            particleSystem.color2 = new Color4(0.2, 0.5, 1.0, 1.0);
-            particleSystem.minSize = 0.1;
-            particleSystem.maxSize = 0.5;
-            particleSystem.minLifeTime = 0.3;
-            particleSystem.maxLifeTime = 1.5;
-            particleSystem.emitRate = 1500;
-            particleSystem.direction1 = new Vector3(-7, 8, 3);
-            particleSystem.direction2 = new Vector3(7, -8, -3);
-            particleSystem.minAngularSpeed = 0;
-            particleSystem.maxAngularSpeed = Math.PI;
-            particleSystem.minEmitPower = 1;
-            particleSystem.maxEmitPower = 3;
-            particleSystem.updateSpeed = 0.005;
-            particleSystem.start();
-            showToast.success('Wind tunnel simulation enabled');
-          } catch (error) {
-            console.error('Error enabling wind tunnel simulation:', error);
-            showToast.error('Failed to start wind tunnel simulation');
-          }
+        if (id === 'showWindTunnelSimulation') {
+          // The WindTunnelSimulation panel (uiSegments.tsx) creates and fully owns its own
+          // particle system/wind vectors/airflow meshes for as long as it's mounted, and
+          // disposes them all on unmount - nothing else needs to be created here. (A
+          // duplicate decorative particle system used to be created in this handler too,
+          // which the panel's own Close button never cleaned up - a real per-toggle leak.)
+          showToast.success('Wind tunnel simulation enabled');
         }
         if (id === 'showWeather') {
           showToast.success('Weather panel opened - use Rain On/Off to control rain');
@@ -2604,12 +2536,6 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
         }
 
         // Performance Features
-        if (id === 'showNotificationSystem') {
-          showToast.info('Notification center enabled');
-        }
-        if (id === 'showHelpSupport') {
-          showToast.info('Help & Support ready');
-        }
         if (id === 'showImport') {
           if (fileInputRef.current) {
             fileInputRef.current.click();
@@ -2622,12 +2548,6 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
         if (id === 'showDomainSelector') {
           showToast.info('Domain selector ready');
         }
-        if (id === 'showSettings') {
-          showToast.info('Settings panel available');
-        }
-        if (id === 'showUndo') {
-          showToast.success('Undo ready (placeholder)');
-        }
 
       } catch (error) {
         console.error(`Error enabling feature ${id}:`, error);
@@ -2636,14 +2556,13 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
       }
     } else {
       disableFeature(id);
-      if (id === 'showMove') {
-        setMoveActive(false);
-      }
-      if (id === 'showRotate') {
-        setRotateActive(false);
-      }
-      if (id === 'showScale') {
-        setScaleActive(false);
+      if (id === 'showMove' || id === 'showRotate' || id === 'showScale') {
+        setTransformMode((m) => {
+          const modeForId = id === 'showMove' ? 'position' : id === 'showRotate' ? 'rotation' : 'scale';
+          // Only clear it if this tool is the one currently active - don't clobber the
+          // gizmo if the user already switched to a different tool (or used g/r/s) since.
+          return m === modeForId ? 'none' : m;
+        });
       }
       if (id === 'showClashDetection' && bimManagerRef.current) {
         bimManagerRef.current.disableClashDetection();
@@ -2658,26 +2577,11 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
       if (id === 'showImport') {
         showToast.info('Import dialog closed');
       }
-      if (id === 'showNotificationSystem') {
-        showToast.info('Notifications paused');
-      }
-      if (id === 'showHelpSupport') {
-        showToast.info('Help & Support closed');
-      }
       if (id === 'showKeyboardShortcuts') {
         showToast.info('Keyboard shortcuts hidden');
       }
       if (id === 'showDomainSelector') {
         showToast.info('Domain selector closed');
-      }
-      if (id === 'showSettings') {
-        showToast.info('Settings panel closed');
-      }
-      if (id === 'showMiscellaneous') {
-        showToast.info('Miscellaneous helpers closed');
-      }
-      if (id === 'showUndo') {
-        showToast.info('Undo helper hidden');
       }
       if (id === 'showVoiceChat') {
         collabManagerRef.current?.disableVoiceChat();
@@ -2744,16 +2648,9 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
           }
           setFloodOn(false);
         }
-        if (id === 'showWindTunnelSimulation' && sceneRef.current) {
-          sceneRef.current.particleSystems.forEach((ps: any) => {
-            if (ps.name === 'windParticles') {
-              ps.stop();
-              ps.dispose();
-            }
-          });
-          const emitter = sceneRef.current.getMeshByName('windEmitter');
-          if (emitter) emitter.dispose();
-        }
+        // showWindTunnelSimulation cleanup: handled entirely by the WindTunnelSimulation
+        // panel's own unmount effect once disableFeature (above) hides it - see the enable
+        // branch comment for why nothing needs to happen here.
         if (id === 'showWeather') {
           if (simulationManagerRef.current) {
             simulationManagerRef.current.stopRainSimulation();
@@ -2780,7 +2677,7 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
       }
     }
     });
-  }, [enableFeature, disableFeature, setMoveActive, setRotateActive, setScaleActive, setCameraActive]);
+  }, [enableFeature, disableFeature, setTransformMode, setCameraActive]);
 
   // Global keyboard shortcuts (must be after handleFeatureToggle)
   React.useEffect(() => {
@@ -3097,7 +2994,6 @@ const getCategoryDescription = (categoryName: string): string => {
             <div className="flex-shrink-0 w-full z-10 bg-gray-900 border-b border-gray-700">
               {renderTopBar({
             fps,
-            realTimeEnabled,
             activeFeatures,
             topBarVisible,
             onToggleTopBar: () => updateState({ topBarVisible: !topBarVisible }),
@@ -3107,12 +3003,7 @@ const getCategoryDescription = (categoryName: string): string => {
             onToggleRightPanel: () => updateState({ rightPanelVisible: !rightPanelVisible }),
             cameraMode,
             viewMode,
-            gridVisible,
-            wireframeEnabled,
-            statsVisible,
-            floorPlanVisible,
             workspaceId,
-            handleToggleRealTime,
             handleCameraModeChange,
             onViewModeChange: (mode) => {
               setViewMode(mode);
@@ -3122,10 +3013,13 @@ const getCategoryDescription = (categoryName: string): string => {
               else if (mode === 'vr') { handleCameraModeChange('orbit'); showToast.info('VR mode - use VR headset to enter'); }
               else if (mode === 'ar') { handleCameraModeChange('orbit'); showToast.info('AR mode - use mobile device on-site'); }
             },
-            handleToggleGrid,
-            handleToggleWireframe,
-            handleToggleStats,
-            onToggleFloorPlan: () => setFloorPlanVisible(v => !v),
+            onHelp: () => {
+              if (featureStates.showKeyboardShortcuts) {
+                disableFeature('showKeyboardShortcuts');
+              } else {
+                enableFeature('showKeyboardShortcuts');
+              }
+            },
             onImport: () => {
               if (fileInputRef.current) fileInputRef.current.click();
               showToast.success('Import dialog opened');
@@ -3195,9 +3089,6 @@ const getCategoryDescription = (categoryName: string): string => {
               arcCam.setTarget(center);
               arcCam.radius = Math.max(size * 1.2, 2);
               showToast.success('Zoomed to fit');
-            },
-            onSave: () => {
-              showToast.info('Save action not implemented');
             }
           })}
             </div>
@@ -3300,7 +3191,9 @@ const getCategoryDescription = (categoryName: string): string => {
             })}
             {renderFloatingToolbar({
               workspaceState,
-              updateState
+              updateState,
+              transformMode,
+              setTransformMode
             })}
             {layoutMode === 'immersive' && (
               <div className="absolute top-4 left-1/2 transform -translate-x-1/2 z-20">

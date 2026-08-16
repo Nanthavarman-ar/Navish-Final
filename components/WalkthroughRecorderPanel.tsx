@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { Engine } from '@babylonjs/core';
 import { X, Circle, Square, Download, Video } from 'lucide-react';
 import { Button } from './ui/button';
@@ -68,6 +68,19 @@ const WalkthroughRecorderPanel: React.FC<WalkthroughRecorderPanelProps> = ({ eng
       timerRef.current = null;
     }
     showToast.success('Recording stopped');
+  }, []);
+
+  // If the panel is closed (X button, or the feature toggled off) while still recording, stop
+  // the recorder and clear the timer instead of leaving both running in the background with no
+  // UI left to stop them - MediaRecorder doesn't stop itself just because the component that
+  // started it unmounts.
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+      if (recorderRef.current && recorderRef.current.state !== 'inactive') {
+        recorderRef.current.stop();
+      }
+    };
   }, []);
 
   const handleDownload = () => {

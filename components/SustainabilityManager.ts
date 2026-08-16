@@ -81,7 +81,7 @@ export class SustainabilityManager {
       carbonFootprint <= this.config.carbonFootprintLimit;
 
     // Generate recommendations
-    const recommendations = this.generateRecommendations(energyEfficiency, waterEfficiency, renewableEnergyUsage, carbonFootprint);
+    const recommendations = this.generateRecommendations(energyEfficiency, waterEfficiency, renewableEnergyUsage, carbonFootprint, energyUsage);
 
     return {
       greenScore,
@@ -127,19 +127,23 @@ export class SustainabilityManager {
     // Normalize carbon footprint inversely (lower is better)
     const carbonScore = 1 - Math.min(carbonFootprint / this.config.carbonFootprintLimit, 1);
 
+    // Every input above is a 0-1 fraction and the weights sum to 1, so this weighted average
+    // lands in [0,1] - scale to 0-100 since every consumer (report panels, PDF export, budget
+    // tier deltas which add/subtract values like -15/+12) expects a 0-100 score.
     return (
       energyEfficiency * energyWeight +
       waterEfficiency * waterWeight +
       renewableEnergyUsage * renewableWeight +
       carbonScore * carbonWeight
-    );
+    ) * 100;
   }
 
   private generateRecommendations(
     energyEfficiency: number,
     waterEfficiency: number,
     renewableEnergyUsage: number,
-    carbonFootprint: number
+    carbonFootprint: number,
+    energyUsage: number
   ): string[] {
     const recs: string[] = [];
 
@@ -156,12 +160,11 @@ export class SustainabilityManager {
       recs.push('Reduce carbon footprint by using low-carbon materials and optimizing design.');
     }
 
-    // New recommendation for energy usage
-    if (this.simulationManager.calculateEnergyUsage) {
-      const energyUsage = this.simulationManager.calculateEnergyUsage(this.bimManager.getAllModels()[0].id);
-      if (energyUsage > 10000) {
-        recs.push('Reduce energy usage by optimizing building systems and renewable integration.');
-      }
+    // energyUsage is passed in from generateReport(modelId), already computed for the correct
+    // model - this used to be recomputed here against getAllModels()[0], the wrong model
+    // whenever more than one model was loaded and the requested one wasn't first.
+    if (energyUsage > 10000) {
+      recs.push('Reduce energy usage by optimizing building systems and renewable integration.');
     }
 
     return recs;

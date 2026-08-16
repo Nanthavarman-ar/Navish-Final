@@ -136,15 +136,23 @@ export class XRManager {
 
       const floorMeshes = this.teleportationEnabled ? this.getFloorMeshes() : [];
 
-      // Create XR experience with audio support
+      // Create XR experience with audio support. disableDefaultUI: true because this app
+      // drives entry/exit itself (toolbar button + 'X' hotkey) - Babylon's own floating
+      // enter/exit button would otherwise appear unstyled and duplicate that control.
       this.xrExperience = await WebXRDefaultExperience.CreateAsync(this.scene, {
         floorMeshes,
-        disableTeleportation: !this.teleportationEnabled || floorMeshes.length === 0
+        disableTeleportation: !this.teleportationEnabled || floorMeshes.length === 0,
+        disableDefaultUI: true
       });
 
-      if (!this.xrExperience) {
+      if (!this.xrExperience?.baseExperience) {
         throw new Error('Failed to create XR experience');
       }
+
+      // CreateAsync only builds the helper/camera/features - it does not itself start a
+      // session. Without this call the app reported "VR mode enabled" while the user
+      // stayed on the flat desktop view.
+      await this.xrExperience.baseExperience.enterXRAsync('immersive-vr', 'local-floor', this.xrExperience.renderTarget);
 
       this.xrCamera = this.xrExperience.baseExperience.camera;
       this.currentSessionMode = 'immersive-vr';
@@ -183,18 +191,26 @@ export class XRManager {
 
       const floorMeshes = this.teleportationEnabled ? this.getFloorMeshes() : [];
 
-      // Create XR experience for AR with audio support
+      // Create XR experience for AR with audio support (see enterVR for why disableDefaultUI)
       this.xrExperience = await WebXRDefaultExperience.CreateAsync(this.scene, {
         uiOptions: {
           sessionMode: 'immersive-ar'
         },
         floorMeshes,
-        disableTeleportation: !this.teleportationEnabled || floorMeshes.length === 0
+        disableTeleportation: !this.teleportationEnabled || floorMeshes.length === 0,
+        disableDefaultUI: true
       });
 
-      if (!this.xrExperience) {
+      if (!this.xrExperience?.baseExperience) {
         throw new Error('Failed to create AR experience');
       }
+
+      await this.xrExperience.baseExperience.enterXRAsync('immersive-ar', 'local-floor', this.xrExperience.renderTarget, {
+        // Lets configureXRFeatures() enable real-world surface detection below, so a
+        // loaded model can be placed onto the user's actual floor/table instead of
+        // floating at the scene's arbitrary world origin.
+        optionalFeatures: ['hit-test', 'anchors', 'plane-detection']
+      });
 
       this.xrCamera = this.xrExperience.baseExperience.camera;
       this.currentSessionMode = 'immersive-ar';

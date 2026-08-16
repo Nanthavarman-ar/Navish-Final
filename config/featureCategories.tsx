@@ -2,8 +2,8 @@ import React from 'react';
 
 // Minimal icon imports - only ~25 needed for actual features (uniques only)
 import {
-  // Core/Essential (8 icons)
-  Palette, MapPin, Ruler, Layers, RotateCw, Settings, Sun, Undo, ArrowLeftRight, Scale,
+  // Core/Essential (7 icons)
+  Palette, MapPin, Ruler, Layers, RotateCw, Settings, Sun, ArrowLeftRight, Scale,
   // UI/Tools (4 icons)
   ChevronDown, Search, Key, Play,
   // AI/Automation (5 icons)
@@ -14,16 +14,14 @@ import {
   CloudRain, Droplet, Wind, Volume, DollarSign, Gauge, Leaf, AlertTriangle, BarChart3,
   // Tools/Editors (3 icons)
   Edit3, Download, Upload, History, Video,
-  // Analytics/Monitoring (3 icons)
-  Activity, HardDrive, Bell,
+  // Analytics/Monitoring (2 icons)
+  Activity, HardDrive,
   // Collaboration/Multi-user (3 icons)
   Users, MessageCircle, Share2,
   // Geo/Location (3 icons)
   Map, Anchor,
   // IoT/Smart (2 icons)
   Zap,
-  // Other (1 icon)
-  HelpCircle,
   // Missing icons with aliases
   RotateCcw as RotateLeft,
   RotateCw as RotateRight,
@@ -57,22 +55,19 @@ export interface FeatureCategory {
 export const featureCategories: FeaturesByCategory = {
   "Core Workspace": [
     { id: 'showMaterialEditor', name: 'Material Editor', description: 'Edit and apply materials to objects', hotkey: 'M', icon: Palette, category: 'Core Workspace', enabledByDefault: false },
-    { id: 'showMinimap', name: 'Minimap', description: 'Display scene overview minimap', hotkey: 'Tab', icon: MapPin, category: 'Core Workspace', enabledByDefault: false },
+    { id: 'showMinimap', name: 'Minimap', description: 'Display scene overview minimap', icon: MapPin, category: 'Core Workspace', enabledByDefault: false },
     { id: 'showMeasurementTool', name: 'Measurement Tool', description: 'Measure distances and dimensions', hotkey: 'T', icon: Ruler, category: 'Core Workspace', enabledByDefault: false },
     { id: 'showBIMIntegration', name: 'BIM Integration', description: 'Load and interact with BIM models', icon: Layers, category: 'Core Workspace', enabledByDefault: false },
-    { id: 'showPropertyInspector', name: 'Property Inspector', description: 'Inspect and edit object properties', hotkey: 'P', icon: Settings, category: 'Core Workspace', enabledByDefault: false },
+    { id: 'showPropertyInspector', name: 'Property Inspector', description: 'Inspect and edit object properties', icon: Settings, category: 'Core Workspace', enabledByDefault: false },
     { id: 'showSceneBrowser', name: 'Scene Browser', description: 'Browse and manage scene assets', icon: Layers, category: 'Core Workspace', enabledByDefault: false },
-    { id: 'showLighting', name: 'Lighting Controls', description: 'Adjust scene lighting', hotkey: 'L', icon: Sun, category: 'Core Workspace', enabledByDefault: true },
-    { id: 'showUndo', name: 'Undo/Redo', description: 'Undo and redo actions', hotkey: 'Ctrl+Z / Ctrl+Y', icon: Undo, category: 'Core Workspace', enabledByDefault: true },
-    { id: 'showMove', name: 'Move Tool', description: 'Move objects in the scene', hotkey: 'W', icon: ArrowLeftRight, category: 'Core Workspace', enabledByDefault: true },
-    { id: 'showRotate', name: 'Rotate Tool', description: 'Rotate selected objects', hotkey: 'E', icon: RotateCw, category: 'Core Workspace', enabledByDefault: true },
-    { id: 'showScale', name: 'Scale Tool', description: 'Scale objects uniformly', hotkey: 'R', icon: Scale, category: 'Core Workspace', enabledByDefault: true }
+    { id: 'showLighting', name: 'Lighting Controls', description: 'Adjust scene lighting', icon: Sun, category: 'Core Workspace', enabledByDefault: true },
+    { id: 'showMove', name: 'Move Tool', description: 'Move objects in the scene', hotkey: 'G', icon: ArrowLeftRight, category: 'Core Workspace', enabledByDefault: true },
+    { id: 'showRotate', name: 'Rotate Tool', description: 'Rotate selected objects', hotkey: 'R', icon: RotateCw, category: 'Core Workspace', enabledByDefault: true },
+    { id: 'showScale', name: 'Scale Tool', description: 'Scale objects uniformly', hotkey: 'S', icon: Scale, category: 'Core Workspace', enabledByDefault: true }
   ],
   "UI and Controls": [
-    { id: 'showSettings', name: 'Settings', description: 'Application settings', hotkey: 'S', icon: Settings, category: 'UI and Controls', enabledByDefault: true },
     { id: 'showKeyboardShortcuts', name: 'Keyboard Shortcuts', description: 'View keyboard shortcuts', hotkey: '?', icon: Key, category: 'UI and Controls', enabledByDefault: false },
     { id: 'showDomainSelector', name: 'Domain Selector', description: 'Scope the experience to a specific design domain', hotkey: 'D', icon: Map, category: 'UI and Controls', enabledByDefault: false },
-    { id: 'showNotificationSystem', name: 'Notifications', description: 'Manage notifications', icon: Bell, category: 'UI and Controls', enabledByDefault: true },
     { id: 'showPresentationManager', name: 'Presentation Mode', description: 'Enter presentation mode', hotkey: 'F5', icon: Play, category: 'UI and Controls', enabledByDefault: false }
   ],
   "AI and Automation": [
@@ -108,18 +103,15 @@ export const featureCategories: FeaturesByCategory = {
   "Tools and Editors": [
     { id: 'showExport', name: 'Export', description: 'Export scene data', hotkey: 'E', icon: Download, category: 'Tools and Editors', enabledByDefault: true },
     { id: 'showImport', name: 'Import', description: 'Import models and data', hotkey: 'I', icon: Upload, category: 'Tools and Editors', enabledByDefault: true },
-    { id: 'showHelpSupport', name: 'Help & Support', description: 'Access help documentation', hotkey: 'F1', icon: HelpCircle, category: 'Tools and Editors', enabledByDefault: true },
     { id: 'showAnnotations', name: 'Annotations', description: 'Add and share annotations', hotkey: 'N', icon: Edit3, category: 'Tools and Editors', enabledByDefault: false },
     { id: 'showVersionHistory', name: 'Version History', description: 'View and restore previous saves', icon: History, category: 'Tools and Editors', enabledByDefault: false }
   ],
   "Auto Furnish & AR Anchor": [
     { id: 'showAutoFurnish', name: 'Auto Furnish', description: 'Automatically furnish spaces with AI', icon: Wand2, category: 'Auto Furnish & AR Anchor', enabledByDefault: false },
-    { id: 'showAR', name: 'AR Mode', description: 'Enter augmented reality mode', icon: Smartphone, category: 'Auto Furnish & AR Anchor', enabledByDefault: false },
     { id: 'showCloudAnchorManager', name: 'Cloud Anchors', description: 'Manage shared AR cloud anchors', icon: Anchor, category: 'Auto Furnish & AR Anchor', enabledByDefault: false }
   ],
   "Audio and Multimedia": [
-    { id: 'showVoiceChat', name: 'Voice Chat', description: 'Enable voice communication', icon: Mic, category: 'Audio and Multimedia', enabledByDefault: false },
-    { id: 'showSpatialAudio', name: 'Spatial Audio', description: 'Enable 3D spatial audio', icon: Volume2, category: 'Audio and Multimedia', enabledByDefault: false }
+    { id: 'showVoiceChat', name: 'Voice Chat', description: 'Enable voice communication', icon: Mic, category: 'Audio and Multimedia', enabledByDefault: false }
   ],
   "Collaboration and Multi-user": [
     { id: 'showMultiUser', name: 'Multi-User Collaboration', description: 'Enable real-time multi-user editing', icon: Users, category: 'Collaboration and Multi-user', enabledByDefault: false },

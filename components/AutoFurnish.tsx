@@ -51,6 +51,12 @@ const AutoFurnish: React.FC<AutoFurnishProps> = ({ sceneManager, onClose }) => {
 
   // Refs
   const placementPreviewRef = useRef<any>(null);
+  // Mirrors previewMesh so the mount/unmount effect below (deps: [sceneManager,
+  // furnitureManager], intentionally not re-running on every preview mesh change) can dispose
+  // whatever the *current* preview mesh is on unmount, instead of closing over whatever
+  // previewMesh happened to be (null, on first render) when that effect instance was created.
+  const previewMeshRef = useRef<any>(null);
+  useEffect(() => { previewMeshRef.current = previewMesh; }, [previewMesh]);
 
   // Initialize FurnitureManager and workspace tools
   useEffect(() => {
@@ -79,8 +85,8 @@ const AutoFurnish: React.FC<AutoFurnishProps> = ({ sceneManager, onClose }) => {
       if (furnitureManager) {
         furnitureManager.dispose();
       }
-      if (previewMesh) {
-        previewMesh.dispose();
+      if (previewMeshRef.current) {
+        previewMeshRef.current.dispose();
       }
     };
   }, [sceneManager, furnitureManager]);

@@ -1,18 +1,12 @@
 import { useEffect, useCallback } from 'react';
-import { Scene, ArcRotateCamera, Mesh, PointerDragBehavior, Vector3, Space, PointerEventTypes, PointerInfo, Color3, Quaternion } from '@babylonjs/core';
+import { Scene, ArcRotateCamera, Mesh, Vector3, PointerEventTypes, PointerInfo, Color3, Quaternion } from '@babylonjs/core';
 
 export interface UseMeshSceneHandlersProps {
   sceneRef: React.RefObject<Scene | null>;
   cameraRef: React.RefObject<ArcRotateCamera | null>;
   selectedMesh: Mesh | null;
-  moveActive: boolean;
-  rotateActive: boolean;
-  scaleActive: boolean;
   cameraActive: boolean;
   perspectiveActive: boolean;
-  moveBehaviorRef: React.MutableRefObject<PointerDragBehavior | null>;
-  rotateBehaviorRef: React.MutableRefObject<PointerDragBehavior | null>;
-  scaleBehaviorRef: React.MutableRefObject<PointerDragBehavior | null>;
   highlightLayerRef: React.RefObject<any | null>;
   onMeshSelect?: (mesh: Mesh) => void;
   updateState: (updates: any) => void;
@@ -26,14 +20,8 @@ export const useMeshSceneHandlers = ({
   sceneRef,
   cameraRef,
   selectedMesh,
-  moveActive,
-  rotateActive,
-  scaleActive,
   cameraActive,
   perspectiveActive,
-  moveBehaviorRef,
-  rotateBehaviorRef,
-  scaleBehaviorRef,
   highlightLayerRef,
   onMeshSelect,
   updateState,
@@ -42,7 +30,7 @@ export const useMeshSceneHandlers = ({
   cloudAnchorManagerRef,
   featureStates = {}
 }: UseMeshSceneHandlersProps) => {
-  const internalHandleMeshSelect = useCallback((mesh: Mesh) => {
+  const internalHandleMeshSelect = useCallback(async (mesh: Mesh) => {
     if (externalHandleMeshSelect) {
       externalHandleMeshSelect(mesh);
     }
@@ -101,7 +89,7 @@ export const useMeshSceneHandlers = ({
           modelUrl: undefined,
           userId: 'local-user'
         };
-        const anchor = cloudAnchorManagerRef.current.createAnchor(anchorData);
+        const anchor = await cloudAnchorManagerRef.current.createAnchor(anchorData);
         if (anchor) {
           mesh.metadata = { ...mesh.metadata, cloudAnchorId: anchor.id };
           cloudAnchorManagerRef.current.updateAnchorPosition(anchor.id, mesh.position);
@@ -129,7 +117,9 @@ export const useMeshSceneHandlers = ({
     if (!scene) return;
 
     const pointerObservable = scene.onPointerObservable.add((pointerInfo: PointerInfo) => {
-      if (featureStates.showMeasurementTool) return;
+      // Also skip while teleport navigation owns clicks (see the second selection handler in
+      // BabylonWorkspace.tsx, which has the mirror-image guard for showMeasurementTool).
+      if (featureStates.showMeasurementTool || featureStates.showTeleportManager) return;
       if (pointerInfo.type === PointerEventTypes.POINTERPICK || pointerInfo.type === PointerEventTypes.POINTERDOWN) {
         if (pointerInfo.pickInfo?.hit && pointerInfo.pickInfo.pickedMesh) {
           const mesh = pointerInfo.pickInfo.pickedMesh as Mesh;
@@ -143,7 +133,7 @@ export const useMeshSceneHandlers = ({
     return () => {
       scene.onPointerObservable.remove(pointerObservable);
     };
-  }, [sceneRef, internalHandleMeshSelect, internalHandleMeshDeselect, featureStates.showMeasurementTool]);
+  }, [sceneRef, internalHandleMeshSelect, internalHandleMeshDeselect, featureStates.showMeasurementTool, featureStates.showTeleportManager]);
 
   // Tool activation effects
   useEffect(() => {
@@ -151,57 +141,13 @@ export const useMeshSceneHandlers = ({
     const camera = cameraRef.current;
     if (!scene || !camera) return;
 
-    // Move tool
-    if (moveActive && selectedMesh) {
-      if (!moveBehaviorRef.current) {
-        const behavior = new PointerDragBehavior({ dragPlaneNormal: Vector3.Up() });
-        behavior.onDragObservable.add((event) => {
-          selectedMesh?.position.addInPlace(event.delta);
-        });
-        selectedMesh.addBehavior(behavior);
-        moveBehaviorRef.current = behavior;
-      }
-    } else if (moveBehaviorRef.current) {
-      selectedMesh?.removeBehavior(moveBehaviorRef.current);
-      moveBehaviorRef.current = null;
-    }
-
-    // Rotate tool
-    if (rotateActive && selectedMesh) {
-      if (!rotateBehaviorRef.current) {
-        const behavior = new PointerDragBehavior({
-          dragPlaneNormal: Vector3.Up()
-        });
-        behavior.dragDeltaRatio = 0.01; // For rotation sensitivity
-        behavior.useObjectOrientationForDragging = true;
-        behavior.onDragObservable.add((event) => {
-          selectedMesh?.rotate(Vector3.Up(), event.delta.x * 0.01, Space.WORLD);
-        });
-        selectedMesh.addBehavior(behavior);
-        rotateBehaviorRef.current = behavior;
-      }
-    } else if (rotateBehaviorRef.current) {
-      selectedMesh?.removeBehavior(rotateBehaviorRef.current);
-      rotateBehaviorRef.current = null;
-    }
-
-    // Scale tool
-    if (scaleActive && selectedMesh) {
-      if (!scaleBehaviorRef.current) {
-        const behavior = new PointerDragBehavior();
-        behavior.useObjectOrientationForDragging = false;
-        behavior.dragDeltaRatio = 0.01;
-        behavior.onDragObservable.add((event) => {
-          const scaleFactor = 1 + (event.delta.y / 1000);
-          selectedMesh?.scaling.scaleInPlace(scaleFactor);
-        });
-        selectedMesh.addBehavior(behavior);
-        scaleBehaviorRef.current = behavior;
-      }
-    } else if (scaleBehaviorRef.current) {
-      selectedMesh?.removeBehavior(scaleBehaviorRef.current);
-      scaleBehaviorRef.current = null;
-    }
+    // Move/Rotate/Scale used to be handled here via PointerDragBehavior (move: horizontal-
+    // plane-only drag, rotate: single-axis inferred from horizontal mouse delta, scale:
+    // uniform scale from vertical mouse delta, no visual handles). That system has been
+    // replaced by the real GizmoManager (transformMode state, BabylonWorkspace.tsx) which
+    // every UI entry point (Core Workspace panel, FloatingToolbar, bottom selection toolbar,
+    // g/r/s hotkeys) now drives - the two systems used to be able to run simultaneously on
+    // the same mesh, producing compounding/conflicting transforms.
 
     // Camera reset
     // cameraRef is typed as ArcRotateCamera, but switchCamera() (BabylonWorkspace.tsx)
@@ -233,22 +179,7 @@ export const useMeshSceneHandlers = ({
       updateState({ perspectiveActive: false }); // Reset toggle
     }
 
-    return () => {
-      // Cleanup on unmount or state change
-      if (moveBehaviorRef.current) {
-        selectedMesh?.removeBehavior(moveBehaviorRef.current);
-        moveBehaviorRef.current = null;
-      }
-      if (rotateBehaviorRef.current) {
-        selectedMesh?.removeBehavior(rotateBehaviorRef.current);
-        rotateBehaviorRef.current = null;
-      }
-      if (scaleBehaviorRef.current) {
-        selectedMesh?.removeBehavior(scaleBehaviorRef.current);
-        scaleBehaviorRef.current = null;
-      }
-    };
-  }, [moveActive, rotateActive, scaleActive, cameraActive, perspectiveActive, selectedMesh, sceneRef, cameraRef, updateState, moveBehaviorRef, rotateBehaviorRef, scaleBehaviorRef]);
+  }, [cameraActive, perspectiveActive, selectedMesh, sceneRef, cameraRef, updateState]);
 
   return { handleMeshSelect: internalHandleMeshSelect };
 };
