@@ -3,11 +3,9 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { CardHeader, CardTitle } from './ui/card';
 import { Input } from './ui/input';
 import { Button } from './ui/button';
-import { Badge } from './ui/badge';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuCheckboxItem, DropdownMenuSeparator } from './ui/dropdown-menu';
-import { Search, X, ChevronLeft, MoreVertical, CloudRain, Droplet, Wind, Sun, MapPin, Ruler, Palette, Settings, Layers, Eye, EyeOff } from 'lucide-react';
+import { Search, X, ChevronLeft, ChevronDown, ChevronRight, MoreVertical, CloudRain, Droplet, Wind, Sun, MapPin, Ruler, Palette, Settings, Layers, Eye, EyeOff } from 'lucide-react';
 import FeatureButton from './FeatureButton';
-import CategoryToggles from './CategoryToggles';
 
 const CORE_TOOLS = [
   { id: 'showMinimap', name: 'Minimap', icon: MapPin },
@@ -344,68 +342,100 @@ const LeftPanel: React.FC<LeftPanelProps> = ({
           </div>
         )}
 
-        {/* Category accordion - each category's tools appear directly under its own
-            row when expanded, instead of every open category's tools being merged into
-            one big undifferentiated grid elsewhere on the page. While searching, any
-            category with a match auto-expands (and categories with none disappear) so
-            results are immediately visible without also needing to tap each one open. */}
-        <CategoryToggles
-          categories={categories}
-          visibleCategories={categoryPanelVisible}
-          onCategoryToggle={onCategoryToggle}
-          onToggleAll={(visible) => {
-            if (onToggleAllCategories) {
-              onToggleAllCategories(visible);
-            } else {
-              Object.keys(categories).forEach(cat => {
-                if (categoryPanelVisible[cat] !== visible) onCategoryToggle(cat);
-              });
-            }
-          }}
-        />
+        {/* Category accordion - each category's tools render directly under its OWN
+            row, in the same loop as the row itself, so opening "Core Workspace" (the
+            first category) shows its list right there instead of after every other
+            category's header further down the panel (which is what happened when the
+            header list and the expanded-content list were two separate blocks). While
+            searching, any category with a match auto-expands (and categories with none
+            disappear) so results are immediately visible without tapping each one open. */}
+        <div className="flex items-center justify-between">
+          <h2 className="text-sm font-medium text-gray-300">Tool Categories</h2>
+          <button
+            type="button"
+            onClick={() => {
+              const allVisible = Object.keys(categories).length > 0 && Object.keys(categories).every(key => categoryPanelVisible[key]);
+              if (onToggleAllCategories) {
+                onToggleAllCategories(!allVisible);
+              } else {
+                Object.keys(categories).forEach(cat => {
+                  if (categoryPanelVisible[cat] !== !allVisible) onCategoryToggle(cat);
+                });
+              }
+            }}
+            className="text-xs text-blue-400 hover:text-blue-300 px-2 py-1 -mr-2"
+          >
+            {Object.keys(categories).length > 0 && Object.keys(categories).every(key => categoryPanelVisible[key]) ? 'Collapse all' : 'Expand all'}
+          </button>
+        </div>
 
-        <div className="space-y-3">
+        <div className="space-y-1.5">
           {Object.entries(categories).map(([key, category]) => {
             const list = categoryFeatureLists[key] || [];
-            const expanded = isSearching ? list.length > 0 : !!categoryPanelVisible[key];
             if (isSearching && list.length === 0) return null;
-            if (!expanded) return null;
+            const expanded = isSearching ? true : !!categoryPanelVisible[key];
 
             return (
-              <AnimatePresence key={key}>
-                <motion.div
-                  initial={{ opacity: 0, height: 0 }}
-                  animate={{ opacity: 1, height: 'auto' }}
-                  exit={{ opacity: 0, height: 0 }}
-                  className="overflow-hidden"
+              <div key={key} className="rounded-lg bg-gray-800/70 border border-gray-700 overflow-hidden">
+                <button
+                  type="button"
+                  onClick={() => onCategoryToggle(key)}
+                  aria-expanded={expanded}
+                  className="w-full min-h-[48px] flex items-center justify-between gap-2 px-3 py-2.5 text-left hover:bg-gray-800 active:bg-gray-700 transition-colors"
                 >
-                  <div className="pl-2 border-l-2 border-gray-700">
-                    <div className="flex items-center justify-between mb-2 px-2">
-                      <span className="text-xs font-medium text-gray-400">{category.name}</span>
-                      <Badge variant="outline" className="text-xs">{list.length}</Badge>
-                    </div>
-                    {list.length > 0 ? (
-                      <div className={variant === 'grid' ? 'grid grid-cols-2 gap-2 px-2' : 'space-y-2 px-2'}>
-                        {list.map((feature) => (
-                          <FeatureButton
-                            key={feature.id}
-                            feature={feature}
-                            active={activeFeatures.has(feature.id)}
-                            showPerformance={showPerformance}
-                            onToggle={(id, enabled) => onFeatureToggle(id, enabled)}
-                            onHide={() => hideFeature(feature.id)}
-                            forceShowHideControl={customizeMode}
-                            variant={variant}
-                            size="default"
-                          />
-                        ))}
-                      </div>
+                  <span className="flex items-center gap-2 min-w-0">
+                    {expanded ? (
+                      <ChevronDown className="w-4 h-4 text-gray-400 shrink-0" />
                     ) : (
-                      <p className="text-xs text-gray-500 px-2 pb-2">Nothing in this category yet.</p>
+                      <ChevronRight className="w-4 h-4 text-gray-400 shrink-0" />
                     )}
-                  </div>
-                </motion.div>
-              </AnimatePresence>
+                    <span className="min-w-0">
+                      <span className="block text-sm text-white truncate">{category.name}</span>
+                      {category.description && (
+                        <span className="block text-xs text-gray-500 truncate">{category.description}</span>
+                      )}
+                    </span>
+                  </span>
+                  {category.activeCount > 0 && (
+                    <span className="shrink-0 text-xs font-medium text-cyan-300 bg-cyan-500/10 border border-cyan-500/30 rounded-full px-2 py-0.5">
+                      {category.activeCount} on
+                    </span>
+                  )}
+                </button>
+
+                <AnimatePresence initial={false}>
+                  {expanded && (
+                    <motion.div
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: 'auto' }}
+                      exit={{ opacity: 0, height: 0 }}
+                      className="overflow-hidden"
+                    >
+                      <div className="px-3 pb-3 pt-1 border-t border-gray-700">
+                        {list.length > 0 ? (
+                          <div className={`mt-2 ${variant === 'grid' ? 'grid grid-cols-2 gap-2' : 'space-y-2'}`}>
+                            {list.map((feature) => (
+                              <FeatureButton
+                                key={feature.id}
+                                feature={feature}
+                                active={activeFeatures.has(feature.id)}
+                                showPerformance={showPerformance}
+                                onToggle={(id, enabled) => onFeatureToggle(id, enabled)}
+                                onHide={() => hideFeature(feature.id)}
+                                forceShowHideControl={customizeMode}
+                                variant={variant}
+                                size="default"
+                              />
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="text-xs text-gray-500 mt-2">Nothing in this category yet.</p>
+                        )}
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
             );
           })}
         </div>
