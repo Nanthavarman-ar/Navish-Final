@@ -173,7 +173,14 @@ export class CollabManager {
         // without this, a permanently unreachable server (wrong URL, not deployed, etc)
         // left isConnected stuck at false forever with no way to tell "still trying"
         // apart from "gave up", so the UI just showed "Connecting..." indefinitely.
-        this.socket.on('reconnect_failed', () => {
+        //
+        // This must be registered on this.socket.io (the underlying Manager), not
+        // this.socket (the Socket instance) - reconnection lifecycle events
+        // (reconnect/reconnect_attempt/reconnect_error/reconnect_failed) are only ever
+        // emitted on the Manager. Listening on the Socket itself compiles fine and
+        // never throws, it just silently never fires, which is exactly why this state
+        // was stuck showing "Connecting..." forever even after retries were exhausted.
+        this.socket.io.on('reconnect_failed', () => {
           console.error('Collaboration server: all reconnection attempts failed');
           this.connectionFailed = true;
           if (!settled) { settled = true; resolve(false); }
