@@ -484,8 +484,18 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
     }
 
     const attemptLoad = (attempt: number) => {
-      import('@babylonjs/core/Loading/sceneLoader').then(({ SceneLoader }) => {
-        import('@babylonjs/loaders');
+      // @babylonjs/loaders registers the glTF/OBJ/STL/etc plugins as a side effect of
+      // being imported - it was previously fired off without awaiting it, so
+      // SceneLoader.Append below could (and on a fresh page load, reliably did) run
+      // before the .glb plugin had finished registering. With no matching plugin found,
+      // SceneLoader silently fell back to its native .babylon JSON scene parser, which
+      // tried to JSON.parse the raw binary GLB bytes and failed with a confusing
+      // "importScene ... has failed JSON parse" error instead of actually loading the
+      // model.
+      Promise.all([
+        import('@babylonjs/core/Loading/sceneLoader'),
+        import('@babylonjs/loaders')
+      ]).then(([{ SceneLoader }]) => {
         const meshesBefore = new Set(scene.meshes);
         SceneLoader.Append('', url, scene, () => {
           if (cancelled) return;
@@ -727,7 +737,14 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
       // to key their data by - use a sanitized filename rather than leaving
       // currentModelId stuck on the generic 'default-model' placeholder.
       setCurrentModelId(`local-${file.name.replace(/[^a-z0-9]+/gi, '-').toLowerCase()}`);
-      import('@babylonjs/core/Loading/sceneLoader').then(({ SceneLoader }) => {
+      // @babylonjs/loaders must actually finish registering the format plugins (glTF/
+      // OBJ/STL/etc) before SceneLoader.Append runs - see the matching fix in the
+      // selected-model load effect above for what goes wrong if that's only fired off
+      // without being awaited.
+      Promise.all([
+        import('@babylonjs/core/Loading/sceneLoader'),
+        import('@babylonjs/loaders')
+      ]).then(([{ SceneLoader }]) => {
         const meshesBefore = new Set(sceneRef.current!.meshes);
         // Pass the File object directly rather than a blob: URL. A blob URL has no
         // file extension, so Babylon can't reliably pick the right loader plugin for
