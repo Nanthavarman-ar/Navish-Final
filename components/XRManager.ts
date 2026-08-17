@@ -1,4 +1,16 @@
-import { Scene, Camera, ArcRotateCamera, FreeCamera, WebXRDefaultExperience, WebXRState, WebXRCamera, WebXRFeaturesManager, WebXRFeatureName, Vector3, Quaternion, AbstractMesh } from '@babylonjs/core';
+import { Scene, Camera, ArcRotateCamera, FreeCamera, WebXRDefaultExperience, WebXRState, WebXRCamera, WebXRFeaturesManager, WebXRFeatureName, Vector3, Quaternion, AbstractMesh, TransformNode, Mesh, MeshBuilder, StandardMaterial, Color3 } from '@babylonjs/core';
+
+// Minimal shape of what we actually use from Babylon's WebXRHitTest feature - typed
+// locally instead of importing the class directly, since it isn't re-exported from the
+// main @babylonjs/core barrel and enableFeature()'s return type is the generic
+// IWebXRFeature anyway.
+interface XRHitTestResultLike {
+  position: Vector3;
+  rotationQuaternion?: Quaternion;
+}
+interface XRHitTestFeatureLike {
+  onHitTestResultObservable: { add: (callback: (results: XRHitTestResultLike[]) => void) => void };
+}
 
 // WebXR type declarations
 interface XRSystem {
@@ -36,6 +48,17 @@ export class XRManager {
   private teleportationEnabled: boolean = true;
   private currentSessionMode: 'none' | 'immersive-vr' | 'immersive-ar' = 'none';
   private audioManager: any = null; // AudioManager instance
+
+  // AR manual placement/scale (mobile "tap to place near me, then resize" flow) -
+  // the model stays wherever the user last placed/scaled it for the rest of this XR
+  // session; re-entering AR (or a fresh page load) starts fresh.
+  private placementRoot: TransformNode | null = null;
+  private hitTestFeature: XRHitTestFeatureLike | null = null;
+  private reticle: Mesh | null = null;
+  private lastHitPose: { position: Vector3; rotationQuaternion: Quaternion } | null = null;
+  private arOverlayElement: HTMLDivElement | null = null;
+  private arSelectListener: (() => void) | null = null;
+  private placementScale: number = 1;
 
   private initPromise: Promise<void>;
 
@@ -205,11 +228,36 @@ export class XRManager {
         throw new Error('Failed to create AR experience');
       }
 
+      const featuresManager = this.xrExperience.baseExperience.featuresManager;
+
+      // Hit-test (drives the placement reticle below) and the DOM overlay (the on-screen
+      // scale buttons) both need to augment the actual XRSessionInit sent to
+      // requestSession - enabling them here, before enterXRAsync, is what makes that
+      // happen. Enabling them afterwards (like configureXRFeatures() does below for
+      // movement/hand-tracking, which don't need session-level negotiation) is too late
+      // for the browser to grant them.
+      try {
+        this.hitTestFeature = featuresManager.enableFeature(WebXRFeatureName.HIT_TEST, 'latest', {}, true, false) as unknown as XRHitTestFeatureLike;
+      } catch (error) {
+        console.warn('AR hit-test not available on this device/browser - tap-to-place will be disabled:', error);
+        this.hitTestFeature = null;
+      }
+
+      this.arOverlayElement = this.createAROverlayUI();
+      try {
+        featuresManager.enableFeature(WebXRFeatureName.DOM_OVERLAY, 'latest', {
+          element: this.arOverlayElement
+        }, true, false);
+      } catch (error) {
+        console.warn('AR DOM overlay not available on this device/browser - on-screen scale buttons will be hidden:', error);
+      }
+
       await this.xrExperience.baseExperience.enterXRAsync('immersive-ar', 'local-floor', this.xrExperience.renderTarget, {
-        // Lets configureXRFeatures() enable real-world surface detection below, so a
-        // loaded model can be placed onto the user's actual floor/table instead of
-        // floating at the scene's arbitrary world origin.
-        optionalFeatures: ['hit-test', 'anchors', 'plane-detection']
+        // Belt-and-suspenders alongside the featuresManager calls above - some Babylon/
+        // browser combinations only pick up the DOM overlay root from this raw options
+        // object rather than the registered feature.
+        optionalFeatures: ['hit-test', 'anchors', 'plane-detection', 'dom-overlay'],
+        domOverlay: this.arOverlayElement ? { root: this.arOverlayElement } : undefined
       });
 
       this.xrCamera = this.xrExperience.baseExperience.camera;
@@ -227,12 +275,172 @@ export class XRManager {
       // Configure XR features
       this.configureXRFeatures();
 
+      // Manual "tap to place near me" + scale, so the model doesn't just sit wherever
+      // the source file's authored origin happens to be relative to the user.
+      this.setupARPlacement();
+
       console.log('Entered AR mode', { floorMeshCount: floorMeshes.length });
       return true;
     } catch (error) {
       console.error('Failed to enter AR mode:', error);
+      this.teardownAROverlayUI();
       return false;
     }
+  }
+
+  // Real model content only - excludes ground/helper/UI meshes (measurement lines,
+  // annotation pins, the reticle/placement root themselves, etc), matching the same
+  // exclusion pattern already used for teleport floor detection and the desktop AR
+  // Scale panel, so placement/scale only ever moves the actual loaded model.
+  private getPlaceableMeshes(): AbstractMesh[] {
+    return this.scene.meshes.filter(
+      (m) => m.isEnabled() &&
+        !/^(ground|measure_|annotation_|cursor_|collab_|sound_privacy_marker_|mood_light_|ar_reticle|ar_placement_root|__root__)/i.test(m.name || '')
+    );
+  }
+
+  // Lazily creates (or returns the existing) TransformNode that placement/scale acts
+  // on, reparenting every real model mesh under it. setParent() (not just assigning
+  // .parent) is what keeps each mesh visually exactly where it already is during this
+  // reparent - only the *next* placement/scale actually moves anything.
+  private getOrCreatePlacementRoot(): TransformNode {
+    if (this.placementRoot && !this.placementRoot.isDisposed()) {
+      // A model loaded/changed after the root was first created - pick up any meshes
+      // that aren't parented yet.
+      this.getPlaceableMeshes().forEach((m) => {
+        if (m.parent !== this.placementRoot) m.setParent(this.placementRoot);
+      });
+      return this.placementRoot;
+    }
+    const root = new TransformNode('ar_placement_root', this.scene);
+    this.getPlaceableMeshes().forEach((m) => m.setParent(root));
+    this.placementRoot = root;
+    return root;
+  }
+
+  // A flat ring shown at the current hit-test surface point, so the user can see where
+  // tapping will place the model before they tap - the standard mobile-AR placement UX.
+  private createReticle(): Mesh {
+    if (this.reticle && !this.reticle.isDisposed()) return this.reticle;
+    const reticle = MeshBuilder.CreateTorus('ar_reticle', { diameter: 0.2, thickness: 0.02, tessellation: 32 }, this.scene);
+    const mat = new StandardMaterial('ar_reticle_material', this.scene);
+    mat.emissiveColor = new Color3(0.25, 0.85, 1);
+    mat.disableLighting = true;
+    reticle.material = mat;
+    reticle.isPickable = false;
+    reticle.isVisible = false;
+    this.reticle = reticle;
+    return reticle;
+  }
+
+  // Floating +/reset/- buttons shown over the camera feed during the AR session (via
+  // the DOM overlay feature - a normal React panel never renders while an immersive
+  // session owns the display, so this has to be raw DOM). pointer-events: none on the
+  // container (auto only on the buttons themselves) keeps the rest of the screen free
+  // to receive the tap-to-place gesture below.
+  private createAROverlayUI(): HTMLDivElement {
+    this.teardownAROverlayUI();
+    const container = document.createElement('div');
+    container.id = 'naviz-ar-overlay';
+    container.style.cssText = 'position:fixed;left:0;right:0;bottom:28px;display:flex;justify-content:center;align-items:center;gap:14px;pointer-events:none;z-index:999999;';
+
+    const makeButton = (label: string, title: string, onActivate: () => void) => {
+      const btn = document.createElement('button');
+      btn.textContent = label;
+      btn.title = title;
+      btn.setAttribute('aria-label', title);
+      btn.style.cssText = 'pointer-events:auto;width:56px;height:56px;border-radius:9999px;border:2px solid rgba(255,255,255,0.85);background:rgba(15,23,42,0.75);color:#fff;font-size:24px;font-weight:600;display:flex;align-items:center;justify-content:center;touch-action:manipulation;';
+      const activate = (e: Event) => { e.preventDefault(); e.stopPropagation(); onActivate(); };
+      btn.addEventListener('touchend', activate, { passive: false });
+      btn.addEventListener('click', activate);
+      return btn;
+    };
+
+    container.appendChild(makeButton('−', 'Scale down', () => this.scalePlacedModel(1 / 1.15)));
+    container.appendChild(makeButton('⟲', 'Reset scale', () => this.resetPlacedModelScale()));
+    container.appendChild(makeButton('+', 'Scale up', () => this.scalePlacedModel(1.15)));
+    document.body.appendChild(container);
+    return container;
+  }
+
+  private teardownAROverlayUI(): void {
+    if (this.arOverlayElement?.parentNode) {
+      this.arOverlayElement.parentNode.removeChild(this.arOverlayElement);
+    }
+    this.arOverlayElement = null;
+  }
+
+  // Wires the hit-test reticle and tap-to-place. A tap anywhere on screen that isn't
+  // one of the overlay buttons fires the WebXR session's native 'select' event, the
+  // same gesture Babylon's own transient hit-testing listens for internally.
+  private setupARPlacement(): void {
+    if (!this.xrExperience) return;
+
+    const reticle = this.createReticle();
+    this.lastHitPose = null;
+
+    if (this.hitTestFeature) {
+      this.hitTestFeature.onHitTestResultObservable.add((results) => {
+        if (results.length > 0) {
+          const hit = results[0];
+          reticle.isVisible = true;
+          reticle.position.copyFrom(hit.position);
+          if (hit.rotationQuaternion) {
+            reticle.rotationQuaternion = hit.rotationQuaternion.clone();
+          }
+          this.lastHitPose = {
+            position: hit.position.clone(),
+            rotationQuaternion: (hit.rotationQuaternion ?? Quaternion.Identity()).clone()
+          };
+        } else {
+          reticle.isVisible = false;
+          this.lastHitPose = null;
+        }
+      });
+    } else {
+      console.warn('No hit-test feature available - tap-to-place will not work this session');
+    }
+
+    const session = this.xrExperience.baseExperience.sessionManager.session;
+    this.arSelectListener = () => {
+      if (!this.lastHitPose) return;
+      const root = this.getOrCreatePlacementRoot();
+      root.position.copyFrom(this.lastHitPose.position);
+      root.rotationQuaternion = this.lastHitPose.rotationQuaternion.clone();
+    };
+    session?.addEventListener('select', this.arSelectListener);
+  }
+
+  private teardownARPlacement(): void {
+    const session = this.xrExperience?.baseExperience?.sessionManager?.session;
+    if (session && this.arSelectListener) {
+      session.removeEventListener('select', this.arSelectListener);
+    }
+    this.arSelectListener = null;
+    this.hitTestFeature = null;
+    this.lastHitPose = null;
+    if (this.reticle && !this.reticle.isDisposed()) {
+      this.reticle.dispose();
+    }
+    this.reticle = null;
+    this.teardownAROverlayUI();
+    // Deliberately NOT disposing placementRoot or resetting placementScale here - if
+    // the user re-enters AR in the same session, their last placement/scale is kept
+    // rather than snapping back to the model's original authored position.
+  }
+
+  // Scales the placed model (clamped to a sane range so it can't be pinched/tapped down
+  // to invisible or up to absurdly oversized). factor is relative, e.g. 1.15 = +15%.
+  scalePlacedModel(factor: number): void {
+    const root = this.placementRoot;
+    if (!root) return;
+    this.placementScale = Math.min(5, Math.max(0.1, this.placementScale * factor));
+    root.scaling.setAll(this.placementScale);
+  }
+
+  resetPlacedModelScale(): void {
+    this.placementScale = 1;
+    this.placementRoot?.scaling.setAll(1);
   }
 
   // Exit XR mode
@@ -246,6 +454,10 @@ export class XRManager {
       if (this.audioManager && typeof this.audioManager.disableSpatialAudio === 'function') {
         this.audioManager.disableSpatialAudio();
       }
+
+      // Remove the AR reticle/overlay/select-listener while the session is still live -
+      // a no-op if AR placement was never set up (e.g. exiting a VR session).
+      this.teardownARPlacement();
 
       // End XR session
       await this.xrExperience.baseExperience.sessionManager.exitXRAsync();
