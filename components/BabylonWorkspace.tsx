@@ -569,31 +569,18 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
     return () => { cancelled = true; };
   }, [sceneReadyForLoad, selectedModel?.id, selectedModel?.modelUrl]);
 
-  // Override handleCategoryToggle to also manage features
+  // Expanding/collapsing a category in the Tools accordion should only reveal or hide
+  // its list of buttons to choose from - it previously also force-enabled (or disabled)
+  // every single feature inside that category at the same time, so tapping a category
+  // like "Core Workspace" instantly opened every one of its ~10 tool panels at once
+  // instead of just showing the list. Turning an individual tool on/off is exactly what
+  // FeatureButton's own click handler (handleFeatureToggle) already does.
   const handleCategoryToggle = useCallback((category: string) => {
-    const wasVisible = categoryPanelVisible[category];
-    const isNowVisible = !wasVisible;
-
-    // Toggle visibility
     setCategoryPanelVisible({
       ...categoryPanelVisible,
-      [category]: isNowVisible
+      [category]: !categoryPanelVisible[category]
     });
-
-    // Get features for this category
-    const categoryFeatures = featureCategories[category] || [];
-    const featureIds = categoryFeatures.map(f => f.id);
-
-    if (isNowVisible) {
-      // Enable all features in category
-      featureIds.forEach(id => enableFeature(id));
-      console.log(`Category ${category} enabled with features:`, featureIds);
-    } else {
-      // Disable all features in category
-      featureIds.forEach(id => disableFeature(id));
-      console.log(`Category ${category} disabled with features:`, featureIds);
-    }
-  }, [categoryPanelVisible, setCategoryPanelVisible, enableFeature, disableFeature]);
+  }, [categoryPanelVisible, setCategoryPanelVisible]);
 
   const handleToggleAllCategories = useCallback((visible: boolean) => {
     const updates: Record<string, boolean> = {};
