@@ -70,7 +70,15 @@ export function ModelsPage() {
     try {
       await apiCall(`/models/${model.id}/view`, { method: 'POST' });
     } catch { /* ignore */ }
-    setSelectedModel(model);
+    // BabylonWorkspace reads selectedModel.modelUrl, but the /models API returns the
+    // file location as signedUrl - without this mapping modelUrl is undefined, so the
+    // workspace opens with nothing to load and silently falls back to its empty
+    // placeholder ground+box instead of the actual uploaded model. Same fix already
+    // applied in AppLayout.tsx/ClientDashboard.tsx for their own model-open paths.
+    setSelectedModel({
+      ...model,
+      modelUrl: model?.modelUrl || model?.signedUrl || model?.url || model?.fileUrl || null,
+    });
     navigate('/workspace');
   };
 
