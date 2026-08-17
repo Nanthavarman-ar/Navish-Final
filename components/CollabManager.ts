@@ -46,6 +46,10 @@ export class CollabManager {
   private options: Required<CollabManagerOptions>;
   private eventListeners: Array<(event: CollabEvent) => void> = [];
   private isConnected: boolean = false;
+  // Distinct from "still connecting" - set once socket.io has exhausted every
+  // reconnection attempt, so the UI can show "couldn't connect" instead of an infinite
+  // "Connecting..." that never resolves either way.
+  private connectionFailed: boolean = false;
   private currentUser: CollabUser | null = null;
   private socket: Socket | null = null;
   private syncEnabled: boolean = true;
@@ -129,6 +133,7 @@ export class CollabManager {
    * Connect to the collaboration server
    */
   async connect(): Promise<boolean> {
+    this.connectionFailed = false;
     return new Promise((resolve) => {
       try {
         console.log(`Connecting to collaboration server: ${this.options.serverUrl}`);
@@ -146,6 +151,7 @@ export class CollabManager {
         this.socket.on('connect', () => {
           console.log('Connected to collaboration server');
           this.isConnected = true;
+          this.connectionFailed = false;
           this.joinRoom();
           this.startPositionBroadcast();
           if (!settled) { settled = true; resolve(true); }
@@ -160,6 +166,16 @@ export class CollabManager {
 
         this.socket.on('connect_error', (error) => {
           console.error('Collaboration server connection error:', error);
+          if (!settled) { settled = true; resolve(false); }
+        });
+
+        // Fires once socket.io has used up all reconnectionAttempts (5, set above) -
+        // without this, a permanently unreachable server (wrong URL, not deployed, etc)
+        // left isConnected stuck at false forever with no way to tell "still trying"
+        // apart from "gave up", so the UI just showed "Connecting..." indefinitely.
+        this.socket.on('reconnect_failed', () => {
+          console.error('Collaboration server: all reconnection attempts failed');
+          this.connectionFailed = true;
           if (!settled) { settled = true; resolve(false); }
         });
 
@@ -495,6 +511,14 @@ export class CollabManager {
    */
   getIsConnected(): boolean {
     return this.isConnected;
+  }
+
+  /**
+   * True once every reconnection attempt has been exhausted with no successful
+   * connection - the server is unreachable and retrying automatically has stopped.
+   */
+  getConnectionFailed(): boolean {
+    return this.connectionFailed;
   }
 
   private getOrCreatePeerConnection(userId: string): RTCPeerConnection {

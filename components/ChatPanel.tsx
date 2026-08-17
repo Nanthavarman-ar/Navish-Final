@@ -13,6 +13,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ collabManager, onClose }) => {
   const [messages, setMessages] = useState<ChatMessage[]>(() => collabManager?.getChatHistory() || []);
   const [draft, setDraft] = useState('');
   const [isConnected, setIsConnected] = useState(() => collabManager?.getIsConnected() ?? false);
+  const [connectionFailed, setConnectionFailed] = useState(() => collabManager?.getConnectionFailed() ?? false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -26,9 +27,13 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ collabManager, onClose }) => {
       }
     };
     collabManager.addEventListener(listener);
-    // Connection may complete asynchronously after this panel mounts - poll briefly
-    // rather than only trusting the initial snapshot taken at mount time.
-    const pollId = setInterval(() => setIsConnected(collabManager.getIsConnected()), 1000);
+    // Connection may complete (or definitively fail) asynchronously after this panel
+    // mounts - poll briefly rather than only trusting the initial snapshot taken at
+    // mount time.
+    const pollId = setInterval(() => {
+      setIsConnected(collabManager.getIsConnected());
+      setConnectionFailed(collabManager.getConnectionFailed());
+    }, 1000);
     return () => {
       collabManager.removeEventListener(listener);
       clearInterval(pollId);
@@ -44,6 +49,8 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ collabManager, onClose }) => {
     const sent = collabManager.sendChatMessage(draft);
     if (sent) {
       setDraft('');
+    } else if (connectionFailed) {
+      showToast.error('Message not sent', "Couldn't reach the collaboration server - it may be offline");
     } else {
       showToast.error('Message not sent', 'Not connected to the collaboration room yet');
     }
@@ -58,8 +65,10 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ collabManager, onClose }) => {
           <MessageSquare className="w-4 h-4 text-cyan-400" />
           <h3 className="font-display font-semibold text-sm">Chat</h3>
           {collabManager && (
-            <span className={`text-[10px] px-1.5 py-0.5 rounded font-technical ${isConnected ? 'bg-green-500/20 text-green-400' : 'bg-amber-500/20 text-amber-400'}`}>
-              {isConnected ? 'Connected' : 'Connecting...'}
+            <span className={`text-[10px] px-1.5 py-0.5 rounded font-technical ${
+              isConnected ? 'bg-green-500/20 text-green-400' : connectionFailed ? 'bg-red-500/20 text-red-400' : 'bg-amber-500/20 text-amber-400'
+            }`}>
+              {isConnected ? 'Connected' : connectionFailed ? 'Server unavailable' : 'Connecting...'}
             </span>
           )}
         </div>
@@ -74,7 +83,12 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ collabManager, onClose }) => {
             Join Multi User mode first to chat with others in this workspace.
           </div>
         )}
-        {collabManager && messages.length === 0 && (
+        {collabManager && connectionFailed && (
+          <div className="text-center text-red-400/80 text-sm py-8 px-2">
+            Couldn't reach the collaboration server - it looks like it's offline. Chat and multi-user features won't work until it's back.
+          </div>
+        )}
+        {collabManager && !connectionFailed && messages.length === 0 && (
           <div className="text-center text-gray-500 text-sm py-8">No messages yet - say hello!</div>
         )}
         {messages.map((msg, i) => {
