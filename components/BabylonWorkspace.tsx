@@ -105,7 +105,7 @@ interface BabylonWorkspaceProps {
   enablePhysics?: boolean;
   enableXR?: boolean;
   enableSpatialAudio?: boolean;
-  renderingQuality?: 'low' | 'medium' | 'high' | 'ultra';
+  renderingQuality?: 'auto' | 'low' | 'medium' | 'high' | 'ultra';
   onMeshSelect?: (mesh: Mesh) => void;
   onAnimationCreate?: (animation: AnimationInterfaces.AnimationGroup) => void;
   onMaterialChange?: (material: MaterialInterfaces.MaterialState) => void;
@@ -286,7 +286,14 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
   enablePhysics = false,
   enableXR = false,
   enableSpatialAudio = false,
-  renderingQuality = 'high',
+  // No caller in this app currently passes this prop, which meant every device -
+  // a flagship desktop or a low-end phone struggling with a heavy uploaded model -
+  // always rendered at full native resolution regardless of GPU capability. 'auto' is
+  // now the default: an initial conservative scale is applied immediately below, then
+  // corrected to the actual device-appropriate quality once DeviceDetector's real
+  // capability check resolves (see the "Apply device-recommended quality" block further
+  // down). An explicit value here still always wins over auto-detection.
+  renderingQuality = 'auto',
   onMeshSelect,
   onAnimationCreate,
   onMaterialChange,
@@ -950,17 +957,35 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
         engine = new Engine(canvasRef.current!, true, { preserveDrawingBuffer: true });
         engineRef.current = engine;
 
+        // A lost WebGL context (the GPU driver reclaiming memory under pressure - common
+        // on phones/low-VRAM devices with a heavy model, or just too many tabs open) used
+        // to leave the canvas silently frozen/black with no indication anything had gone
+        // wrong and no way to recover short of the user guessing to reload. Babylon can't
+        // reliably resume a complex scene with custom pipelines/managers in place after
+        // this, so rather than attempt fragile in-place recovery, surface it plainly and
+        // let the user reload - the same recovery path already used for the stale-deploy
+        // chunk-load crash in BabylonErrorBoundary.
+        engine.onContextLostObservable.add(() => {
+          console.error('WebGL context lost');
+          const message = 'Graphics context lost - this usually means the device ran out of GPU memory (a large model, or too many tabs/apps open). Please reload.';
+          showToast.error(message);
+          setCanvasError(message);
+        });
+
         // Apply the renderingQuality setting as an actual hardware scaling level -
         // previously this prop was accepted but never used anywhere, so every device
-        // (including headsets with much less GPU power than a desktop) always rendered
-        // at full native resolution regardless of what quality was requested.
+        // (including headsets and phones with much less GPU power than a desktop)
+        // always rendered at full native resolution regardless of what quality was
+        // requested. 'auto' starts at this conservative mid-range default immediately
+        // (detection below is async) and gets corrected to the real device-appropriate
+        // level once DeviceDetector resolves.
         const qualityToScaling: Record<string, number> = {
           low: 1.75,    // render at ~57% resolution, upscaled - big GPU savings
           medium: 1.25, // ~80% resolution
           high: 1.0,    // native resolution
           ultra: 1.0    // native resolution (headroom reserved for post-processing/SSAO instead)
         };
-        engine.setHardwareScalingLevel(qualityToScaling[renderingQuality] ?? 1.0);
+        engine.setHardwareScalingLevel(renderingQuality === 'auto' ? qualityToScaling.medium : (qualityToScaling[renderingQuality] ?? 1.0));
 
         // Create scene
         scene = new Scene(engine);
@@ -1066,6 +1091,17 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
           capabilities = detectedCapabilities;
         }
         setDeviceCapabilities(capabilities);
+
+        // Now that the device's actual capability is known, correct the conservative
+        // guess applied at engine creation above to what this specific device can
+        // really handle - a weak/mobile GPU gets scaled down further (reducing the
+        // risk of running out of graphics memory on a heavy model), while a capable
+        // desktop gets scaled back up to native resolution instead of staying stuck at
+        // the mid-range default.
+        if (renderingQuality === 'auto' && !shouldAbort()) {
+          const recommended = deviceDetector.getRecommendedQuality();
+          engine.setHardwareScalingLevel(qualityToScaling[recommended] ?? qualityToScaling.medium);
+        }
 
         // Initialize FeatureManager
         const featureManager = new FeatureManager(capabilities);
