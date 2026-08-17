@@ -81,9 +81,22 @@ export class DeviceDetector {
 
   // Detect web platform capabilities
   private async detectWebCapabilities(): Promise<Omit<DeviceCapabilities, 'gpuMemory' | 'cpuCores' | 'ram' | 'networkType' | 'batteryLevel' | 'touchEnabled' | 'mobile'>> {
-    const canvas = document.createElement('canvas');
-    const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl') as WebGLRenderingContext;
-    const gl2 = canvas.getContext('webgl2') as WebGL2RenderingContext;
+    // Separate canvases for webgl/webgl2 - a single canvas only ever binds to the FIRST
+    // context type requested from it, so probing 'webgl2' on the same canvas after
+    // 'webgl' already succeeded silently returned null regardless of real support.
+    // Each probe context is also explicitly released via WEBGL_lose_context instead of
+    // left for garbage collection - this runs on every BabylonWorkspace mount, and with
+    // this app's back-and-forth navigation (upload -> preview -> back -> view -> back...)
+    // in a single tab, GC-timing-dependent contexts piled up fast enough to exhaust the
+    // browser's WebGL context limit, making later real workspace loads fail with
+    // "WebGL may not be supported" even on a fully capable browser.
+    const webglCanvas = document.createElement('canvas');
+    const gl = webglCanvas.getContext('webgl') || webglCanvas.getContext('experimental-webgl') as WebGLRenderingContext | null;
+    gl?.getExtension('WEBGL_lose_context')?.loseContext();
+
+    const webgl2Canvas = document.createElement('canvas');
+    const gl2 = webgl2Canvas.getContext('webgl2') as WebGL2RenderingContext | null;
+    gl2?.getExtension('WEBGL_lose_context')?.loseContext();
 
     // Check for WebGPU support
     const webgpu = !!(navigator as any).gpu;
@@ -141,6 +154,9 @@ export class DeviceDetector {
       gpuInfo.maxTextureSize = gl.getParameter(gl.MAX_TEXTURE_SIZE);
       gpuInfo.maxViewportDims = gl.getParameter(gl.MAX_VIEWPORT_DIMS);
       gpuInfo.extensions = gl.getSupportedExtensions() || [];
+      // Release this probe context now that its data has been read - see
+      // detectWebCapabilities() above for why this matters.
+      gl.getExtension('WEBGL_lose_context')?.loseContext();
     }
 
     // CPU information

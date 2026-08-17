@@ -1383,10 +1383,15 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
         // one of those (not just an actually-missing WebGL context) lands here too.
         // Surfacing the real message instead of a blanket "WebGL may not be supported"
         // is the difference between a debuggable report and a dead end.
+        //
+        // Deliberately NOT branching on Engine.isSupported() here: it caches its result
+        // in a static field the first time it's called (see @babylonjs/core's
+        // ThinEngine.isSupported), so a single transient failure - e.g. hitting the
+        // browser's WebGL context limit from repeated navigation in/out of this page -
+        // gets remembered as "unsupported" for the rest of the tab's life, permanently
+        // showing this generic message even once contexts free back up.
         const detail = error instanceof Error ? error.message : String(error);
-        const message = Engine.isSupported()
-          ? `Failed to initialize 3D workspace: ${detail}`
-          : 'Failed to initialize 3D workspace. WebGL may not be supported on this browser/device.';
+        const message = `Failed to initialize 3D workspace: ${detail}`;
         showToast.error(message);
         setCanvasError(message);
       }
