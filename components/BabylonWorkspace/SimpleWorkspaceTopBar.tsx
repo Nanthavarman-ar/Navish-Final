@@ -80,11 +80,11 @@ export function SimpleWorkspaceTopBar({
     <div className="flex flex-col shrink-0">
       <div className="flex items-center justify-between gap-2 py-2 px-4 bg-gray-900/95 text-white min-h-12 flex-wrap">
         {/* Left - Panel toggles + File ops */}
-        <div className="flex items-center gap-1 shrink-0">
+        <div className="flex items-center gap-1.5 shrink-0">
           {onToggleTopBar && (
             <button
               type="button"
-              className={`h-8 w-8 p-0 rounded-md inline-flex items-center justify-center transition-colors ${topBarVisible ? 'bg-gray-700 text-white' : 'text-gray-400 hover:bg-gray-700/50 hover:text-white'}`}
+              className={`h-10 w-10 p-0 rounded-md inline-flex items-center justify-center transition-colors ${topBarVisible ? 'bg-gray-700 text-white' : 'text-gray-400 hover:bg-gray-700/50 hover:text-white'}`}
               onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); onToggleTopBar(); }}
               onClick={(e) => { e.preventDefault(); e.stopPropagation(); onToggleTopBar(); }}
               title={topBarVisible ? 'Hide top bar' : 'Show top bar'}
@@ -96,7 +96,7 @@ export function SimpleWorkspaceTopBar({
           {onToggleLeftPanel && (
             <button
               type="button"
-              className={`h-8 w-8 p-0 rounded-md inline-flex items-center justify-center transition-colors ${leftPanelVisible ? 'bg-gray-700 text-white' : 'text-gray-400 hover:bg-gray-700/50 hover:text-white'}`}
+              className={`h-10 w-10 p-0 rounded-md inline-flex items-center justify-center transition-colors ${leftPanelVisible ? 'bg-gray-700 text-white' : 'text-gray-400 hover:bg-gray-700/50 hover:text-white'}`}
               onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); onToggleLeftPanel(); }}
               onClick={(e) => { e.preventDefault(); e.stopPropagation(); onToggleLeftPanel(); }}
               title={leftPanelVisible ? 'Hide left sidebar' : 'Show left sidebar'}
@@ -105,21 +105,21 @@ export function SimpleWorkspaceTopBar({
             </button>
           )}
           {onToggleRightPanel && (
-            <Button type="button" variant={rightPanelVisible ? 'default' : 'ghost'} size="sm" className="h-8 w-8 p-0" onClick={onToggleRightPanel} title={rightPanelVisible ? 'Hide right sidebar' : 'Show right sidebar'}>
+            <Button type="button" variant={rightPanelVisible ? 'default' : 'ghost'} size="sm" className="h-10 w-10 p-0" onClick={onToggleRightPanel} title={rightPanelVisible ? 'Hide right sidebar' : 'Show right sidebar'}>
               {rightPanelVisible ? <PanelRightClose className="w-4 h-4" /> : <PanelRightOpen className="w-4 h-4" />}
             </Button>
           )}
           <span className="w-px h-5 bg-gray-600 mx-1 shrink-0" />
-          <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={onImport || noop} title="Import">
+          <Button variant="ghost" size="sm" className="h-10 w-10 p-0" onClick={onImport || noop} title="Import">
             <Upload className="w-4 h-4" />
           </Button>
-          <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={onExport || noop} title="Export">
+          <Button variant="ghost" size="sm" className="h-10 w-10 p-0" onClick={onExport || noop} title="Export">
             <Download className="w-4 h-4" />
           </Button>
           {onScreenshot && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="sm" className="h-8 w-8 p-0" title="Screenshot">
+                <Button variant="ghost" size="sm" className="h-10 w-10 p-0" title="Screenshot">
                   <Camera className="w-4 h-4" />
                 </Button>
               </DropdownMenuTrigger>
@@ -132,18 +132,18 @@ export function SimpleWorkspaceTopBar({
         </div>
 
         {/* Center - Camera / view modes - compact */}
-        <div className="flex items-center gap-1 shrink-0">
+        <div className="flex items-center gap-1.5 shrink-0">
           {onViewModeChange ? (
             <ViewModeSelector mode={viewMode} onModeChange={handleViewMode} compact />
           ) : (
             <>
-              <Button variant={cameraMode === 'orbit' ? 'default' : 'ghost'} size="sm" className="h-8 w-8 p-0" onClick={() => onCameraModeChange('orbit')} title="Orbit">
+              <Button variant={cameraMode === 'orbit' ? 'default' : 'ghost'} size="sm" className="h-10 w-10 p-0" onClick={() => onCameraModeChange('orbit')} title="Orbit">
                 <Orbit className="w-4 h-4" />
               </Button>
-              <Button variant={cameraMode === 'fly' ? 'default' : 'ghost'} size="sm" className="h-8 w-8 p-0" onClick={() => onCameraModeChange('fly')} title="Fly">
+              <Button variant={cameraMode === 'fly' ? 'default' : 'ghost'} size="sm" className="h-10 w-10 p-0" onClick={() => onCameraModeChange('fly')} title="Fly">
                 <Move className="w-4 h-4" />
               </Button>
-              <Button variant={cameraMode === 'walk' ? 'default' : 'ghost'} size="sm" className="h-8 w-8 p-0" onClick={() => onCameraModeChange('walk')} title="Walk">
+              <Button variant={cameraMode === 'walk' ? 'default' : 'ghost'} size="sm" className="h-10 w-10 p-0" onClick={() => onCameraModeChange('walk')} title="Walk">
                 <Navigation className="w-4 h-4" />
               </Button>
             </>
@@ -151,7 +151,7 @@ export function SimpleWorkspaceTopBar({
           {onAutoZoom && (
             <>
               <span className="w-px h-5 bg-gray-600 mx-1 shrink-0" />
-              <Button variant="ghost" size="sm" className="h-8 w-8 p-0 shrink-0" onClick={onAutoZoom} title="Fit to view (Auto Zoom)">
+              <Button variant="ghost" size="sm" className="h-10 w-10 p-0 shrink-0" onClick={onAutoZoom} title="Fit to view (Auto Zoom)">
                 <Maximize2 className="w-4 h-4" />
               </Button>
             </>
@@ -162,10 +162,10 @@ export function SimpleWorkspaceTopBar({
         <div className="flex items-center gap-2 shrink-0 relative">
           <Badge variant="outline" className="text-xs">{activeFeatures}</Badge>
           <Badge variant="outline" className="text-xs">{fps} FPS</Badge>
-          <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => setShowSharePanel((v) => !v)} title="Share & Embed">
+          <Button variant="ghost" size="sm" className="h-10 w-10 p-0" onClick={() => setShowSharePanel((v) => !v)} title="Share & Embed">
             <Share2 className="w-4 h-4" />
           </Button>
-          <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={onHelp || noop} title="Keyboard shortcuts">
+          <Button variant="ghost" size="sm" className="h-10 w-10 p-0" onClick={onHelp || noop} title="Keyboard shortcuts">
             <HelpCircle className="w-4 h-4" />
           </Button>
           {showSharePanel && (

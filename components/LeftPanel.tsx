@@ -1,11 +1,11 @@
 import React, { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
+import { CardHeader, CardTitle } from './ui/card';
 import { Input } from './ui/input';
 import { Button } from './ui/button';
-import { Separator } from './ui/separator';
 import { Badge } from './ui/badge';
-import { Search, X, Filter, ChevronLeft, Grid3X3, List, Minimize2, CloudRain, Droplet, Wind, Volume, Sun, MapPin, Ruler, Palette, Settings, Layers, Eye, EyeOff } from 'lucide-react';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuCheckboxItem, DropdownMenuSeparator } from './ui/dropdown-menu';
+import { Search, X, ChevronLeft, MoreVertical, CloudRain, Droplet, Wind, Sun, MapPin, Ruler, Palette, Settings, Layers, Eye, EyeOff } from 'lucide-react';
 import FeatureButton from './FeatureButton';
 import CategoryToggles from './CategoryToggles';
 
@@ -71,15 +71,12 @@ const LeftPanel: React.FC<LeftPanelProps> = ({
   onToggleAllCategories,
   onSearchChange,
   onFeatureToggle,
-  onClose,
-  aiManagerRef,
-  bimManagerRef
+  onClose
 }) => {
   const [localSearchTerm, setLocalSearchTerm] = useState(searchTerm);
   const [showPerformance, setShowPerformance] = useState(false);
-  const [activeFilter, setActiveFilter] = useState<number | undefined>(undefined);
-  const [showHiddenPanel, setShowHiddenPanel] = useState(false);
   const [customizeMode, setCustomizeMode] = useState(false);
+  const [showHiddenPanel, setShowHiddenPanel] = useState(false);
   const [hiddenFeatureIds, setHiddenFeatureIds] = useState<Set<string>>(() => {
     try {
       const stored = window.localStorage.getItem('naviz:hiddenFeatureIds');
@@ -136,35 +133,32 @@ const LeftPanel: React.FC<LeftPanelProps> = ({
     return categoryMap;
   }, [featureCategories, activeFeatures]);
 
-  // Filter features based on search term and visible categories
-  const filteredFeatures = useMemo(() => {
-    const hasAnyDefined = Object.keys(categoryPanelVisible).length > 0;
-    const visibleCategories = hasAnyDefined
-      ? Object.keys(categoryPanelVisible).filter(cat => categoryPanelVisible[cat])
-      : Object.keys(featureCategories);
-    let features: Feature[] = [];
+  const isSearching = localSearchTerm.trim().length > 0;
 
-    visibleCategories.forEach(category => {
-      if (featureCategories[category]) {
-        features.push(...(featureCategories[category] as Feature[]));
+  // Each category's own tool list (hidden buttons removed, search filter applied) -
+  // rendered directly nested under that category's row below, instead of every visible
+  // category's features being dumped together into one big undifferentiated grid.
+  const categoryFeatureLists = useMemo(() => {
+    const result: Record<string, Feature[]> = {};
+    const searchLower = localSearchTerm.toLowerCase();
+    Object.entries(featureCategories).forEach(([categoryKey, features]) => {
+      let list = (features as Feature[]).filter(feature => !hiddenFeatureIds.has(feature.id));
+      if (isSearching) {
+        list = list.filter(feature =>
+          feature.name.toLowerCase().includes(searchLower) ||
+          feature.description.toLowerCase().includes(searchLower) ||
+          feature.category.toLowerCase().includes(searchLower)
+        );
       }
+      result[categoryKey] = list;
     });
+    return result;
+  }, [featureCategories, localSearchTerm, hiddenFeatureIds, isSearching]);
 
-    // Buttons the user has explicitly hidden from the list don't show here - see
-    // hiddenFeaturesList below for the "manage hidden" panel that can unhide them.
-    features = features.filter(feature => !hiddenFeatureIds.has(feature.id));
-
-    if (localSearchTerm.trim()) {
-      const searchLower = localSearchTerm.toLowerCase();
-      features = features.filter(feature =>
-        feature.name.toLowerCase().includes(searchLower) ||
-        feature.description.toLowerCase().includes(searchLower) ||
-        feature.category.toLowerCase().includes(searchLower)
-      );
-    }
-
-    return features;
-  }, [featureCategories, categoryPanelVisible, localSearchTerm, hiddenFeatureIds]);
+  const totalMatches = useMemo(
+    () => Object.values(categoryFeatureLists).reduce((sum, list) => sum + list.length, 0),
+    [categoryFeatureLists]
+  );
 
   // All features currently hidden by the user, across every category - shown in the
   // "manage hidden" panel so they can be unhidden again.
@@ -174,21 +168,8 @@ const LeftPanel: React.FC<LeftPanelProps> = ({
     return allFeatures.filter(feature => hiddenFeatureIds.has(feature.id));
   }, [featureCategories, hiddenFeatureIds]);
 
-  // Get layout variant based on currentLayoutMode
-  const getLayoutVariant = () => {
-    switch (currentLayoutMode) {
-      case 'compact':
-        return 'list';
-      case 'immersive':
-        return 'compact';
-      default:
-        return 'grid';
-    }
-  };
+  const variant = currentLayoutMode === 'immersive' ? 'compact' : 'grid';
 
-  const variant = getLayoutVariant();
-
-  // Handle search input change
   const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
     setLocalSearchTerm(value);
@@ -208,59 +189,64 @@ const LeftPanel: React.FC<LeftPanelProps> = ({
       <CardHeader className="flex-shrink-0 border-b border-gray-700 bg-gray-800/90 backdrop-blur-sm relative z-10">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-1">
-            {/* Aeromark: chevron to hide panel */}
             <button
               type="button"
               tabIndex={0}
               data-testid="features-hide-btn"
-              className="h-7 w-7 p-0 rounded-md border border-gray-600 bg-transparent text-gray-400 hover:text-white hover:bg-gray-700 inline-flex items-center justify-center shrink-0 transition-colors cursor-pointer select-none"
-              onMouseDown={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                onClose();
-              }}
-              onClick={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                onClose();
-              }}
+              className="h-9 w-9 p-0 rounded-md border border-gray-600 bg-transparent text-gray-400 hover:text-white hover:bg-gray-700 inline-flex items-center justify-center shrink-0 transition-colors cursor-pointer select-none"
+              onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); onClose(); }}
+              onClick={(e) => { e.preventDefault(); e.stopPropagation(); onClose(); }}
               title="Hide Features panel"
               aria-label="Hide Features panel"
             >
-              <ChevronLeft className="w-4 h-4 pointer-events-none" aria-hidden />
+              <ChevronLeft className="w-5 h-5 pointer-events-none" aria-hidden />
             </button>
-            <CardTitle className="text-lg font-semibold">Features</CardTitle>
+            <CardTitle className="text-lg font-semibold">Tools</CardTitle>
           </div>
-          <div className="flex items-center space-x-2">
-            <Button
-              type="button"
-              size="sm"
-              variant="ghost"
-              onClick={() => setShowPerformance(!showPerformance)}
-              className="text-gray-400 hover:text-white"
-              title="Toggle Performance Indicators"
-            >
-              <Filter className="w-4 h-4" />
-            </Button>
+          <div className="flex items-center gap-1">
+            {/* Everything that isn't "find and click a tool" (performance numbers,
+                customize/hide mode, viewing what's hidden) lives in one menu instead of
+                three separate always-visible icon buttons. */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  type="button"
+                  className="h-9 w-9 p-0 rounded-md inline-flex items-center justify-center text-gray-400 hover:text-white hover:bg-gray-700/50 transition-colors"
+                  title="Panel options"
+                  aria-label="Panel options"
+                >
+                  <MoreVertical className="w-4 h-4" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-56">
+                <DropdownMenuCheckboxItem checked={showPerformance} onCheckedChange={setShowPerformance}>
+                  Show performance impact
+                </DropdownMenuCheckboxItem>
+                <DropdownMenuCheckboxItem checked={customizeMode} onCheckedChange={setCustomizeMode}>
+                  Customize (hide buttons)
+                </DropdownMenuCheckboxItem>
+                {hiddenFeaturesList.length > 0 && (
+                  <>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem onClick={() => setShowHiddenPanel(v => !v)}>
+                      <EyeOff className="w-4 h-4 mr-2" />
+                      {showHiddenPanel ? 'Hide' : 'Show'} hidden buttons ({hiddenFeaturesList.length})
+                    </DropdownMenuItem>
+                  </>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
             <button
               type="button"
               tabIndex={0}
               data-testid="features-close-btn"
-              className="h-8 w-8 p-0 rounded-md inline-flex items-center justify-center text-gray-400 hover:text-white hover:bg-gray-700/50 transition-colors cursor-pointer select-none"
-              onMouseDown={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                onClose();
-              }}
-              onClick={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                onClose();
-              }}
+              className="h-9 w-9 p-0 rounded-md inline-flex items-center justify-center text-gray-400 hover:text-white hover:bg-gray-700/50 transition-colors cursor-pointer select-none"
+              onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); onClose(); }}
+              onClick={(e) => { e.preventDefault(); e.stopPropagation(); onClose(); }}
               title="Close panel"
               aria-label="Close Features panel"
             >
-              <X className="w-4 h-4 pointer-events-none" aria-hidden />
+              <X className="w-5 h-5 pointer-events-none" aria-hidden />
             </button>
           </div>
         </div>
@@ -270,47 +256,47 @@ const LeftPanel: React.FC<LeftPanelProps> = ({
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
           <Input
             type="text"
-            placeholder="Search features..."
+            placeholder="Search tools..."
             value={localSearchTerm}
             onChange={handleSearchChange}
-            className="pl-10 bg-gray-700 border-gray-600 text-white placeholder-gray-400"
+            className="pl-10 h-11 bg-gray-700 border-gray-600 text-white placeholder-gray-400"
           />
         </div>
 
-        {/* Core Tools - Minimap, Measure, Material, Inspector, Scene, Lighting */}
+        {/* Core Tools - the ones almost everyone uses, always one tap away */}
         <div className="mt-3 pt-3 border-t border-gray-700">
           <div className="text-xs font-medium text-gray-400 mb-2">Core Tools</div>
-          <div className="flex flex-wrap gap-2">
+          <div className="grid grid-cols-3 gap-2">
             {CORE_TOOLS.map(({ id, name, icon: Icon }) => (
               <Button
                 key={id}
                 size="sm"
                 variant={activeFeatures.has(id) ? 'default' : 'outline'}
-                className="h-8 px-2 text-xs"
+                className="h-11 px-2 text-xs flex-col gap-1"
                 onClick={() => onFeatureToggle(id, !activeFeatures.has(id))}
                 title={name}
               >
-                <Icon className="w-3.5 h-3.5 mr-1" />
+                <Icon className="w-4 h-4" />
                 {name}
               </Button>
             ))}
           </div>
         </div>
 
-        {/* Simulations - Separate buttons for each simulation */}
+        {/* Simulations */}
         <div className="mt-3 pt-3 border-t border-gray-700">
           <div className="text-xs font-medium text-gray-400 mb-2">Simulations</div>
-          <div className="flex flex-wrap gap-2">
+          <div className="grid grid-cols-3 gap-2">
             {SIMULATION_FEATURES.map(({ id, name, icon: Icon }) => (
               <Button
                 key={id}
                 size="sm"
                 variant={activeFeatures.has(id) ? 'default' : 'outline'}
-                className="h-8 px-2 text-xs"
+                className="h-11 px-2 text-xs flex-col gap-1"
                 onClick={() => onFeatureToggle(id, !activeFeatures.has(id))}
                 title={`${name} Simulation`}
               >
-                <Icon className="w-3.5 h-3.5 mr-1" />
+                <Icon className="w-4 h-4" />
                 {name}
               </Button>
             ))}
@@ -319,167 +305,136 @@ const LeftPanel: React.FC<LeftPanelProps> = ({
       </CardHeader>
 
       {/* Content - relative z-10 so it stacks above the absolutely-positioned ambient-glow layer */}
-      <div className="flex-1 min-h-0 overflow-y-auto relative z-10">
-        {/* Category Toggles */}
-        <div className="p-4 border-b border-gray-700">
-          <CategoryToggles
-            categories={categories}
-            visibleCategories={categoryPanelVisible}
-            onCategoryToggle={onCategoryToggle}
-            onToggleAll={(visible) => {
-              if (onToggleAllCategories) {
-                onToggleAllCategories(visible);
-              } else {
-                Object.keys(categories).forEach(cat => {
-                  if (categoryPanelVisible[cat] !== visible) onCategoryToggle(cat);
-                });
-              }
-            }}
-            onFilterByPriority={(priority) => {
-              setActiveFilter(priority === 0 ? undefined : priority);
-            }}
-            layout={currentLayoutMode === 'standard' ? 'expanded' : 'compact'}
-            activeFilter={activeFilter}
-          />
-        </div>
+      <div className="flex-1 min-h-0 overflow-y-auto relative z-10 p-4 space-y-4">
+        {customizeMode && (
+          <div className="px-3 py-2 bg-blue-500/10 border border-blue-500/30 rounded-lg text-xs text-blue-200">
+            Tap the ✕ on any button below to hide it from this list. Bring hidden buttons back from the ⋮ menu above.
+          </div>
+        )}
 
-        {/* Features Grid/List */}
-        <div className="p-4">
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="text-sm font-medium text-gray-300">
-              Features ({filteredFeatures.length})
-            </h3>
-            <div className="flex items-center space-x-1">
-              <Badge variant="outline" className="text-xs">
-                {activeFeatures.size} active
-              </Badge>
-              <Button
-                size="sm"
-                variant={customizeMode ? 'default' : 'ghost'}
-                className="h-6 px-2 text-xs"
-                onClick={() => setCustomizeMode(v => !v)}
-                title="Show or hide buttons in this list"
-                aria-pressed={customizeMode}
-              >
-                <Settings className="w-3 h-3 mr-1" />
-                Customize
-              </Button>
-              {hiddenFeaturesList.length > 0 && (
-                <Button
-                  size="sm"
-                  variant={showHiddenPanel ? 'default' : 'ghost'}
-                  className="h-6 px-2 text-xs"
-                  onClick={() => setShowHiddenPanel(v => !v)}
-                  title="Show buttons you've hidden from this list"
+        {showHiddenPanel && hiddenFeaturesList.length > 0 && (
+          <div className="p-3 bg-gray-800/60 border border-gray-700 rounded-lg space-y-2">
+            <div className="flex items-center justify-between mb-1">
+              <div className="text-xs text-gray-400">Hidden buttons - tap to bring back:</div>
+              {hiddenFeaturesList.length > 1 && (
+                <button
+                  type="button"
+                  className="text-xs text-blue-400 hover:text-blue-300 underline"
+                  onClick={() => hiddenFeaturesList.forEach((feature) => unhideFeature(feature.id))}
                 >
-                  <EyeOff className="w-3 h-3 mr-1" />
-                  Hidden ({hiddenFeaturesList.length})
-                </Button>
+                  Show all
+                </button>
               )}
             </div>
+            <div className="flex flex-wrap gap-2">
+              {hiddenFeaturesList.map((feature) => (
+                <Button
+                  key={feature.id}
+                  size="sm"
+                  variant="outline"
+                  className="h-9 px-2 text-xs gap-1"
+                  onClick={() => unhideFeature(feature.id)}
+                  title={`Unhide ${feature.name}`}
+                >
+                  <Eye className="w-3 h-3" />
+                  {feature.name}
+                </Button>
+              ))}
+            </div>
           </div>
+        )}
 
-          {customizeMode && (
-            <div className="mb-3 px-3 py-2 bg-blue-500/10 border border-blue-500/30 rounded-lg text-xs text-blue-200">
-              Tap the ✕ on any button below to hide it from this list. Hidden buttons can be brought back anytime from "Hidden".
-            </div>
-          )}
+        {/* Category accordion - each category's tools appear directly under its own
+            row when expanded, instead of every open category's tools being merged into
+            one big undifferentiated grid elsewhere on the page. While searching, any
+            category with a match auto-expands (and categories with none disappear) so
+            results are immediately visible without also needing to tap each one open. */}
+        <CategoryToggles
+          categories={categories}
+          visibleCategories={categoryPanelVisible}
+          onCategoryToggle={onCategoryToggle}
+          onToggleAll={(visible) => {
+            if (onToggleAllCategories) {
+              onToggleAllCategories(visible);
+            } else {
+              Object.keys(categories).forEach(cat => {
+                if (categoryPanelVisible[cat] !== visible) onCategoryToggle(cat);
+              });
+            }
+          }}
+        />
 
-          {showHiddenPanel && hiddenFeaturesList.length > 0 && (
-            <div className="mb-4 p-3 bg-gray-800/60 border border-gray-700 rounded-lg space-y-2">
-              <div className="flex items-center justify-between mb-1">
-                <div className="text-xs text-gray-400">Hidden buttons - click to bring back:</div>
-                {hiddenFeaturesList.length > 1 && (
-                  <button
-                    type="button"
-                    className="text-xs text-blue-400 hover:text-blue-300 underline"
-                    onClick={() => hiddenFeaturesList.forEach((feature) => unhideFeature(feature.id))}
-                  >
-                    Show all
-                  </button>
-                )}
-              </div>
-              <div className="flex flex-wrap gap-2">
-                {hiddenFeaturesList.map((feature) => (
-                  <Button
-                    key={feature.id}
-                    size="sm"
-                    variant="outline"
-                    className="h-7 px-2 text-xs gap-1"
-                    onClick={() => unhideFeature(feature.id)}
-                    title={`Unhide ${feature.name}`}
-                  >
-                    <Eye className="w-3 h-3" />
-                    {feature.name}
-                  </Button>
-                ))}
-              </div>
-            </div>
-          )}
+        <div className="space-y-3">
+          {Object.entries(categories).map(([key, category]) => {
+            const list = categoryFeatureLists[key] || [];
+            const expanded = isSearching ? list.length > 0 : !!categoryPanelVisible[key];
+            if (isSearching && list.length === 0) return null;
+            if (!expanded) return null;
 
-          <AnimatePresence>
-            {filteredFeatures.length > 0 ? (
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                className={
-                  variant === 'grid'
-                    ? 'grid grid-cols-2 gap-3'
-                    : variant === 'list'
-                    ? 'space-y-2'
-                    : 'grid grid-cols-1 gap-2'
-                }
-              >
-                {filteredFeatures.map((feature) => (
-                  <FeatureButton
-                    key={feature.id}
-                    feature={feature}
-                    active={activeFeatures.has(feature.id)}
-                    showPerformance={showPerformance}
-                    onToggle={(id, enabled) => onFeatureToggle(id, enabled)}
-                    onHide={() => hideFeature(feature.id)}
-                    forceShowHideControl={customizeMode}
-                    variant={variant}
-                    size={variant === 'compact' ? 'sm' : 'default'}
-                  />
-                ))}
-              </motion.div>
-            ) : (
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                className="text-center py-8 text-gray-400"
-              >
-                <div className="text-4xl mb-2">🔍</div>
-                <p>No features found</p>
-                <p className="text-sm">Try adjusting your search or category filters</p>
-                {hiddenFeaturesList.length > 0 && (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="mt-3 h-7 text-xs"
-                    onClick={() => setShowHiddenPanel(true)}
-                  >
-                    <Eye className="w-3 h-3 mr-1" />
-                    {hiddenFeaturesList.length} hidden - click to view
-                  </Button>
-                )}
-              </motion.div>
-            )}
-          </AnimatePresence>
+            return (
+              <AnimatePresence key={key}>
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  exit={{ opacity: 0, height: 0 }}
+                  className="overflow-hidden"
+                >
+                  <div className="pl-2 border-l-2 border-gray-700">
+                    <div className="flex items-center justify-between mb-2 px-2">
+                      <span className="text-xs font-medium text-gray-400">{category.name}</span>
+                      <Badge variant="outline" className="text-xs">{list.length}</Badge>
+                    </div>
+                    {list.length > 0 ? (
+                      <div className={variant === 'grid' ? 'grid grid-cols-2 gap-2 px-2' : 'space-y-2 px-2'}>
+                        {list.map((feature) => (
+                          <FeatureButton
+                            key={feature.id}
+                            feature={feature}
+                            active={activeFeatures.has(feature.id)}
+                            showPerformance={showPerformance}
+                            onToggle={(id, enabled) => onFeatureToggle(id, enabled)}
+                            onHide={() => hideFeature(feature.id)}
+                            forceShowHideControl={customizeMode}
+                            variant={variant}
+                            size="default"
+                          />
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-xs text-gray-500 px-2 pb-2">Nothing in this category yet.</p>
+                    )}
+                  </div>
+                </motion.div>
+              </AnimatePresence>
+            );
+          })}
         </div>
+
+        {isSearching && totalMatches === 0 && (
+          <div className="text-center py-8 text-gray-400">
+            <div className="text-4xl mb-2">🔍</div>
+            <p>No tools found</p>
+            <p className="text-sm">Try a different search term</p>
+            {hiddenFeaturesList.length > 0 && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="mt-3 h-9 text-xs"
+                onClick={() => setShowHiddenPanel(true)}
+              >
+                <Eye className="w-3 h-3 mr-1" />
+                {hiddenFeaturesList.length} hidden - tap to view
+              </Button>
+            )}
+          </div>
+        )}
       </div>
     </motion.div>
   );
 };
 
 // Helper functions for category data. Keyed by the real category names from
-// config/featureCategories.tsx - these previously used keys from an earlier version of the
-// app (navigation/simulation/ai/analysis/collaboration/immersive/tools) that don't match any
-// current category name, so every category silently fell back to the same gray color, the
-// same P3 priority, and no description - the whole panel read as flat/monotone with the P1-3
-// filter tabs unable to differentiate anything (everything was "P3").
+// config/featureCategories.tsx.
 const getCategoryColor = (category: string): string => {
   const colors: Record<string, string> = {
     'core workspace': 'blue',
