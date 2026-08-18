@@ -193,6 +193,19 @@ function isGlassMesh(mesh: AbstractMesh): boolean {
   return GLASS_NAME_PATTERN.test(`${mesh.name || ''} ${mesh.material?.name || ''}`);
 }
 
+// The placeholder ground+box (see the scene-init effect below) get created whenever
+// selectedModel is still null AT THE EXACT MOMENT the scene first initializes - which
+// is the common case, since restoring the last-opened model is an async fetch that
+// hasn't resolved yet by then. Nothing previously removed them once a real model
+// actually loaded moments later, so the placeholder ground sat directly underneath
+// the real model's own ground/road geometry - two coincident surfaces fighting over
+// which one the depth buffer draws on top, which is exactly what shows up as visible
+// flicker/ghosting on-screen. Call this once a real model's meshes are in the scene.
+function removePlaceholderGeometry(scene: Scene): void {
+  scene.getMeshByName('ground')?.dispose();
+  scene.getMeshByName('defaultBox')?.dispose();
+}
+
 // Uploaded .glb/.gltf models already come in as real PBRMaterial (glTF's native format),
 // which is correct - but most quick/test exports never actually author proper glass or
 // mirror surfaces (alpha, metallic, roughness are usually left at generic defaults), so
@@ -553,6 +566,7 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
           const newMeshes = scene.meshes.filter((m) => !meshesBefore.has(m));
           loadedModelMeshesRef.current = newMeshes;
           enhanceRealisticMaterials(newMeshes);
+          removePlaceholderGeometry(scene);
           // Some exported CAD/BIM files mark certain nodes hidden (e.g. glTF's
           // KHR_node_visibility, from an alternate design option or hidden layer in the
           // source tool) - those load with isVisible=false and silently don't render,
@@ -808,6 +822,7 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
           const newMeshes = sceneRef.current!.meshes.filter((m) => !meshesBefore.has(m));
           newMeshes.forEach((m) => { m.isVisible = true; });
           enhanceRealisticMaterials(newMeshes);
+          removePlaceholderGeometry(sceneRef.current!);
           showToast.dismiss(toastId);
           showToast.success(`Model loaded: ${file.name}`);
           const s = sceneRef.current;
