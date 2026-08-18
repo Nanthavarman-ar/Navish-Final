@@ -28,11 +28,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const setSelectedModel = (model: any) => {
     setSelectedModelState(model);
+    // Only ever SET this, never clear it here. BabylonWorkspace calls
+    // setSelectedModel(null) right after a model finishes loading (it's also the
+    // trigger for the load effect, so it resets itself once the load is handled) -
+    // that used to also wipe this localStorage entry via the same setter, erasing the
+    // "remember the last model" memory moments after the model had actually loaded, so
+    // any refresh after that point had nothing to restore. There's no real "forget my
+    // last model" action anywhere in the app - selecting a *different* model already
+    // overwrites this key naturally, which is the only case that should ever change it.
     try {
       if (model?.id) {
         localStorage.setItem(LAST_MODEL_ID_KEY, String(model.id));
-      } else {
-        localStorage.removeItem(LAST_MODEL_ID_KEY);
       }
     } catch {
       // localStorage unavailable (private browsing, etc) - selectedModel still works in-memory
