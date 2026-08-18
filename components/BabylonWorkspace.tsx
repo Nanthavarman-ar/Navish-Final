@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import './BabylonWorkspace.css';
 
 // Core Babylon.js imports only (minimal for initial load)
-import { Engine, Scene, ArcRotateCamera, FreeCamera, UniversalCamera, HemisphericLight, DirectionalLight, Vector3, Vector2, Quaternion, Color3, Color4, Mesh, AbstractMesh, StandardMaterial, DefaultRenderingPipeline, SSAORenderingPipeline, SSRRenderingPipeline, HighlightLayer, PBRMaterial, Material, ImageProcessingConfiguration, PointerInfo, PickingInfo, Camera, PointerEventTypes, ParticleSystem, MeshBuilder, Texture, GizmoManager, ShadowGenerator, Ray } from '@babylonjs/core';
+import { Engine, Scene, ArcRotateCamera, FreeCamera, UniversalCamera, HemisphericLight, DirectionalLight, Vector3, Vector2, Quaternion, Color3, Color4, Mesh, AbstractMesh, StandardMaterial, DefaultRenderingPipeline, SSAORenderingPipeline, HighlightLayer, PBRMaterial, Material, ImageProcessingConfiguration, PointerInfo, PickingInfo, Camera, PointerEventTypes, ParticleSystem, MeshBuilder, Texture, GizmoManager, ShadowGenerator, Ray } from '@babylonjs/core';
 import { WaterMaterial } from '@babylonjs/materials/water';
 import { PerlinNoiseProceduralTexture } from '@babylonjs/procedural-textures';
 
@@ -184,6 +184,15 @@ function createSnowflakeTexture(scene: Scene): Texture {
   return tex;
 }
 
+// Shared with the shadow-caster registration below: a window/glass pane shouldn't cast
+// a fully opaque shadow the way a solid wall does, or direct sunlight can never reach
+// an interior at all regardless of how transparent the glass material itself looks.
+const GLASS_NAME_PATTERN = /glass|window|glazing|pane/i;
+
+function isGlassMesh(mesh: AbstractMesh): boolean {
+  return GLASS_NAME_PATTERN.test(`${mesh.name || ''} ${mesh.material?.name || ''}`);
+}
+
 // Uploaded .glb/.gltf models already come in as real PBRMaterial (glTF's native format),
 // which is correct - but most quick/test exports never actually author proper glass or
 // mirror surfaces (alpha, metallic, roughness are usually left at generic defaults), so
@@ -194,7 +203,6 @@ function createSnowflakeTexture(scene: Scene): Texture {
 // look automatically, without requiring the user to find and fix each surface by hand
 // in the Material Editor. Materials that don't match any keyword are left untouched.
 function enhanceRealisticMaterials(meshes: AbstractMesh[]): void {
-  const glassPattern = /glass|window|glazing|pane/i;
   const mirrorPattern = /mirror|chrome|polished[_\s-]?(metal|steel)/i;
   const seen = new Set<Material>();
 
@@ -203,7 +211,7 @@ function enhanceRealisticMaterials(meshes: AbstractMesh[]): void {
     if (!material || !(material instanceof PBRMaterial) || seen.has(material)) return;
     const nameHint = `${mesh.name || ''} ${material.name || ''}`;
 
-    if (glassPattern.test(nameHint)) {
+    if (GLASS_NAME_PATTERN.test(nameHint)) {
       seen.add(material);
       material.metallic = 0;
       material.roughness = 0.05;
@@ -563,7 +571,15 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
           const shadowGenerator = shadowGeneratorRef.current;
           if (shadowGenerator) {
             newMeshes.forEach((m) => {
-              shadowGenerator.addShadowCaster(m);
+              // A window/glass pane cast a fully opaque shadow like a solid wall would,
+              // even after enhanceRealisticMaterials makes it look transparent - shadow
+              // maps are depth-only and don't account for material alpha, so sunlight
+              // could never actually reach an interior through a mesh still registered
+              // here. Excluding glass from casting (it still receives shadows normally)
+              // is what actually lets "sunlight ulla" (sunlight inside) happen.
+              if (!isGlassMesh(m)) {
+                shadowGenerator.addShadowCaster(m);
+              }
               m.receiveShadows = true;
             });
           }
@@ -827,7 +843,6 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
   const cameraRef = useRef<ArcRotateCamera | null>(null);
   const pipelineRef = useRef<DefaultRenderingPipeline | null>(null);
   const ssaoPipelineRef = useRef<SSAORenderingPipeline | null>(null);
-  const ssrPipelineRef = useRef<SSRRenderingPipeline | null>(null);
   const highlightLayerRef = useRef<HighlightLayer | null>(null);
   // Shadow generator for the scene's "sun" light - lets Sun Study actually show
   // moving shadows instead of only a faint brightness/color shift.
@@ -1004,9 +1019,14 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
         // requested. 'auto' starts at this conservative mid-range default immediately
         // (detection below is async) and gets corrected to the real device-appropriate
         // level once DeviceDetector resolves.
+        // Pulled back from more aggressive downscaling (was low:1.75/medium:1.25) after
+        // it made model edges/corners visibly soft on real devices - the actual WebGL
+        // crash risk this was originally guarding against was the context-leak bug in
+        // DeviceDetector (fixed separately), not resolution itself, so there's room to
+        // keep more native sharpness here.
         const qualityToScaling: Record<string, number> = {
-          low: 1.75,    // render at ~57% resolution, upscaled - big GPU savings
-          medium: 1.25, // ~80% resolution
+          low: 1.3,     // render at ~77% resolution, upscaled
+          medium: 1.1,  // ~91% resolution
           high: 1.0,    // native resolution
           ultra: 1.0    // native resolution (headroom reserved for post-processing/SSAO instead)
         };
@@ -1029,6 +1049,12 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
         // upload/sky-dome features still take over and replace this when used.
         try {
           scene.createDefaultEnvironment({ createSkybox: false, createGround: false });
+          // This IBL texture contributes its own diffuse/specular lighting to every PBR
+          // material on top of the hemi+directional lights below - at full strength that
+          // stacked with them and washed highlights out toward white. Dimmed to a level
+          // that still gives reflections something believable to show without
+          // overpowering the scene's actual light sources.
+          scene.environmentIntensity = 0.6;
         } catch (envError) {
           console.warn('Default environment texture unavailable (offline/CDN blocked?) - PBR reflections will be flat:', envError);
         }
@@ -1085,7 +1111,7 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
           // materials and lighting.
           pipeline.imageProcessing.toneMappingEnabled = true;
           pipeline.imageProcessing.toneMappingType = ImageProcessingConfiguration.TONEMAPPING_ACES;
-          pipeline.imageProcessing.contrast = 1.1;
+          pipeline.imageProcessing.contrast = 1.0;
           pipeline.bloomEnabled = enableBloom;
           if (enableBloom) {
             pipeline.bloomThreshold = 0.8;
@@ -1156,31 +1182,12 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
         // sampling cost per pixel.
         Texture.DEFAULT_ANISOTROPIC_FILTERING_LEVEL = (resolvedQuality === 'low' || resolvedQuality === 'medium') ? 4 : 8;
 
-        // Real-time screen-space reflections - lets glass/mirror/polished-metal
-        // surfaces actually reflect nearby geometry (not just the static environment
-        // texture above), which is a big part of what makes Enscape/D5/Lumion-style
-        // viewports read as "real-time rendered" rather than flat. This is real extra
-        // per-pixel ray-marching cost, so it's only enabled on devices capable enough
-        // to afford it - never forced on for a phone that's already struggling to hold
-        // a stable frame rate with a heavy model loaded.
-        if ((resolvedQuality === 'high' || resolvedQuality === 'ultra') && !shouldAbort()) {
-          try {
-            const ssr = new SSRRenderingPipeline('ssr', scene, [camera]);
-            if (ssr.isSupported) {
-              ssr.thickness = 0.1;
-              ssr.selfCollisionNumSkip = 2;
-              ssr.blurDispersionStrength = 0.03;
-              ssr.roughnessFactor = 0.2;
-              ssr.reflectivityThreshold = 0.9;
-              ssr.step = 8;
-              ssrPipelineRef.current = ssr;
-            } else {
-              ssr.dispose();
-            }
-          } catch (ssrError) {
-            console.warn('Screen-space reflections unavailable on this device:', ssrError);
-          }
-        }
+        // Screen-space reflections were tried here and pulled back out - SSR is
+        // inherently prone to flickering under camera movement (the ray-marched
+        // intersection shifts frame to frame near geometry edges/gaps), and that
+        // showed up as visible flicker/"blinking" on the model with no way to tune it
+        // further without live device testing. Reflections now come only from the
+        // environment texture above, which is stable even if less dynamic.
 
         // Initialize FeatureManager
         const featureManager = new FeatureManager(capabilities);
@@ -1627,7 +1634,7 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
       const pipeline = new DefaultRenderingPipeline("defaultPipeline", true, scene, [camera]);
       pipeline.imageProcessing.toneMappingEnabled = true;
       pipeline.imageProcessing.toneMappingType = ImageProcessingConfiguration.TONEMAPPING_ACES;
-      pipeline.imageProcessing.contrast = 1.1;
+      pipeline.imageProcessing.contrast = 1.0;
       pipelineRef.current = pipeline;
     } else if (!enablePostProcessing && pipelineRef.current) {
       pipelineRef.current.dispose();
