@@ -667,6 +667,15 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
     return () => window.removeEventListener('naviz:showTopBar', handler);
   }, [updateState]);
 
+  // AppLayout.tsx's real voice assistant panel dispatches this when the user closes it
+  // via its own X button - without this, the Voice Assistant tool-panel button would
+  // keep showing "on" after the actual panel it opened had already been closed.
+  useEffect(() => {
+    const handler = () => disableFeature('showVoiceAssistant');
+    window.addEventListener('naviz:voiceAssistantClosed', handler);
+    return () => window.removeEventListener('naviz:voiceAssistantClosed', handler);
+  }, [disableFeature]);
+
   // Define workspaceState object to group relevant state variables for usage in render functions
   const workspaceState = {
     topBarVisible,
@@ -2437,6 +2446,13 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
           try {
             aiManagerRef.current.startVoiceListening();
             showToast.success('Voice assistant started');
+            // This toggle used to only start a silent background listener with no
+            // visible UI at all - AppLayout.tsx separately owns a fully-featured voice
+            // panel (live transcript, command history, mic status) behind its own
+            // independent "AI Voice" button, completely disconnected from this one.
+            // Opening that real panel here too is what actually gives this button
+            // something to show the user, instead of a toast and nothing else.
+            window.dispatchEvent(new CustomEvent('naviz:openVoiceAssistant'));
           } catch (error) {
             console.error('Error starting voice listening:', error);
             showToast.error('Failed to start voice assistant');
@@ -2792,6 +2808,7 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
         // AI Features
         if (id === 'showVoiceAssistant' && aiManagerRef.current) {
           aiManagerRef.current.stopVoiceListening();
+          window.dispatchEvent(new CustomEvent('naviz:closeVoiceAssistant'));
         }
         if (id === 'showAICoDesigner' && aiManagerRef.current) {
           aiManagerRef.current.disableGestureDetection();
@@ -2955,7 +2972,12 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
       if (key === 'm') { e.preventDefault(); handleFeatureToggle('showMaterialEditor', !featureStates.showMaterialEditor); }
       if (key === 'a') { e.preventDefault(); handleFeatureToggle('showAIAdvisor', !featureStates.showAIAdvisor); }
       if (key === 'u') { e.preventDefault(); handleFeatureToggle('showAutoFurnish', !featureStates.showAutoFurnish); }
-      if (key === 'v') { e.preventDefault(); handleFeatureToggle('showAICoDesigner', !featureStates.showAICoDesigner); }
+      // 'v' toggles Voice Assistant per its own advertised hotkey (config/
+      // featureCategories.tsx, shown on the button itself) - this used to toggle
+      // showAICoDesigner instead, a feature with no category entry/button of its own,
+      // so pressing V silently did the wrong thing while Voice Assistant's own hotkey
+      // did nothing.
+      if (key === 'v') { e.preventDefault(); handleFeatureToggle('showVoiceAssistant', !featureStates.showVoiceAssistant); }
       if (key === 'x') { e.preventDefault(); handleFeatureToggle('showVR', !featureStates.showVR); }
       // Transform tool shortcuts (Blender/Maya convention): G = move/grab, R = rotate, S = scale
       if (key === 'g' && !e.ctrlKey && !e.metaKey) { e.preventDefault(); setTransformMode((m) => m === 'position' ? 'none' : 'position'); }

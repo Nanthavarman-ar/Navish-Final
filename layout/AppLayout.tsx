@@ -206,6 +206,22 @@ export default function AppLayout() {
   // meaning it looked like there was no dedicated button to open it at all. Every other
   // panel in the app requires a deliberate click to open; this now matches that.
   const [showAIVoiceAssistant, setShowAIVoiceAssistant] = useState(false);
+
+  // The workspace's own "Voice Assistant" tool-panel button (BabylonWorkspace.tsx,
+  // hotkey V) lives in a completely separate state system from this panel - it used to
+  // only start a silent background listener with no way to actually see/use it.
+  // Bridging the two via events so that toggle opens this real panel instead.
+  useEffect(() => {
+    const openHandler = () => setShowAIVoiceAssistant(true);
+    const closeHandler = () => setShowAIVoiceAssistant(false);
+    window.addEventListener('naviz:openVoiceAssistant', openHandler);
+    window.addEventListener('naviz:closeVoiceAssistant', closeHandler);
+    return () => {
+      window.removeEventListener('naviz:openVoiceAssistant', openHandler);
+      window.removeEventListener('naviz:closeVoiceAssistant', closeHandler);
+    };
+  }, []);
+
   const particles = useMemo(
     () =>
       Array.from({ length: 50 }).map(() => ({
@@ -371,7 +387,12 @@ export default function AppLayout() {
               <AIVoiceAssistant
                 scene={sceneRef.current}
                 isActive={showAIVoiceAssistant}
-                onClose={() => setShowAIVoiceAssistant(false)}
+                onClose={() => {
+                  setShowAIVoiceAssistant(false);
+                  // Keeps the workspace's own "Voice Assistant" tool-panel button in
+                  // sync so it doesn't keep showing "on" after this panel is closed.
+                  window.dispatchEvent(new CustomEvent('naviz:voiceAssistantClosed'));
+                }}
               />
             </Suspense>
             {!showAIVoiceAssistant && (
