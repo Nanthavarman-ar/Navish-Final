@@ -111,16 +111,27 @@ export class XRManager {
   }
 
   // Find meshes in the scene that can be teleported/walked onto. Matches common
-  // floor/ground naming, and falls back to all pickable meshes so teleportation always
-  // has *something* to target rather than silently doing nothing (the previous bug).
+  // floor/ground naming, and falls back to a shape heuristic so teleportation always
+  // has *something* to target even if the loaded model doesn't explicitly name a
+  // floor/ground mesh.
   private getFloorMeshes(): AbstractMesh[] {
     const named = this.scene.meshes.filter(
       (m) => m.isEnabled() && m.isPickable && /ground|floor|terrain|site|plot|land/i.test(m.name || '')
     );
     if (named.length > 0) return named;
-    // Fallback: any pickable, visible mesh can be a teleport target so movement still
-    // works even if the loaded model doesn't have an explicitly-named floor/ground mesh.
-    return this.scene.meshes.filter((m) => m.isEnabled() && m.isPickable && m.isVisible);
+    // Fallback for unnamed floors: previously treated EVERY pickable/visible mesh as a
+    // valid teleport target - walls, roofs, furniture, anything - so the teleport
+    // reticle could land on a vertical wall just as easily as the actual floor, which
+    // is exactly what "movement kastama" (movement is difficult/broken-feeling) looks
+    // like from the user's side. Only meshes whose bounding box is flat and wide
+    // (floor-like) rather than tall and thin (wall-like) qualify now.
+    return this.scene.meshes.filter((m) => {
+      if (!m.isEnabled() || !m.isPickable || !m.isVisible || m.getTotalVertices() === 0) return false;
+      const bounds = m.getBoundingInfo().boundingBox;
+      const size = bounds.maximumWorld.subtract(bounds.minimumWorld);
+      const footprint = Math.max(size.x, size.z);
+      return footprint > 0 && size.y < footprint * 0.3;
+    });
   }
 
   // Reduce render resolution for headset use. Standalone headsets (Quest and similar)
@@ -558,11 +569,17 @@ export class XRManager {
     // Smooth thumbstick locomotion, in addition to point-and-teleport - this is the
     // "hold thumbstick to walk" movement most headset users (Quest included) expect.
     // Teleportation itself is already wired up via floorMeshes passed to CreateAsync.
+    //
+    // movementSpeed/rotationSpeed were previously 0.15/0.5 - Babylon's own defaults for
+    // this feature are 1.0/1.0, so this was running at 15% of normal walking speed and
+    // half rotation speed, which reads as barely-responsive/broken movement rather than
+    // "smooth". Using Babylon's own tuned defaults instead of an arbitrary fraction of
+    // them.
     try {
       featuresManager.enableFeature(WebXRFeatureName.MOVEMENT, 'latest', {
         xrInput: this.xrExperience.input,
-        movementSpeed: 0.15,
-        rotationSpeed: 0.5
+        movementSpeed: 1.0,
+        rotationSpeed: 1.0
       }, true, false);
     } catch (error) {
       console.warn('Smooth movement feature not available on this device/browser:', error);
