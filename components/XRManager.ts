@@ -57,6 +57,7 @@ export class XRManager {
   private reticle: Mesh | null = null;
   private lastHitPose: { position: Vector3; rotationQuaternion: Quaternion } | null = null;
   private arOverlayElement: HTMLDivElement | null = null;
+  private arScaleReadoutElement: HTMLDivElement | null = null;
   private arSelectListener: (() => void) | null = null;
   private placementScale: number = 1;
 
@@ -338,27 +339,64 @@ export class XRManager {
   // session owns the display, so this has to be raw DOM). pointer-events: none on the
   // container (auto only on the buttons themselves) keeps the rest of the screen free
   // to receive the tap-to-place gesture below.
+  //
+  // Buttons are large (72px, well spaced) since a handheld phone during an AR session
+  // is an inherently unsteady target to tap precisely. Press-and-hold repeats the scale
+  // change every 120ms at a gentler 4% step instead of only a single 15% jump per tap -
+  // a single quick tap still visibly resizes the model, but dialing in a precise size
+  // no longer means many separate imprecise taps; holding down gives smooth, controllable
+  // continuous scaling instead, the same interaction pattern as a camera zoom rocker.
   private createAROverlayUI(): HTMLDivElement {
     this.teardownAROverlayUI();
     const container = document.createElement('div');
     container.id = 'naviz-ar-overlay';
-    container.style.cssText = 'position:fixed;left:0;right:0;bottom:28px;display:flex;justify-content:center;align-items:center;gap:14px;pointer-events:none;z-index:999999;';
+    container.style.cssText = 'position:fixed;left:0;right:0;bottom:32px;display:flex;flex-direction:column;align-items:center;gap:10px;pointer-events:none;z-index:999999;';
 
-    const makeButton = (label: string, title: string, onActivate: () => void) => {
+    const readout = document.createElement('div');
+    readout.id = 'naviz-ar-scale-readout';
+    readout.textContent = `${Math.round(this.placementScale * 100)}%`;
+    readout.style.cssText = 'pointer-events:none;padding:4px 12px;border-radius:9999px;background:rgba(15,23,42,0.75);color:#fff;font-size:14px;font-weight:600;font-variant-numeric:tabular-nums;';
+    this.arScaleReadoutElement = readout;
+
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex;align-items:center;gap:18px;';
+
+    const makeButton = (label: string, title: string, onStep: () => void) => {
       const btn = document.createElement('button');
       btn.textContent = label;
       btn.title = title;
       btn.setAttribute('aria-label', title);
-      btn.style.cssText = 'pointer-events:auto;width:56px;height:56px;border-radius:9999px;border:2px solid rgba(255,255,255,0.85);background:rgba(15,23,42,0.75);color:#fff;font-size:24px;font-weight:600;display:flex;align-items:center;justify-content:center;touch-action:manipulation;';
-      const activate = (e: Event) => { e.preventDefault(); e.stopPropagation(); onActivate(); };
-      btn.addEventListener('touchend', activate, { passive: false });
-      btn.addEventListener('click', activate);
+      btn.style.cssText = 'pointer-events:auto;width:72px;height:72px;border-radius:9999px;border:2px solid rgba(255,255,255,0.85);background:rgba(15,23,42,0.75);color:#fff;font-size:28px;font-weight:600;display:flex;align-items:center;justify-content:center;touch-action:manipulation;user-select:none;';
+
+      let holdInterval: ReturnType<typeof setInterval> | null = null;
+      const stop = () => { if (holdInterval !== null) { clearInterval(holdInterval); holdInterval = null; } };
+      const start = (e: Event) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (holdInterval !== null) return;
+        onStep();
+        holdInterval = setInterval(onStep, 120);
+      };
+
+      btn.addEventListener('touchstart', start, { passive: false });
+      btn.addEventListener('touchend', stop, { passive: false });
+      btn.addEventListener('touchcancel', stop, { passive: false });
+      btn.addEventListener('mousedown', start);
+      btn.addEventListener('mouseup', stop);
+      btn.addEventListener('mouseleave', stop);
       return btn;
     };
 
-    container.appendChild(makeButton('−', 'Scale down', () => this.scalePlacedModel(1 / 1.15)));
-    container.appendChild(makeButton('⟲', 'Reset scale', () => this.resetPlacedModelScale()));
-    container.appendChild(makeButton('+', 'Scale up', () => this.scalePlacedModel(1.15)));
+    row.appendChild(makeButton('−', 'Scale down (hold to keep shrinking)', () => this.scalePlacedModel(1 / 1.04)));
+    const resetBtn = makeButton('⟲', 'Reset scale', () => this.resetPlacedModelScale());
+    resetBtn.style.width = '56px';
+    resetBtn.style.height = '56px';
+    resetBtn.style.fontSize = '22px';
+    row.appendChild(resetBtn);
+    row.appendChild(makeButton('+', 'Scale up (hold to keep growing)', () => this.scalePlacedModel(1.04)));
+
+    container.appendChild(readout);
+    container.appendChild(row);
     document.body.appendChild(container);
     return container;
   }
@@ -368,6 +406,7 @@ export class XRManager {
       this.arOverlayElement.parentNode.removeChild(this.arOverlayElement);
     }
     this.arOverlayElement = null;
+    this.arScaleReadoutElement = null;
   }
 
   // Wires the hit-test reticle and tap-to-place. A tap anywhere on screen that isn't
@@ -430,17 +469,31 @@ export class XRManager {
   }
 
   // Scales the placed model (clamped to a sane range so it can't be pinched/tapped down
-  // to invisible or up to absurdly oversized). factor is relative, e.g. 1.15 = +15%.
+  // to invisible or up to absurdly oversized). factor is relative, e.g. 1.04 = +4%.
   scalePlacedModel(factor: number): void {
     const root = this.placementRoot;
-    if (!root) return;
+    if (!root) {
+      // Scaling before the model has been placed (tapped) at least once - nothing to
+      // resize yet. Silently doing nothing here was itself a source of "the buttons
+      // don't work" confusion, so tell the user what to do instead.
+      console.warn('Tap the screen to place the model before scaling it');
+      return;
+    }
     this.placementScale = Math.min(5, Math.max(0.1, this.placementScale * factor));
     root.scaling.setAll(this.placementScale);
+    this.updateScaleReadout();
   }
 
   resetPlacedModelScale(): void {
     this.placementScale = 1;
     this.placementRoot?.scaling.setAll(1);
+    this.updateScaleReadout();
+  }
+
+  private updateScaleReadout(): void {
+    if (this.arScaleReadoutElement) {
+      this.arScaleReadoutElement.textContent = `${Math.round(this.placementScale * 100)}%`;
+    }
   }
 
   // Exit XR mode
