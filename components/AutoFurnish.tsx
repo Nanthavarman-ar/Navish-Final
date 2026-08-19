@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Vector3, PointerEventTypes, PickingInfo, GizmoManager, UtilityLayerRenderer, StandardMaterial, Color3, MeshBuilder } from '@babylonjs/core';
 import { FurnitureManager, FurnitureItem, PlacedFurniture } from './managers/FurnitureManager';
+import { showToast } from './utils/toast';
 
 // UI Components
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
@@ -245,6 +246,13 @@ const AutoFurnish: React.FC<AutoFurnishProps> = ({ sceneManager, onClose }) => {
     setIsPlacing(true);
     setLoadingProgress(0);
 
+    // placeFurniture() failures (blocked clearance, or a genuinely broken item) used to
+    // be entirely silent - no toast/error anywhere in this file - so clicking "Place"
+    // could just do nothing with zero feedback. Tracking outcomes here to report a real
+    // result either way.
+    let placedCount = 0;
+    let failedCount = 0;
+
     try {
       if (placementMode === 'auto') {
         // Auto-placement logic (simplified - would need room analysis)
@@ -262,21 +270,35 @@ const AutoFurnish: React.FC<AutoFurnishProps> = ({ sceneManager, onClose }) => {
 
           const position = positions[i % positions.length];
           if (furnitureManager.checkClearance(position, item.dimensions)) {
-            await furnitureManager.placeFurniture(position);
+            const result = await furnitureManager.placeFurniture(position);
+            if (result) placedCount++; else failedCount++;
+          } else {
+            failedCount++;
           }
         }
       } else {
         // Manual placement - place at center for now
         const position = new Vector3(0, 0, 0);
         if (furnitureManager.checkClearance(position, selectedFurniture.dimensions)) {
-          await furnitureManager.placeFurniture(position);
+          const result = await furnitureManager.placeFurniture(position);
+          if (result) placedCount++; else failedCount++;
+        } else {
+          failedCount++;
+          showToast.error('No room to place here', 'Too close to existing furniture - try a different spot');
         }
       }
 
       updatePlacedFurniture();
       setLoadingProgress(100);
+
+      if (placedCount > 0) {
+        showToast.success(`Placed ${placedCount} item${placedCount === 1 ? '' : 's'}`, failedCount > 0 ? `${failedCount} couldn't be placed` : undefined);
+      } else if (failedCount > 0) {
+        showToast.error('Failed to place furniture', 'No clear space was found');
+      }
     } catch (error) {
       console.error('Failed to place furniture:', error);
+      showToast.error('Failed to place furniture', error instanceof Error ? error.message : undefined);
     } finally {
       setIsPlacing(false);
       setTimeout(() => setLoadingProgress(0), 1000);

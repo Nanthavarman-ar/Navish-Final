@@ -1,4 +1,4 @@
-import { Scene, Mesh, TransformNode, Vector3, AbstractMesh } from '@babylonjs/core';
+import { Scene, Mesh, TransformNode, Vector3, AbstractMesh, MeshBuilder, StandardMaterial, Color3 } from '@babylonjs/core';
 import { SceneLoader } from '@babylonjs/core/Loading/sceneLoader';
 import { logger } from '../utils/Logger';
 import { cacheManager } from '../utils/CacheManager';
@@ -237,6 +237,92 @@ export class FurnitureManager {
   }
 
   /**
+   * Builds simple, recognizable placeholder geometry sized to item.dimensions for a
+   * given furniture category. Used when the catalog's real modelUrl (/models/
+   * furniture/*.glb) can't be loaded - none of those files actually exist anywhere in
+   * this project, so every real placement attempt failed unconditionally before this
+   * fallback existed. Not meant to look photoreal, just to make "place this furniture"
+   * actually produce a correctly-positioned, correctly-sized object instead of nothing.
+   */
+  private createProceduralFurniture(item: FurnitureItem): TransformNode {
+    const root = new TransformNode(`furniture_${item.id}_${Date.now()}`, this.scene);
+    const { width, height, depth } = item.dimensions;
+
+    const material = new StandardMaterial(`furniture_mat_${item.id}_${Date.now()}`, this.scene);
+    material.diffuseColor = this.colorForCategory(item.category);
+
+    const addBox = (name: string, w: number, h: number, d: number, x: number, y: number, z: number) => {
+      const box = MeshBuilder.CreateBox(name, { width: w, height: h, depth: d }, this.scene);
+      box.position.set(x, y, z);
+      box.material = material;
+      box.parent = root;
+      return box;
+    };
+
+    switch (item.category) {
+      case 'chair': {
+        addBox('seat', width, height * 0.1, depth, 0, height * 0.45, 0);
+        addBox('backrest', width, height * 0.55, depth * 0.12, 0, height * 0.72, -depth / 2 + depth * 0.06);
+        [[-1, -1], [1, -1], [-1, 1], [1, 1]].forEach(([sx, sz], i) =>
+          addBox(`leg_${i}`, width * 0.06, height * 0.45, depth * 0.06, sx * (width / 2 - width * 0.05), height * 0.225, sz * (depth / 2 - depth * 0.05))
+        );
+        break;
+      }
+      case 'table': {
+        addBox('top', width, height * 0.08, depth, 0, height * 0.96, 0);
+        [[-1, -1], [1, -1], [-1, 1], [1, 1]].forEach(([sx, sz], i) =>
+          addBox(`leg_${i}`, width * 0.05, height * 0.92, depth * 0.05, sx * (width / 2 - width * 0.05), height * 0.46, sz * (depth / 2 - depth * 0.05))
+        );
+        break;
+      }
+      case 'sofa': {
+        addBox('seat', width, height * 0.4, depth, 0, height * 0.2, 0);
+        addBox('backrest', width, height * 0.6, depth * 0.18, 0, height * 0.6, -depth / 2 + depth * 0.09);
+        addBox('armrest_l', width * 0.08, height * 0.5, depth, -width / 2 + width * 0.04, height * 0.45, 0);
+        addBox('armrest_r', width * 0.08, height * 0.5, depth, width / 2 - width * 0.04, height * 0.45, 0);
+        break;
+      }
+      case 'bed': {
+        addBox('mattress', width, height * 0.35, depth, 0, height * 0.175, 0);
+        addBox('headboard', width, height * 0.65, depth * 0.06, 0, height * 0.5, -depth / 2 + depth * 0.03);
+        break;
+      }
+      case 'lamp': {
+        const stand = MeshBuilder.CreateCylinder('stand', { diameter: width * 0.15, height: height * 0.85 }, this.scene);
+        stand.position.set(0, height * 0.425, 0);
+        stand.material = material;
+        stand.parent = root;
+        const shade = MeshBuilder.CreateCylinder('shade', { diameterTop: width * 0.3, diameterBottom: width * 0.6, height: height * 0.25 }, this.scene);
+        shade.position.set(0, height * 0.95, 0);
+        shade.material = material;
+        shade.parent = root;
+        break;
+      }
+      case 'cabinet':
+      case 'decor':
+      default: {
+        addBox('body', width, height, depth, 0, height / 2, 0);
+        break;
+      }
+    }
+
+    return root;
+  }
+
+  private colorForCategory(category: FurnitureItem['category']): Color3 {
+    const colors: Record<FurnitureItem['category'], Color3> = {
+      chair: new Color3(0.55, 0.4, 0.3),
+      table: new Color3(0.5, 0.35, 0.22),
+      sofa: new Color3(0.4, 0.45, 0.55),
+      bed: new Color3(0.85, 0.85, 0.85),
+      cabinet: new Color3(0.45, 0.32, 0.22),
+      lamp: new Color3(0.9, 0.85, 0.6),
+      decor: new Color3(0.6, 0.6, 0.6)
+    };
+    return colors[category] ?? new Color3(0.6, 0.6, 0.6);
+  }
+
+  /**
    * Place furniture in the scene
    * @param position Position to place the furniture
    * @param rotation Optional rotation
@@ -251,22 +337,34 @@ export class FurnitureManager {
     try {
       const item = this.selectedFurniture;
       const cacheKey = `furniture_${item.id}`;
+      let usedProceduralFallback = false;
 
       // Check cache first
       let furnitureNode: TransformNode | null = cacheManager.get<TransformNode>('furnitureCache', cacheKey);
 
       if (!furnitureNode) {
-        // Load the model
-        const result = await SceneLoader.ImportMeshAsync('', item.modelUrl, '', this.scene);
-        furnitureNode = new TransformNode(`furniture_${item.id}_${Date.now()}`);
+        try {
+          // Load the model
+          const result = await SceneLoader.ImportMeshAsync('', item.modelUrl, '', this.scene);
+          furnitureNode = new TransformNode(`furniture_${item.id}_${Date.now()}`, this.scene);
 
-        result.meshes.forEach(mesh => {
-          mesh.parent = furnitureNode;
-        });
+          result.meshes.forEach(mesh => {
+            mesh.parent = furnitureNode;
+          });
 
-        // Cache the loaded node for future use
-        cacheManager.set('furnitureCache', cacheKey, furnitureNode);
-        logger.debug(`Loaded and cached furniture model: ${item.name}`);
+          // Cache the loaded node for future use
+          cacheManager.set('furnitureCache', cacheKey, furnitureNode);
+          logger.debug(`Loaded and cached furniture model: ${item.name}`);
+        } catch (loadError) {
+          // The real .glb asset isn't available (this catalog's modelUrls don't point
+          // to any file that actually exists in this project) - fall back to a simple
+          // procedural placeholder sized/shaped for this item's category rather than
+          // failing the whole placement.
+          logger.warn(`Model asset unavailable for ${item.name}, using procedural placeholder`, loadError);
+          furnitureNode = this.createProceduralFurniture(item);
+          usedProceduralFallback = true;
+          cacheManager.set('furnitureCache', cacheKey, furnitureNode);
+        }
       } else {
         // Clone the cached node
         furnitureNode = furnitureNode.clone(`furniture_${item.id}_${Date.now()}`, null);
@@ -291,14 +389,20 @@ export class FurnitureManager {
         return null;
       }
 
-      // Scale to real-world dimensions
-      const bounds = cacheManager.calculateAndCacheMeshBounds(meshChild);
-      const scale = new Vector3(
-        item.dimensions.width / bounds.width,
-        item.dimensions.height / bounds.height,
-        item.dimensions.depth / bounds.depth
-      );
-      furnitureNode.scaling = scale;
+      // Procedural placeholders are already built at the item's real dimensions, so
+      // rescaling them against their own bounding box would be a no-op at best and a
+      // divide-by-near-zero distortion at worst for thin parts - only real imported
+      // models (arbitrary authored scale) need this rescale step.
+      let scale = Vector3.One();
+      if (!usedProceduralFallback) {
+        const bounds = cacheManager.calculateAndCacheMeshBounds(meshChild);
+        scale = new Vector3(
+          item.dimensions.width / bounds.width,
+          item.dimensions.height / bounds.height,
+          item.dimensions.depth / bounds.depth
+        );
+        furnitureNode.scaling = scale;
+      }
 
       // Create placed furniture object
       const placed: PlacedFurniture = {
