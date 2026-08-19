@@ -788,20 +788,45 @@ const NavigationControlsSegment: React.FC<Pick<CustomPanelsSegmentProps, 'featur
 // remaining transform + visibility properties rather than duplicating that.
 const PropertyInspectorPanel: React.FC<{ mesh: any; meshCount: number; lightCount: number; onClose: () => void }> = ({ mesh, meshCount, lightCount, onClose }) => {
   const [position, setPosition] = useState({ x: 0, y: 0, z: 0 });
+  const [rotationDeg, setRotationDeg] = useState({ x: 0, y: 0, z: 0 });
   const [scale, setScale] = useState({ x: 1, y: 1, z: 1 });
   const [visible, setVisible] = useState(true);
+  // Diffuse (StandardMaterial) and albedo (PBRMaterial) are the two color properties
+  // that actually exist depending on which material type the mesh has - tracked
+  // separately from a generic "color" so the right one gets read/written.
+  const [materialColor, setMaterialColor] = useState<{ r: number; g: number; b: number } | null>(null);
+  const [materialAlpha, setMaterialAlpha] = useState(1);
+  const colorPropertyName = mesh?.material ? ('diffuseColor' in mesh.material ? 'diffuseColor' : 'albedoColor' in mesh.material ? 'albedoColor' : null) : null;
 
   useEffect(() => {
     if (!mesh) return;
     setPosition({ x: mesh.position.x, y: mesh.position.y, z: mesh.position.z });
+    setRotationDeg({
+      x: (mesh.rotation.x * 180) / Math.PI,
+      y: (mesh.rotation.y * 180) / Math.PI,
+      z: (mesh.rotation.z * 180) / Math.PI
+    });
     setScale({ x: mesh.scaling.x, y: mesh.scaling.y, z: mesh.scaling.z });
     setVisible(mesh.isVisible);
+    const colorProp = mesh.material ? ('diffuseColor' in mesh.material ? 'diffuseColor' : 'albedoColor' in mesh.material ? 'albedoColor' : null) : null;
+    if (colorProp && mesh.material[colorProp]) {
+      const c = mesh.material[colorProp];
+      setMaterialColor({ r: c.r, g: c.g, b: c.b });
+      setMaterialAlpha(mesh.material.alpha ?? 1);
+    } else {
+      setMaterialColor(null);
+    }
   }, [mesh]);
 
   const updatePosition = (axis: 'x' | 'y' | 'z', value: number) => {
     if (!mesh || Number.isNaN(value)) return;
     mesh.position[axis] = value;
     setPosition((p) => ({ ...p, [axis]: value }));
+  };
+  const updateRotation = (axis: 'x' | 'y' | 'z', valueDeg: number) => {
+    if (!mesh || Number.isNaN(valueDeg)) return;
+    mesh.rotation[axis] = (valueDeg * Math.PI) / 180;
+    setRotationDeg((r) => ({ ...r, [axis]: valueDeg }));
   };
   const updateScale = (axis: 'x' | 'y' | 'z', value: number) => {
     if (!mesh || Number.isNaN(value) || value === 0) return;
@@ -813,6 +838,16 @@ const PropertyInspectorPanel: React.FC<{ mesh: any; meshCount: number; lightCoun
     const next = !visible;
     mesh.isVisible = next;
     setVisible(next);
+  };
+  const updateMaterialColor = (channel: 'r' | 'g' | 'b', value: number) => {
+    if (!mesh?.material || !colorPropertyName || !materialColor) return;
+    mesh.material[colorPropertyName][channel] = value;
+    setMaterialColor((c) => (c ? { ...c, [channel]: value } : c));
+  };
+  const updateMaterialAlpha = (value: number) => {
+    if (!mesh?.material) return;
+    mesh.material.alpha = value;
+    setMaterialAlpha(value);
   };
 
   const numberField = (label: string, value: number, onChange: (v: number) => void) => (
@@ -854,6 +889,14 @@ const PropertyInspectorPanel: React.FC<{ mesh: any; meshCount: number; lightCoun
               </div>
             </div>
             <div>
+              <p className="text-slate-500 mb-1">Rotation (°)</p>
+              <div className="flex gap-2">
+                {numberField('X', rotationDeg.x, (v) => updateRotation('x', v))}
+                {numberField('Y', rotationDeg.y, (v) => updateRotation('y', v))}
+                {numberField('Z', rotationDeg.z, (v) => updateRotation('z', v))}
+              </div>
+            </div>
+            <div>
               <p className="text-slate-500 mb-1">Scale</p>
               <div className="flex gap-2">
                 {numberField('X', scale.x, (v) => updateScale('x', v))}
@@ -862,6 +905,39 @@ const PropertyInspectorPanel: React.FC<{ mesh: any; meshCount: number; lightCoun
               </div>
             </div>
             <p className="text-slate-400">Material: {mesh.material?.name || 'None'}</p>
+            {materialColor && (
+              <div>
+                <p className="text-slate-500 mb-1">Material Color</p>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="color"
+                    aria-label="Material color"
+                    value={`#${Math.round(materialColor.r * 255).toString(16).padStart(2, '0')}${Math.round(materialColor.g * 255).toString(16).padStart(2, '0')}${Math.round(materialColor.b * 255).toString(16).padStart(2, '0')}`}
+                    onChange={(e) => {
+                      const hex = e.target.value;
+                      updateMaterialColor('r', parseInt(hex.slice(1, 3), 16) / 255);
+                      updateMaterialColor('g', parseInt(hex.slice(3, 5), 16) / 255);
+                      updateMaterialColor('b', parseInt(hex.slice(5, 7), 16) / 255);
+                    }}
+                    className="w-8 h-6 rounded border border-slate-600 bg-slate-900"
+                  />
+                  <label className="flex items-center gap-1 text-slate-400 flex-1">
+                    Alpha
+                    <input
+                      type="range"
+                      min={0}
+                      max={1}
+                      step={0.01}
+                      value={materialAlpha}
+                      onChange={(e) => updateMaterialAlpha(parseFloat(e.target.value))}
+                      className="flex-1"
+                      aria-label="Material alpha"
+                    />
+                    <span className="w-8 text-right">{materialAlpha.toFixed(2)}</span>
+                  </label>
+                </div>
+              </div>
+            )}
           </div>
         ) : (
           <p className="text-slate-300 text-xs">Click a mesh in the scene to inspect its properties.</p>
@@ -878,6 +954,19 @@ const PropertyInspectorPanel: React.FC<{ mesh: any; meshCount: number; lightCoun
 const SceneBrowserPanel: React.FC<{ scene: any; selectedMesh: any; onSelect: (mesh: any) => void; onClose: () => void }> = ({ scene, selectedMesh, onSelect, onClose }) => {
   const [, forceUpdate] = useState(0);
   const meshes = scene.meshes.filter((m: any) => !m.name.startsWith('__'));
+
+  // Without this, the list only ever refreshed on a manual action inside this panel
+  // (e.g. toggling visibility) - opening this panel, then loading/importing a model
+  // while it stayed open, never showed the new meshes until the panel was closed and
+  // reopened.
+  useEffect(() => {
+    const added = scene.onNewMeshAddedObservable.add(() => forceUpdate((n) => n + 1));
+    const removed = scene.onMeshRemovedObservable.add(() => forceUpdate((n) => n + 1));
+    return () => {
+      scene.onNewMeshAddedObservable.remove(added);
+      scene.onMeshRemovedObservable.remove(removed);
+    };
+  }, [scene]);
 
   const toggleVisible = (m: any, e: React.MouseEvent) => {
     e.stopPropagation();
