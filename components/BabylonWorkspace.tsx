@@ -43,6 +43,7 @@ import { MaterialManager } from './MaterialManager';
 import { AudioManager } from './AudioManager';
 import { BIMManager } from './BIMManager';
 import { AIManager } from './AIManager';
+import { GestureManager, GestureData } from './GestureManager';
 import { ExternalAPIManager } from './ExternalAPIManager';
 import { SiteContextManager } from './SiteContextManager';
 import { CostEstimator } from './CostEstimator';
@@ -974,6 +975,8 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
 
   // AI Manager ref
   const aiManagerRef = useRef<any>(null);
+  const gestureManagerRef = useRef<GestureManager | null>(null);
+  const [gestureHistory, setGestureHistory] = useState<GestureData[]>([]);
 
   // Mesh scene handlers hook
   const { handleMeshSelect } = useMeshSceneHandlers({
@@ -1419,6 +1422,24 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
           showToast.error("AI features unavailable");
         }
 
+        // Initialize GestureManager - real camera-based hand-gesture recognition
+        // (skin-tone detection + position-based classification). Previously
+        // "Gesture Detection" only ran aiManager.enableGestureDetection(), which just
+        // checks WebXR capability and speaks a line - no camera, no actual gesture ever
+        // recognized, despite the button implying it worked. This class already existed
+        // fully built but was never instantiated/wired to anything in the live app.
+        try {
+          gestureManagerRef.current = new GestureManager(engine, scene, deviceDetector);
+          gestureManagerRef.current.onGestureRecognized((gesture) => {
+            setGestureHistory((prev) => [...prev.slice(-49), gesture]);
+            showToast.info(`Gesture: ${gesture.gesture.replace(/_/g, ' ')}`, `${Math.round(gesture.confidence * 100)}% confidence`);
+            gestureManagerRef.current?.createGestureFeedback(gesture);
+          });
+          console.log("GestureManager initialized");
+        } catch (error) {
+          console.error("Failed to initialize GestureManager:", error);
+        }
+
         // Initialize ExternalAPIManager + SiteContextManager (real-world surrounding
         // terrain/buildings generation around the workspace's geo location)
         try {
@@ -1617,6 +1638,10 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
         }
         if (aiManager && typeof aiManager.dispose === 'function') {
           aiManager.dispose();
+        }
+        if (gestureManagerRef.current) {
+          gestureManagerRef.current.dispose();
+          gestureManagerRef.current = null;
         }
         if (xrManager && typeof xrManager.dispose === 'function') {
           xrManager.dispose();
@@ -2489,14 +2514,15 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
             showToast.error('Failed to enable AI co-designer');
           }
         }
-        if (id === 'showGestureDetection' && aiManagerRef.current) {
-          try {
-            aiManagerRef.current.enableGestureDetection();
-            showToast.success('Gesture detection enabled');
-          } catch (error) {
-            console.error('Error enabling gesture detection feature:', error);
-            showToast.error('Failed to enable gesture detection');
-          }
+        if (id === 'showGestureDetection' && gestureManagerRef.current) {
+          gestureManagerRef.current.startGestureRecognition().then((started) => {
+            if (started) {
+              showToast.success('Gesture detection enabled', 'Watching the camera for thumbs up/down, open hand, and swipes');
+            } else {
+              showToast.error('Camera access denied or unavailable', 'Gesture detection needs camera permission');
+              disableFeature('showGestureDetection');
+            }
+          });
         }
         if (id === 'showGestureInspector') {
           showToast.info('Gesture inspector active');
@@ -2796,8 +2822,8 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
         bimManagerRef.current.disableClashDetection();
         showToast.info('Clash detection disabled');
       }
-      if (id === 'showGestureDetection' && aiManagerRef.current) {
-        aiManagerRef.current.disableGestureDetection();
+      if (id === 'showGestureDetection' && gestureManagerRef.current) {
+        gestureManagerRef.current.stopGestureRecognition();
       }
       if (id === 'showGestureInspector') {
         showToast.info('Gesture inspector hidden');
@@ -3421,6 +3447,7 @@ const getCategoryDescription = (categoryName: string): string => {
               arCloudAnchorsRef,
               gpsTransformUtilsRef,
               xrManagerRef,
+              gestureHistory,
               currentModelId,
               workspaces,
               selectedWorkspaceId,

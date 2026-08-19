@@ -395,14 +395,13 @@ const DomainSelectorOverlay: React.FC<{ visible: boolean; onClose: () => void }>
   );
 };
 
-// Honest framing: there is no camera/hand-tracking pipeline anywhere in this codebase that
-// classifies real gestures on desktop (WebXR hand-tracking exists for VR sessions via
-// XRManager, but nothing turns joint positions into named gestures like "swipe"/"pinch").
-// This panel previously showed a "Listening"/"Paused" status implying live monitoring, with
-// a "Simulate" button that just injected random fake events - misleading about what's real.
-// It's now explicitly labeled a manual test log rather than pretending to monitor anything.
-const GestureInspectorOverlay: React.FC<{ visible: boolean; onClose: () => void }> = ({ visible, onClose }) => {
-  const [history, setHistory] = useState<{ id: string; gesture: string; timestamp: string }[]>([]);
+// GestureManager (real camera-based skin-tone hand detection, wired in
+// BabylonWorkspace.tsx alongside "Gesture Detection") now feeds real entries in here via
+// the realHistory prop - previously this panel had no camera pipeline behind it at all
+// and only showed fake events from "Log Test Gesture", which is kept below as a manual
+// way to preview the UI without needing camera access/a hand in frame.
+const GestureInspectorOverlay: React.FC<{ visible: boolean; onClose: () => void; realHistory?: { gesture: string; confidence: number; timestamp: number }[]; isDetectionActive?: boolean }> = ({ visible, onClose, realHistory = [], isDetectionActive = false }) => {
+  const [testHistory, setTestHistory] = useState<{ id: string; gesture: string; timestamp: string }[]>([]);
 
   if (!visible) {
     return null;
@@ -415,14 +414,23 @@ const GestureInspectorOverlay: React.FC<{ visible: boolean; onClose: () => void 
       gesture: sample,
       timestamp: new Date().toLocaleTimeString(),
     };
-    setHistory(prev => [entry, ...prev].slice(0, 5));
+    setTestHistory(prev => [entry, ...prev].slice(0, 5));
     showToast.info(`Test gesture logged: ${sample}`);
   };
 
   const clearHistory = () => {
-    setHistory([]);
-    showToast.info('Gesture log cleared');
+    setTestHistory([]);
+    showToast.info('Test gesture log cleared');
   };
+
+  const combined = [
+    ...[...realHistory].reverse().map((g) => ({
+      id: `real-${g.timestamp}`,
+      gesture: `${g.gesture.replace(/_/g, ' ')} (${Math.round(g.confidence * 100)}%)`,
+      timestamp: new Date(g.timestamp).toLocaleTimeString(),
+    })),
+    ...testHistory,
+  ].slice(0, 8);
 
   return (
     <div className="fixed bottom-4 left-4 z-50 w-72 rounded-lg border border-slate-800 bg-slate-900/95 p-4 text-slate-100 shadow-xl">
@@ -435,14 +443,18 @@ const GestureInspectorOverlay: React.FC<{ visible: boolean; onClose: () => void 
           Close
         </Button>
       </div>
-      <div className="text-[11px] text-slate-400">
-        No camera-based gesture recognition is wired up yet - use "Log Test Gesture" below to preview how detected gestures would appear here.
+      <div className="text-[11px] text-slate-400 flex items-center gap-1.5">
+        {isDetectionActive ? (
+          <><span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" /> Watching camera for real gestures - turn on "Gesture Detection" if not already active.</>
+        ) : (
+          <>Turn on "Gesture Detection" to watch the camera for real gestures, or use "Log Test Gesture" below to preview the UI.</>
+        )}
       </div>
       <div className="mt-2 max-h-36 space-y-1 overflow-y-auto text-[12px]">
-        {history.length > 0 ? (
-          history.map(entry => (
+        {combined.length > 0 ? (
+          combined.map(entry => (
             <div key={entry.id} className="flex items-center justify-between text-slate-200">
-              <span>{entry.gesture}</span>
+              <span className="capitalize">{entry.gesture}</span>
               <span className="text-[10px] text-slate-500">{entry.timestamp}</span>
             </div>
           ))
@@ -455,7 +467,7 @@ const GestureInspectorOverlay: React.FC<{ visible: boolean; onClose: () => void 
           Log Test Gesture
         </Button>
         <Button size="sm" variant="outline" onClick={clearHistory}>
-          Clear
+          Clear Test Log
         </Button>
       </div>
     </div>
@@ -541,6 +553,7 @@ interface CustomPanelsSegmentProps {
   arCloudAnchorsRef: React.RefObject<any>;
   gpsTransformUtilsRef: React.RefObject<any>;
   xrManagerRef: React.RefObject<any>;
+  gestureHistory: { gesture: string; confidence: number; timestamp: number }[];
   currentModelId: string;
   workspaces: any[];
   selectedWorkspaceId: string;
@@ -1554,8 +1567,8 @@ const GeoFeaturesSegment: React.FC<Pick<CustomPanelsSegmentProps, 'featureStates
   </>
 );
 
-const SpecializedComponentsSegment: React.FC<Pick<CustomPanelsSegmentProps, 'featureStates' | 'sceneRef' | 'cameraRef' | 'engineRef' | 'simulationManagerRef' | 'disableFeature' | 'enableFeature'>> = ({
-  featureStates, sceneRef, cameraRef, engineRef, simulationManagerRef, disableFeature, enableFeature
+const SpecializedComponentsSegment: React.FC<Pick<CustomPanelsSegmentProps, 'featureStates' | 'sceneRef' | 'cameraRef' | 'engineRef' | 'simulationManagerRef' | 'disableFeature' | 'enableFeature' | 'gestureHistory'>> = ({
+  featureStates, sceneRef, cameraRef, engineRef, simulationManagerRef, disableFeature, enableFeature, gestureHistory
 }) => (
   <>
     {featureStates.showCollabManager && sceneRef.current && (
@@ -1575,6 +1588,8 @@ const SpecializedComponentsSegment: React.FC<Pick<CustomPanelsSegmentProps, 'fea
       <GestureInspectorOverlay
         visible
         onClose={() => disableFeature('showGestureInspector')}
+        realHistory={gestureHistory}
+        isDetectionActive={!!featureStates.showGestureDetection}
       />
     )}
     {featureStates.showKeyboardShortcuts && (
@@ -1673,6 +1688,7 @@ interface RenderCustomPanelsProps {
   arCloudAnchorsRef: React.RefObject<any>;
   gpsTransformUtilsRef: React.RefObject<any>;
   xrManagerRef: React.RefObject<any>;
+  gestureHistory: { gesture: string; confidence: number; timestamp: number }[];
   currentModelId: string;
   workspaces: any[];
   selectedWorkspaceId: string;
