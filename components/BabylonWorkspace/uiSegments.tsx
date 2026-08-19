@@ -540,6 +540,7 @@ interface CustomPanelsSegmentProps {
   cloudAnchorManagerRef: React.RefObject<any>;
   arCloudAnchorsRef: React.RefObject<any>;
   gpsTransformUtilsRef: React.RefObject<any>;
+  xrManagerRef: React.RefObject<any>;
   currentModelId: string;
   workspaces: any[];
   selectedWorkspaceId: string;
@@ -598,8 +599,8 @@ export const CustomPanelsSegment: React.FC<CustomPanelsSegmentProps> = (props) =
 );
 
 // Sub-segment components for CustomPanels
-const CoreFeaturesSegment: React.FC<Pick<CustomPanelsSegmentProps, 'featureStates' | 'sceneRef' | 'engineRef' | 'cameraRef' | 'bimManagerRef' | 'aiManagerRef' | 'workspaces' | 'selectedWorkspaceId' | 'handleWorkspaceSelect' | 'handleMaterialApplied' | 'handleAnimationCreate' | 'handleSequencePlay' | 'disableFeature' | 'workspaceState' | 'scenarioManagerRef' | 'moodSceneManagerRef' | 'animationManagerRef' | 'cloudAnchorManagerRef' | 'arCloudAnchorsRef' | 'gpsTransformUtilsRef'>> = ({
-  featureStates, sceneRef, engineRef, cameraRef, bimManagerRef, aiManagerRef, workspaces, selectedWorkspaceId, handleWorkspaceSelect, handleMaterialApplied, handleAnimationCreate, handleSequencePlay, disableFeature, workspaceState, scenarioManagerRef, moodSceneManagerRef, animationManagerRef, cloudAnchorManagerRef, arCloudAnchorsRef, gpsTransformUtilsRef
+const CoreFeaturesSegment: React.FC<Pick<CustomPanelsSegmentProps, 'featureStates' | 'sceneRef' | 'engineRef' | 'cameraRef' | 'bimManagerRef' | 'aiManagerRef' | 'workspaces' | 'selectedWorkspaceId' | 'handleWorkspaceSelect' | 'handleMaterialApplied' | 'handleAnimationCreate' | 'handleSequencePlay' | 'disableFeature' | 'workspaceState' | 'scenarioManagerRef' | 'moodSceneManagerRef' | 'animationManagerRef' | 'cloudAnchorManagerRef' | 'arCloudAnchorsRef' | 'gpsTransformUtilsRef' | 'xrManagerRef'>> = ({
+  featureStates, sceneRef, engineRef, cameraRef, bimManagerRef, aiManagerRef, workspaces, selectedWorkspaceId, handleWorkspaceSelect, handleMaterialApplied, handleAnimationCreate, handleSequencePlay, disableFeature, workspaceState, scenarioManagerRef, moodSceneManagerRef, animationManagerRef, cloudAnchorManagerRef, arCloudAnchorsRef, gpsTransformUtilsRef, xrManagerRef
 }) => (
   <>
     {featureStates.showMaterialEditor && sceneRef.current && (
@@ -721,6 +722,7 @@ const CoreFeaturesSegment: React.FC<Pick<CustomPanelsSegmentProps, 'featureState
         <ARScalePanel
           scene={sceneRef.current}
           onClose={() => disableFeature('showARScale')}
+          xrManagerRef={xrManagerRef}
         />
       </Suspense>
     )}
@@ -1670,6 +1672,7 @@ interface RenderCustomPanelsProps {
   cloudAnchorManagerRef: React.RefObject<any>;
   arCloudAnchorsRef: React.RefObject<any>;
   gpsTransformUtilsRef: React.RefObject<any>;
+  xrManagerRef: React.RefObject<any>;
   currentModelId: string;
   workspaces: any[];
   selectedWorkspaceId: string;

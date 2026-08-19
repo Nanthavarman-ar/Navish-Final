@@ -506,6 +506,30 @@ export class XRManager {
     this.updateScaleReadout();
   }
 
+  // Lets external UI (e.g. the desktop ARScalePanel) drive the SAME live AR placement
+  // this class owns, instead of that panel scaling scene.meshes directly - which
+  // silently did nothing once in an AR session anyway, because AR placement reparents
+  // every real model mesh under placementRoot (see getOrCreatePlacementRoot), so
+  // ARScalePanel's own "!m.parent" filter excluded them all without any explanation.
+  hasActivePlacement(): boolean {
+    return this.placementRoot !== null && !this.placementRoot.isDisposed();
+  }
+
+  getPlacementScale(): number {
+    return this.placementScale;
+  }
+
+  // Absolute variant of scalePlacedModel (which only takes a relative multiplier) -
+  // what a slider/preset-button UI naturally wants ("set it to exactly 50%"), not a
+  // repeated relative nudge.
+  setPlacedModelScale(scale: number): void {
+    const root = this.placementRoot;
+    if (!root) return;
+    this.placementScale = Math.min(5, Math.max(0.1, scale));
+    root.scaling.setAll(this.placementScale);
+    this.updateScaleReadout();
+  }
+
   private updateScaleReadout(): void {
     if (this.arScaleReadoutElement) {
       this.arScaleReadoutElement.textContent = `${Math.round(this.placementScale * 100)}%`;

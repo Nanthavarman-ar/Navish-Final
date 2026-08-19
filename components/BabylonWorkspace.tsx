@@ -3420,6 +3420,7 @@ const getCategoryDescription = (categoryName: string): string => {
               cloudAnchorManagerRef,
               arCloudAnchorsRef,
               gpsTransformUtilsRef,
+              xrManagerRef,
               currentModelId,
               workspaces,
               selectedWorkspaceId,
