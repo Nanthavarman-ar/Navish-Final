@@ -173,7 +173,18 @@ export default function AppLayout() {
   // remount; without this the workspace always came back empty even though the model was
   // still sitting in storage. Skips when a shared-link ?model= id is present (handled above)
   // or a model is already loaded.
+  //
+  // hasRestoredLastModelRef makes this run at most ONCE per mount instead of every time
+  // selectedModel happens to be falsy. Without it, this was re-armed by its own
+  // `selectedModel` dependency every single time BabylonWorkspace's load effect finished
+  // loading a model and reset selectedModel back to null (an intentional, unrelated
+  // cleanup step there) - which re-triggered THIS effect to re-fetch and re-select the
+  // same last-opened model, which re-triggered BabylonWorkspace to reload it into the
+  // scene again, resetting selectedModel to null again, and so on: an infinite
+  // load-reset-reload cycle that looked like the model repeatedly reloading/flickering.
+  const hasRestoredLastModelRef = useRef(false);
   useEffect(() => {
+    if (hasRestoredLastModelRef.current) return;
     if (currentPath !== '/workspace' || !user || selectedModel || searchParams.get('model')) return;
 
     let lastModelId: string | null = null;
@@ -184,6 +195,7 @@ export default function AppLayout() {
     }
     if (!lastModelId) return;
 
+    hasRestoredLastModelRef.current = true;
     let cancelled = false;
     (async () => {
       try {
