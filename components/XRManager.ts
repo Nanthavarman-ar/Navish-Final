@@ -139,6 +139,23 @@ export class XRManager {
     });
   }
 
+  // Makes the headset camera actually stop at walls/furniture instead of the thumbstick
+  // (WebXRFeatureName.MOVEMENT below) walking straight through solid geometry. WebXR
+  // cameras don't move via the normal collision-aware Camera.update() path by default -
+  // enabling checkCollisions + a human-sized capsule here is what makes Babylon's own
+  // collision system apply to the same cameraDirection nudges the movement feature
+  // produces, so it works together with it rather than needing a separate system.
+  // scene.collisionsEnabled is also forced on here as a safety net in case this runs
+  // against a scene that doesn't set it itself (e.g. embedded outside BabylonWorkspace).
+  // scene.gravity already defaults to real-world (0,-9.807,0) - left untouched.
+  private applyWalkingCollisions(camera: WebXRCamera): void {
+    this.scene.collisionsEnabled = true;
+    camera.checkCollisions = true;
+    camera.applyGravity = true;
+    camera.ellipsoid = new Vector3(0.3, 0.9, 0.3);
+    camera.ellipsoidOffset = new Vector3(0, 0, 0);
+  }
+
   // Reduce render resolution for headset use. Standalone headsets (Quest and similar)
   // have much less GPU power than a typical desktop, so keeping the desktop-tuned
   // hardware scaling level in VR risks a low, uncomfortable frame rate. This targets a
@@ -195,6 +212,7 @@ export class XRManager {
       await this.xrExperience.baseExperience.enterXRAsync('immersive-vr', 'local-floor', this.xrExperience.renderTarget);
 
       this.xrCamera = this.xrExperience.baseExperience.camera;
+      this.applyWalkingCollisions(this.xrCamera);
       this.currentSessionMode = 'immersive-vr';
 
       // Enable spatial audio if audio manager is available
@@ -278,6 +296,7 @@ export class XRManager {
       });
 
       this.xrCamera = this.xrExperience.baseExperience.camera;
+      this.applyWalkingCollisions(this.xrCamera);
       this.currentSessionMode = 'immersive-ar';
 
       // Enable spatial audio if audio manager is available

@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import './BabylonWorkspace.css';
 
 // Core Babylon.js imports only (minimal for initial load)
-import { Engine, Scene, ArcRotateCamera, FreeCamera, UniversalCamera, HemisphericLight, DirectionalLight, Vector3, Vector2, Quaternion, Color3, Color4, Mesh, AbstractMesh, StandardMaterial, DefaultRenderingPipeline, SSAORenderingPipeline, HighlightLayer, PBRMaterial, Material, ImageProcessingConfiguration, PointerInfo, PickingInfo, Camera, PointerEventTypes, ParticleSystem, MeshBuilder, Texture, GizmoManager, ShadowGenerator, Ray } from '@babylonjs/core';
+import { Engine, Scene, ArcRotateCamera, FreeCamera, UniversalCamera, HemisphericLight, DirectionalLight, Vector3, Vector2, Quaternion, Color3, Color4, Mesh, AbstractMesh, StandardMaterial, DefaultRenderingPipeline, SSAORenderingPipeline, HighlightLayer, PBRMaterial, Material, ImageProcessingConfiguration, ColorCurves, PointerInfo, PickingInfo, Camera, PointerEventTypes, ParticleSystem, MeshBuilder, Texture, GizmoManager, ShadowGenerator, Ray } from '@babylonjs/core';
 import { WaterMaterial } from '@babylonjs/materials/water';
 import { PerlinNoiseProceduralTexture } from '@babylonjs/procedural-textures';
 
@@ -577,7 +577,12 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
           // selected an invisible mesh with no way to ever see it. This app has no UI for
           // toggling hidden layers back on, so treat "hidden in the source file" as a
           // loader quirk to override rather than a real feature.
-          newMeshes.forEach((m) => { m.isVisible = true; });
+          newMeshes.forEach((m) => {
+            m.isVisible = true;
+            // Real building geometry (walls/floors/furniture) should block the walking
+            // camera - see scene.collisionsEnabled above for why this was a no-op before.
+            if (m.getTotalVertices() > 0) m.checkCollisions = true;
+          });
           // Register the real loaded meshes as a BIM model so Cost Estimator,
           // ROI Calculator, Budget Tier Comparison, and Ergonomic/Energy/
           // Shadow Analysis (all of which look up bimManager.getModelById())
@@ -850,7 +855,10 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
           // toggling hidden layers back on, so treat "hidden in the source file" as a
           // loader quirk to override rather than a real feature.
           const newMeshes = sceneRef.current!.meshes.filter((m) => !meshesBefore.has(m));
-          newMeshes.forEach((m) => { m.isVisible = true; });
+          newMeshes.forEach((m) => {
+            m.isVisible = true;
+            if (m.getTotalVertices() > 0) m.checkCollisions = true;
+          });
           enhanceRealisticMaterials(newMeshes);
           removePlaceholderGeometry(sceneRef.current!);
           showToast.dismiss(toastId);
@@ -1085,6 +1093,14 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
         if (externalSceneRef) {
           externalSceneRef.current = scene;
         }
+
+        // Walking (desktop "walk" camera and VR/AR locomotion alike) previously moved
+        // the camera freely through walls/furniture with no collision at all -
+        // collisionsEnabled was never turned on scene-wide, so every camera's own
+        // checkCollisions flag was a no-op. This is what makes moving through the model
+        // actually feel like walking inside a real building instead of a ghost floating
+        // through solid geometry. scene.gravity already defaults to real-world (0,-9.807,0).
+        scene.collisionsEnabled = true;
         setSceneReadyForLoad(true);
         onSceneReady?.();
 
@@ -1158,7 +1174,16 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
           // materials and lighting.
           pipeline.imageProcessing.toneMappingEnabled = true;
           pipeline.imageProcessing.toneMappingType = ImageProcessingConfiguration.TONEMAPPING_ACES;
-          pipeline.imageProcessing.contrast = 1.0;
+          // A neutral contrast=1.0/no saturation curve is what made the viewport read as
+          // flat/washed-out next to an actual game or Enscape/Lumion-style render, which
+          // lean noticeably punchier than "physically neutral". This keeps ACES' filmic
+          // highlight rolloff but pushes contrast and saturation up a step for a more
+          // vivid, game-like look.
+          pipeline.imageProcessing.contrast = 1.15;
+          pipeline.imageProcessing.colorCurvesEnabled = true;
+          const colorCurves = new ColorCurves();
+          colorCurves.globalSaturation = 25;
+          pipeline.imageProcessing.colorCurves = colorCurves;
           pipeline.bloomEnabled = enableBloom;
           if (enableBloom) {
             pipeline.bloomThreshold = 0.8;
@@ -1714,7 +1739,11 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
       const pipeline = new DefaultRenderingPipeline("defaultPipeline", true, scene, [camera]);
       pipeline.imageProcessing.toneMappingEnabled = true;
       pipeline.imageProcessing.toneMappingType = ImageProcessingConfiguration.TONEMAPPING_ACES;
-      pipeline.imageProcessing.contrast = 1.0;
+      pipeline.imageProcessing.contrast = 1.15;
+      pipeline.imageProcessing.colorCurvesEnabled = true;
+      const colorCurves = new ColorCurves();
+      colorCurves.globalSaturation = 25;
+      pipeline.imageProcessing.colorCurves = colorCurves;
       pipelineRef.current = pipeline;
     } else if (!enablePostProcessing && pipelineRef.current) {
       pipelineRef.current.dispose();
