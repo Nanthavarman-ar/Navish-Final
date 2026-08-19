@@ -491,6 +491,7 @@ const MaterialEditor = React.lazy(() => import('../MaterialEditor'));
 const Minimap = React.lazy(() => import('../Minimap'));
 const MeasureTool = React.lazy(() => import('../MeasureTool'));
 const AutoFurnish = React.lazy(() => import('../AutoFurnish'));
+const ARAnchorUI = React.lazy(() => import('../ARAnchorUI'));
 const DragDropMaterialHandler = React.lazy(() => import('../DragDropMaterialHandler').then(module => ({ default: module.DragDropMaterialHandler })));
 const BIMIntegration = React.lazy(() => import('../BIMIntegration'));
 const EnergyDashboard = React.lazy(() => import('../EnergyDashboard'));
@@ -536,6 +537,9 @@ interface CustomPanelsSegmentProps {
   animationManagerRef: React.RefObject<any>;
   sustainabilityManagerRef: React.RefObject<any>;
   audioManagerRef: React.RefObject<any>;
+  cloudAnchorManagerRef: React.RefObject<any>;
+  arCloudAnchorsRef: React.RefObject<any>;
+  gpsTransformUtilsRef: React.RefObject<any>;
   currentModelId: string;
   workspaces: any[];
   selectedWorkspaceId: string;
@@ -594,8 +598,8 @@ export const CustomPanelsSegment: React.FC<CustomPanelsSegmentProps> = (props) =
 );
 
 // Sub-segment components for CustomPanels
-const CoreFeaturesSegment: React.FC<Pick<CustomPanelsSegmentProps, 'featureStates' | 'sceneRef' | 'engineRef' | 'cameraRef' | 'bimManagerRef' | 'aiManagerRef' | 'workspaces' | 'selectedWorkspaceId' | 'handleWorkspaceSelect' | 'handleMaterialApplied' | 'handleAnimationCreate' | 'handleSequencePlay' | 'disableFeature' | 'workspaceState' | 'scenarioManagerRef' | 'moodSceneManagerRef' | 'animationManagerRef'>> = ({
-  featureStates, sceneRef, engineRef, cameraRef, bimManagerRef, aiManagerRef, workspaces, selectedWorkspaceId, handleWorkspaceSelect, handleMaterialApplied, handleAnimationCreate, handleSequencePlay, disableFeature, workspaceState, scenarioManagerRef, moodSceneManagerRef, animationManagerRef
+const CoreFeaturesSegment: React.FC<Pick<CustomPanelsSegmentProps, 'featureStates' | 'sceneRef' | 'engineRef' | 'cameraRef' | 'bimManagerRef' | 'aiManagerRef' | 'workspaces' | 'selectedWorkspaceId' | 'handleWorkspaceSelect' | 'handleMaterialApplied' | 'handleAnimationCreate' | 'handleSequencePlay' | 'disableFeature' | 'workspaceState' | 'scenarioManagerRef' | 'moodSceneManagerRef' | 'animationManagerRef' | 'cloudAnchorManagerRef' | 'arCloudAnchorsRef' | 'gpsTransformUtilsRef'>> = ({
+  featureStates, sceneRef, engineRef, cameraRef, bimManagerRef, aiManagerRef, workspaces, selectedWorkspaceId, handleWorkspaceSelect, handleMaterialApplied, handleAnimationCreate, handleSequencePlay, disableFeature, workspaceState, scenarioManagerRef, moodSceneManagerRef, animationManagerRef, cloudAnchorManagerRef, arCloudAnchorsRef, gpsTransformUtilsRef
 }) => (
   <>
     {featureStates.showMaterialEditor && sceneRef.current && (
@@ -685,6 +689,31 @@ const CoreFeaturesSegment: React.FC<Pick<CustomPanelsSegmentProps, 'featureState
     {featureStates.showAutoFurnish && sceneRef.current && (
       <Suspense fallback={<div className="fixed top-4 right-4 z-50 w-64 p-4 bg-slate-800 rounded-lg animate-pulse">Loading Auto Furnish...</div>}>
         <AutoFurnish sceneManager={{ scene: sceneRef.current }} onClose={() => disableFeature('showAutoFurnish')} />
+      </Suspense>
+    )}
+    {/* Cloud Anchors previously had no UI at all - toggling it only ran
+        CloudAnchorManager.connect() in the background with a toast, giving the user no
+        way to actually place/view/remove an anchor. ARAnchorUI already existed with a
+        real place/list/sync/GPS UI, it just needed ARCloudAnchors/GPSTransformUtils
+        (created alongside cloudAnchorManagerRef in BabylonWorkspace.tsx) and mounting
+        here. */}
+    {featureStates.showCloudAnchorManager && sceneRef.current && arCloudAnchorsRef?.current && cloudAnchorManagerRef?.current && gpsTransformUtilsRef?.current && (
+      <Suspense fallback={<div className="fixed top-20 right-4 z-50 w-96 max-w-[90vw] h-48 bg-slate-900/95 rounded-xl animate-pulse border border-slate-600" />}>
+        <div className="fixed top-20 right-4 bottom-4 z-50 w-96 max-w-[90vw] flex flex-col bg-slate-900/95 backdrop-blur-sm border border-slate-600 rounded-xl shadow-2xl overflow-hidden text-white">
+          <div className="flex justify-between items-center px-4 py-3 border-b border-slate-600 bg-slate-800/80 shrink-0">
+            <span className="text-sm font-semibold text-slate-200 flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-cyan-400" /> Cloud Anchors
+            </span>
+            <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-400 hover:text-white" onClick={() => disableFeature('showCloudAnchorManager')} aria-label="Close Cloud Anchors">✕</Button>
+          </div>
+          <div className="flex-1 min-h-0 overflow-y-auto">
+            <ARAnchorUI
+              arAnchors={arCloudAnchorsRef.current}
+              cloudManager={cloudAnchorManagerRef.current}
+              gpsUtils={gpsTransformUtilsRef.current}
+            />
+          </div>
+        </div>
       </Suspense>
     )}
     {featureStates.showARScale && sceneRef.current && (
@@ -1549,6 +1578,9 @@ interface RenderCustomPanelsProps {
   animationManagerRef: React.RefObject<any>;
   sustainabilityManagerRef: React.RefObject<any>;
   audioManagerRef: React.RefObject<any>;
+  cloudAnchorManagerRef: React.RefObject<any>;
+  arCloudAnchorsRef: React.RefObject<any>;
+  gpsTransformUtilsRef: React.RefObject<any>;
   currentModelId: string;
   workspaces: any[];
   selectedWorkspaceId: string;

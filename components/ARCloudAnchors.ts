@@ -24,10 +24,17 @@ export class ARCloudAnchors {
     onAnchorPlaced?: (anchor: AnchorData) => void;
     onAnchorRemoved?: (anchorId: string) => void;
   };
+  private checkAREnabled: () => boolean;
 
-  constructor(scene?: BABYLON.Scene) {
+  // isAREnabledCheck lets the caller wire this up to a real XR session state check
+  // (e.g. xrManager.getXRState().isInSession) - this used to unconditionally return
+  // true regardless of whether an AR session was actually active, which made
+  // ARAnchorUI's "Place New Anchor" button always look clickable/enabled even outside
+  // AR. Defaults to true only if no check is supplied, so existing/other callers keep
+  // their prior behavior.
+  constructor(scene?: BABYLON.Scene, isAREnabledCheck?: () => boolean) {
     this.scene = scene;
-    // Initialize AR cloud anchors
+    this.checkAREnabled = isAREnabledCheck ?? (() => true);
   }
 
   async createAnchor(position: BABYLON.Vector3, rotation?: BABYLON.Vector3, options?: Partial<AnchorData>): Promise<string> {
@@ -65,7 +72,7 @@ export class ARCloudAnchors {
   }
 
   isAREnabled(): boolean {
-    return true; // Stub: Assume AR is enabled
+    return this.checkAREnabled();
   }
 
   getAllAnchors(): string[] {

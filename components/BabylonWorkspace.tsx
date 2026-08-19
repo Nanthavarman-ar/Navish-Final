@@ -54,6 +54,8 @@ import { SwimMode } from './SwimMode';
 import { UnderwaterMode } from './UnderwaterMode';
 import { DeviceDetector } from './DeviceDetector';
 import { CloudAnchorManager } from './CloudAnchorManager';
+import { ARCloudAnchors } from './ARCloudAnchors';
+import { GPSTransformUtils } from './GPSTransformUtils';
 import { CollabManager } from './CollabManager';
 import { SimulationManager } from './SimulationManager';
 import { SustainabilityManager, SustainabilityReport } from './SustainabilityManager';
@@ -939,9 +941,9 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
   }, [cameraMode, switchCamera]);
 
   // AR managers and utils refs
-  const arCloudAnchorsRef = useRef<any>(null);
   const cloudAnchorManagerRef = useRef<any>(null);
-  const gpsTransformUtilsRef = useRef<any>(null);
+  const arCloudAnchorsRef = useRef<ARCloudAnchors | null>(null);
+  const gpsTransformUtilsRef = useRef<GPSTransformUtils | null>(null);
 
   // Analytics and Feature Managers refs
   const analyticsManagerRef = useRef<AnalyticsManager | null>(null);
@@ -1305,6 +1307,17 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
         } catch (error) {
           console.error("Failed to initialize CloudAnchorManager:", error);
           showToast.error("Cloud anchor features unavailable");
+        }
+
+        // ARAnchorUI (the actual Cloud Anchors panel - see uiSegments.tsx) needs these
+        // two lightweight companions alongside CloudAnchorManager above: ARCloudAnchors
+        // for the local anchor list the panel displays, GPSTransformUtils for its
+        // optional GPS-coordinate fields. Neither talks to a backend on its own.
+        try {
+          arCloudAnchorsRef.current = new ARCloudAnchors(scene, () => !!xrManagerRef.current?.getXRState().isInSession);
+          gpsTransformUtilsRef.current = new GPSTransformUtils();
+        } catch (error) {
+          console.error("Failed to initialize AR anchor UI helpers:", error);
         }
 
         // Initialize CollabManager
@@ -3404,6 +3417,9 @@ const getCategoryDescription = (categoryName: string): string => {
               animationManagerRef,
               sustainabilityManagerRef,
               audioManagerRef,
+              cloudAnchorManagerRef,
+              arCloudAnchorsRef,
+              gpsTransformUtilsRef,
               currentModelId,
               workspaces,
               selectedWorkspaceId,
