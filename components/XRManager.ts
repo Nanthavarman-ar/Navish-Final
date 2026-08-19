@@ -41,10 +41,15 @@ export class XRManager {
   private xrExperience: WebXRDefaultExperience | null = null;
   private xrCamera: WebXRCamera | null = null;
   private isInitialized: boolean = false;
-  private handTrackingEnabled: boolean = false;
-  // Movement/teleportation default to ON: nothing in the app calls toggleTeleportation()
-  // or toggleHandTracking(), so leaving these off by default meant VR/AR users could
-  // never move at all, on any headset.
+  // Movement/teleportation and hand tracking default to ON: nothing in the app calls
+  // toggleTeleportation() or toggleHandTracking() - there is no button anywhere for
+  // either - so leaving them off by default meant VR/AR users could never move, and
+  // hand tracking would never turn on, on any headset, with no way to enable it short
+  // of editing this file. Requesting hand tracking is safe even on a headset the user
+  // is holding controllers with - most headsets (Quest included) automatically switch
+  // between controller and hand input at the OS level based on what's actually being
+  // held/tracked, so this doesn't fight with controller-based input.
+  private handTrackingEnabled: boolean = true;
   private teleportationEnabled: boolean = true;
   private currentSessionMode: 'none' | 'immersive-vr' | 'immersive-ar' = 'none';
   private audioManager: any = null; // AudioManager instance
