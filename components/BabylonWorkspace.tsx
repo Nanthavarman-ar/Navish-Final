@@ -663,6 +663,24 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
     }
   }, [setCategoryPanelVisible, enableFeature, disableFeature]);
 
+  // Domain Selector previously only set local component state and showed a toast with
+  // zero effect on the rest of the workspace, despite being described as scoping "the
+  // experience to a specific design domain" - picking a domain now expands the Tool
+  // Categories most relevant to it (additively - it doesn't collapse whatever the user
+  // already had open), so it actually does something instead of being decorative.
+  const DOMAIN_RELEVANT_CATEGORIES: Record<string, string[]> = {
+    architecture: ['Core Workspace', 'Simulations and Analysis', 'Tools and Editors'],
+    interiors: ['Core Workspace', 'Auto Furnish & AR Anchor'],
+    urban: ['Simulations and Analysis', 'Geo and Location'],
+  };
+  const handleDomainChange = useCallback((domainId: string) => {
+    const relevant = DOMAIN_RELEVANT_CATEGORIES[domainId];
+    if (!relevant) return;
+    const next = { ...categoryPanelVisible };
+    relevant.forEach((category) => { next[category] = true; });
+    setCategoryPanelVisible(next);
+  }, [categoryPanelVisible, setCategoryPanelVisible]);
+
   // Listen for custom event from portaled top bar expand button (bypasses closure issues)
   useEffect(() => {
     const handler = () => updateState({ topBarVisible: true });
@@ -3448,6 +3466,7 @@ const getCategoryDescription = (categoryName: string): string => {
               gpsTransformUtilsRef,
               xrManagerRef,
               gestureHistory,
+              onDomainChange: handleDomainChange,
               currentModelId,
               workspaces,
               selectedWorkspaceId,

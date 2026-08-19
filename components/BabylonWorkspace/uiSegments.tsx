@@ -340,7 +340,7 @@ const gestureSamples = [
   'Thumbs Up',
 ];
 
-const DomainSelectorOverlay: React.FC<{ visible: boolean; onClose: () => void }> = ({ visible, onClose }) => {
+const DomainSelectorOverlay: React.FC<{ visible: boolean; onClose: () => void; onDomainChange?: (domainId: string) => void }> = ({ visible, onClose, onDomainChange }) => {
   const [selectedDomain, setSelectedDomain] = useState(domainOptions[0].id);
 
   if (!visible) {
@@ -352,11 +352,13 @@ const DomainSelectorOverlay: React.FC<{ visible: boolean; onClose: () => void }>
       return;
     }
     setSelectedDomain(option.id as 'architecture');
-    showToast.info(`Domain set to ${option.label}`);
+    onDomainChange?.(option.id);
+    showToast.info(`Domain set to ${option.label}`, 'Relevant tool categories expanded in the panel');
   };
 
   const resetSelection = () => {
     setSelectedDomain(domainOptions[0].id);
+    onDomainChange?.(domainOptions[0].id);
     showToast.info(`Domain reset to ${domainOptions[0].label}`);
   };
 
@@ -367,7 +369,7 @@ const DomainSelectorOverlay: React.FC<{ visible: boolean; onClose: () => void }>
         <span>Domain Selector</span>
       </div>
       <p className="text-xs text-slate-400">
-        Scope the workspace to a specific design domain.
+        Expands the tool categories most relevant to your project type.
       </p>
       <div className="space-y-2 pt-2">
         {domainOptions.map(option => (
@@ -554,6 +556,7 @@ interface CustomPanelsSegmentProps {
   gpsTransformUtilsRef: React.RefObject<any>;
   xrManagerRef: React.RefObject<any>;
   gestureHistory: { gesture: string; confidence: number; timestamp: number }[];
+  onDomainChange?: (domainId: string) => void;
   currentModelId: string;
   workspaces: any[];
   selectedWorkspaceId: string;
@@ -1567,8 +1570,8 @@ const GeoFeaturesSegment: React.FC<Pick<CustomPanelsSegmentProps, 'featureStates
   </>
 );
 
-const SpecializedComponentsSegment: React.FC<Pick<CustomPanelsSegmentProps, 'featureStates' | 'sceneRef' | 'cameraRef' | 'engineRef' | 'simulationManagerRef' | 'disableFeature' | 'enableFeature' | 'gestureHistory'>> = ({
-  featureStates, sceneRef, cameraRef, engineRef, simulationManagerRef, disableFeature, enableFeature, gestureHistory
+const SpecializedComponentsSegment: React.FC<Pick<CustomPanelsSegmentProps, 'featureStates' | 'sceneRef' | 'cameraRef' | 'engineRef' | 'simulationManagerRef' | 'disableFeature' | 'enableFeature' | 'gestureHistory' | 'onDomainChange'>> = ({
+  featureStates, sceneRef, cameraRef, engineRef, simulationManagerRef, disableFeature, enableFeature, gestureHistory, onDomainChange
 }) => (
   <>
     {featureStates.showCollabManager && sceneRef.current && (
@@ -1582,6 +1585,7 @@ const SpecializedComponentsSegment: React.FC<Pick<CustomPanelsSegmentProps, 'fea
       <DomainSelectorOverlay
         visible
         onClose={() => disableFeature('showDomainSelector')}
+        onDomainChange={onDomainChange}
       />
     )}
     {featureStates.showGestureInspector && (
@@ -1689,6 +1693,7 @@ interface RenderCustomPanelsProps {
   gpsTransformUtilsRef: React.RefObject<any>;
   xrManagerRef: React.RefObject<any>;
   gestureHistory: { gesture: string; confidence: number; timestamp: number }[];
+  onDomainChange?: (domainId: string) => void;
   currentModelId: string;
   workspaces: any[];
   selectedWorkspaceId: string;
