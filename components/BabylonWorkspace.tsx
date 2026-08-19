@@ -2433,8 +2433,17 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
         if (id === 'showLighting') showToast.success('Lighting controls enabled');
         if (id === 'showClashDetection' && bimManagerRef.current) {
           try {
-            bimManagerRef.current.enableClashDetection();
-            showToast.success('Clash detection running');
+            const bimManager = bimManagerRef.current;
+            const toastId = showToast.loading('Scanning for clashes...');
+            bimManager.enableClashDetection().then(() => {
+              const count = bimManager.getClashes().length;
+              showToast.dismiss(toastId);
+              if (count > 0) {
+                showToast.success(`${count} clash${count === 1 ? '' : 'es'} found`, 'Highlighted in red in the 3D view');
+              } else {
+                showToast.success('No clashes found');
+              }
+            });
           } catch (error) {
             console.error('Error running clash detection:', error);
             showToast.error('Failed to run clash detection');
@@ -2624,10 +2633,6 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
 
         // Geo Sync - previously had no handler at all, so clicking this button did
         // nothing visible even though GeoSyncManager existed and was fully functional.
-        if (id === 'showHaptic' && xrManagerRef.current) {
-          xrManagerRef.current.enableHapticFeedback();
-        }
-
         if (id === 'showGeoSync' && geoSyncManagerRef.current) {
           geoSyncManagerRef.current.connect()
             .then((success: boolean) => {
@@ -2821,9 +2826,6 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
         if (id === 'showSpatialAudio' && audioManagerRef.current) {
           audioManagerRef.current.disableSpatialAudio();
         }
-        if (id === 'showHaptic' && xrManagerRef.current) {
-          xrManagerRef.current.disableHapticFeedback();
-        }
         // Simulation Features - sync SimulationManager config on disable
         if (simulationManagerRef.current) {
           const sim = simulationManagerRef.current;
@@ -2966,12 +2968,28 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
         if (key === '3') { e.preventDefault(); setLayoutMode('immersive'); }
         return;
       }
-      if (key === 'w') { e.preventDefault(); handleFeatureToggle('showWeather', !featureStates.showWeather); }
+      // 'w' previously toggled Weather (which never actually declared its own hotkey in
+      // config/featureCategories.tsx) - meanwhile Wind Tunnel Simulation DOES declare
+      // 'W' as its hotkey (shown on its own button), but nothing here ever bound it, so
+      // pressing W always opened Weather instead of the feature it's actually labeled
+      // on. Giving 'w' to the feature that actually documents it.
+      if (key === 'w') { e.preventDefault(); handleFeatureToggle('showWindTunnelSimulation', !featureStates.showWindTunnelSimulation); }
       if (key === 'f') { e.preventDefault(); handleFeatureToggle('showFloodSimulation', !featureStates.showFloodSimulation); }
       if (key === 't') { e.preventDefault(); handleFeatureToggle('showMeasurementTool', !featureStates.showMeasurementTool); }
       if (key === 'm') { e.preventDefault(); handleFeatureToggle('showMaterialEditor', !featureStates.showMaterialEditor); }
       if (key === 'a') { e.preventDefault(); handleFeatureToggle('showAIAdvisor', !featureStates.showAIAdvisor); }
       if (key === 'u') { e.preventDefault(); handleFeatureToggle('showAutoFurnish', !featureStates.showAutoFurnish); }
+      // The following six hotkeys are all declared on their buttons in
+      // config/featureCategories.tsx (and shown to the user via FeatureButton's
+      // tooltip/badge) but were never actually bound anywhere - pressing them did
+      // nothing (or, for F5, triggered the browser's native page reload instead,
+      // losing all workspace state).
+      if (key === '?') { e.preventDefault(); handleFeatureToggle('showKeyboardShortcuts', !featureStates.showKeyboardShortcuts); }
+      if (key === 'd' && !e.ctrlKey && !e.metaKey) { e.preventDefault(); handleFeatureToggle('showDomainSelector', !featureStates.showDomainSelector); }
+      if (e.key === 'F5') { e.preventDefault(); handleFeatureToggle('showPresentationManager', !featureStates.showPresentationManager); }
+      if (key === 'e' && !e.ctrlKey && !e.metaKey) { e.preventDefault(); handleFeatureToggle('showExport', true); }
+      if (key === 'i' && !e.ctrlKey && !e.metaKey) { e.preventDefault(); handleFeatureToggle('showImport', true); }
+      if (key === 'n' && !e.ctrlKey && !e.metaKey) { e.preventDefault(); handleFeatureToggle('showAnnotations', !featureStates.showAnnotations); }
       // 'v' toggles Voice Assistant per its own advertised hotkey (config/
       // featureCategories.tsx, shown on the button itself) - this used to toggle
       // showAICoDesigner instead, a feature with no category entry/button of its own,

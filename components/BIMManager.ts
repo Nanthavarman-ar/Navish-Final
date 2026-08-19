@@ -989,13 +989,17 @@ export class BIMManager {
   }
 
   // Enable clash detection
-  enableClashDetection(): void {
+  enableClashDetection(): Promise<void> {
     this.config.clashDetectionEnabled = true;
-    // Fire-and-forget: performClashDetection is async (it yields periodically so it can't
-    // block the main thread - see its own comment), and nothing here needs to wait for it to
-    // finish. this.clashes/getClashes() reflect whatever's been found once it completes.
-    void this.performClashDetection();
+    // Highlight spheres are created by performClashDetection() below (via
+    // createClashHighlight -> parented under clashHighlightGroup), but the group itself
+    // was created disabled at init and never re-enabled anywhere - every clash marker
+    // was rendered invisible forever, with the only trace of a clash being a
+    // console.log. Returning the promise (instead of fire-and-forget) also lets the
+    // caller report a real "N clashes found" result instead of just "running".
+    this.clashHighlightGroup?.setEnabled(true);
     console.log('Clash detection enabled');
+    return this.performClashDetection();
   }
 
   // Disable clash detection

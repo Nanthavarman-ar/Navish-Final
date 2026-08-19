@@ -77,7 +77,12 @@ export const featureCategories: FeaturesByCategory = {
     { id: 'showGestureInspector', name: 'Gesture Inspector', description: 'Preview gesture event log (test data - no camera recognition yet)', icon: Hand, category: 'AI and Automation', enabledByDefault: false }
   ],
   "AR and Spatial": [
-    { id: 'showVR', name: 'VR Mode', description: 'Enter virtual reality mode', hotkey: 'F11', icon: Gamepad2, category: 'AR and Spatial', enabledByDefault: false },
+    // Was advertised as F11 but nothing ever bound that key - the real working
+    // shortcut is X (components/BabylonWorkspace.tsx's keydown handler). Not adding an
+    // F11 binding instead: browsers reserve F11 for native fullscreen and commonly
+    // block/fight page JS trying to intercept it, so correcting the advertised key to
+    // match what's actually wired is the safer fix.
+    { id: 'showVR', name: 'VR Mode', description: 'Enter virtual reality mode', hotkey: 'X', icon: Gamepad2, category: 'AR and Spatial', enabledByDefault: false },
     { id: 'showAR', name: 'AR Mode', description: 'Enter augmented reality mode', icon: Smartphone, category: 'AR and Spatial', enabledByDefault: false },
     { id: 'showSpatialAudio', name: 'Spatial Audio', description: 'Enable 3D spatial audio', icon: Volume2, category: 'AR and Spatial', enabledByDefault: false },
     { id: 'showHaptic', name: 'Haptic Feedback', description: 'Enable haptic vibrations', icon: Gamepad2, category: 'AR and Spatial', enabledByDefault: false },

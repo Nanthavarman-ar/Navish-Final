@@ -1163,13 +1163,24 @@ const AIFeaturesSegment: React.FC<Pick<CustomPanelsSegmentProps, 'featureStates'
   </>
 );
 
-const AnalysisFeaturesSegment: React.FC<Pick<CustomPanelsSegmentProps, 'featureStates' | 'sceneRef' | 'engineRef' | 'bimManagerRef' | 'simulationManagerRef' | 'currentModelId' | 'disableFeature' | 'workspaceState' | 'costEstimatorRef' | 'scenarioManagerRef' | 'sustainabilityManagerRef'>> = ({
-  featureStates, sceneRef, engineRef, bimManagerRef, simulationManagerRef, currentModelId, disableFeature, workspaceState, costEstimatorRef, scenarioManagerRef, sustainabilityManagerRef
+const AnalysisFeaturesSegment: React.FC<Pick<CustomPanelsSegmentProps, 'featureStates' | 'sceneRef' | 'engineRef' | 'bimManagerRef' | 'simulationManagerRef' | 'currentModelId' | 'disableFeature' | 'workspaceState' | 'costEstimatorRef' | 'scenarioManagerRef' | 'sustainabilityManagerRef' | 'selectedWorkspaceId'>> = ({
+  featureStates, sceneRef, engineRef, bimManagerRef, simulationManagerRef, currentModelId, disableFeature, workspaceState, costEstimatorRef, scenarioManagerRef, sustainabilityManagerRef, selectedWorkspaceId
 }) => (
   <>
     {featureStates.showCost && sceneRef.current && (
       <Suspense fallback={<div>Loading Cost Estimator...</div>}>
-        <CostEstimatorWrapper scene={sceneRef.current} selectedMesh={workspaceState.selectedMesh} />
+        {/* bimManagerRef/simulationManagerRef weren't being passed here, so
+            CostEstimatorWrapper fell back to creating its own empty BIMManager (see the
+            component's own fallback) whose model registry never had the real loaded
+            model registered - the project-wide "Total Cost" section stayed permanently
+            blank even with a model loaded, while per-mesh selection cost (which doesn't
+            depend on the registry) worked fine. */}
+        <CostEstimatorWrapper
+          scene={sceneRef.current}
+          selectedMesh={workspaceState.selectedMesh}
+          bimManager={bimManagerRef?.current ?? undefined}
+          simulationManager={simulationManagerRef?.current ?? undefined}
+        />
       </Suspense>
     )}
     {featureStates.showBeforeAfter && sceneRef.current && engineRef.current && (
@@ -1210,7 +1221,14 @@ const AnalysisFeaturesSegment: React.FC<Pick<CustomPanelsSegmentProps, 'featureS
     )}
     {featureStates.showApproval && sceneRef.current && (
       <Suspense fallback={null}>
-        <ApprovalPanel roomId={currentModelId} onClose={() => disableFeature('showApproval')} />
+        {/* Was roomId={currentModelId} - a per-loaded-MODEL id ('default-model', or a
+            local-<filename> slug), not the collaborative ROOM id the server's approval
+            storage is actually keyed on (server/index.tsx). Every sibling room-scoped
+            panel (VersionHistoryPanel, AnnotationTool above) uses selectedWorkspaceId;
+            this one didn't, so approval history never correlated with the room's real
+            saved scene/version history, and any two rooms happening to load the same
+            model (or no model at all) would collide/share approval state. */}
+        <ApprovalPanel roomId={selectedWorkspaceId || 'default-room'} onClose={() => disableFeature('showApproval')} />
       </Suspense>
     )}
     {featureStates.showWalkthroughRecorder && engineRef.current && (

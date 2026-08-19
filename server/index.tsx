@@ -301,9 +301,18 @@ app.get('/make-server-cf230d31/health', async (c) => {
 });
 
 // Scene persistence endpoints for Babylon.js workspace
+//
+// All routes below were registered without the '/make-server-cf230d31' prefix that
+// every client caller's functionsBaseUrl actually includes (see components/
+// VersionHistoryPanel.tsx:20, ApprovalPanel.tsx and others: `https://<project>.
+// supabase.co/functions/v1/make-server-cf230d31`) - Supabase Edge Functions pass the
+// full path including the function name through to this Hono app, so an unprefixed
+// route here can never match a real incoming request and 404s unconditionally. The
+// annotations routes elsewhere in this file already had this exact bug fixed; these
+// scene routes were missed in that pass.
 
 // Save scene state
-app.post('/api/scenes/:roomId', async (c) => {
+app.post('/make-server-cf230d31/api/scenes/:roomId', async (c) => {
   const { error, user } = await verifyUser(c.req.raw);
 
   if (error) {
@@ -360,7 +369,7 @@ app.post('/api/scenes/:roomId', async (c) => {
 });
 
 // Load scene state
-app.get('/api/scenes/:roomId', async (c) => {
+app.get('/make-server-cf230d31/api/scenes/:roomId', async (c) => {
   const { error, user } = await verifyUser(c.req.raw);
 
   if (error) {
@@ -396,7 +405,7 @@ app.get('/api/scenes/:roomId', async (c) => {
 });
 
 // List user's scenes
-app.get('/api/scenes', async (c) => {
+app.get('/make-server-cf230d31/api/scenes', async (c) => {
   const { error, user } = await verifyUser(c.req.raw);
 
   if (error) {
@@ -418,7 +427,7 @@ app.get('/api/scenes', async (c) => {
 });
 
 // Delete scene
-app.delete('/api/scenes/:roomId', async (c) => {
+app.delete('/make-server-cf230d31/api/scenes/:roomId', async (c) => {
   const { error, user } = await verifyUser(c.req.raw);
 
   if (error) {
@@ -461,7 +470,7 @@ app.delete('/api/scenes/:roomId', async (c) => {
 });
 
 // Get scene versions/history (for future implementation)
-app.get('/api/scenes/:roomId/versions', async (c) => {
+app.get('/make-server-cf230d31/api/scenes/:roomId/versions', async (c) => {
   const { error, user } = await verifyUser(c.req.raw);
 
   if (error) {
@@ -484,7 +493,7 @@ app.get('/api/scenes/:roomId/versions', async (c) => {
 
 // Restore a scene to a previous version. The current state is itself snapshotted
 // first, so restoring is non-destructive and can be undone by restoring again.
-app.post('/api/scenes/:roomId/versions/:version/restore', async (c) => {
+app.post('/make-server-cf230d31/api/scenes/:roomId/versions/:version/restore', async (c) => {
   const { error, user } = await verifyUser(c.req.raw);
 
   if (error) {
@@ -536,7 +545,7 @@ app.post('/api/scenes/:roomId/versions/:version/restore', async (c) => {
 });
 
 // Submit an approval decision on the current design state
-app.post('/api/scenes/:roomId/approval', async (c) => {
+app.post('/make-server-cf230d31/api/scenes/:roomId/approval', async (c) => {
   const { error, user } = await verifyUser(c.req.raw);
 
   if (error) {
@@ -583,7 +592,7 @@ app.post('/api/scenes/:roomId/approval', async (c) => {
 });
 
 // Get the approval history for a room
-app.get('/api/scenes/:roomId/approval', async (c) => {
+app.get('/make-server-cf230d31/api/scenes/:roomId/approval', async (c) => {
   const { error, user } = await verifyUser(c.req.raw);
 
   if (error) {
@@ -1507,7 +1516,7 @@ app.delete('/make-server-cf230d31/api/annotations/:roomId/:annotationId', async 
   }
 });
 
-app.get('/api/admin/audit-logs', async (c) => {
+app.get('/make-server-cf230d31/api/admin/audit-logs', async (c) => {
   const { error, user } = await verifyAdmin(c.req.raw);
 
   if (error) {
@@ -1528,7 +1537,7 @@ app.get('/api/admin/audit-logs', async (c) => {
 });
 
 // Get admin settings
-app.get('/api/admin/settings', async (c) => {
+app.get('/make-server-cf230d31/api/admin/settings', async (c) => {
   const { error, user } = await verifyAdmin(c.req.raw);
 
   if (error) {
@@ -1545,7 +1554,7 @@ app.get('/api/admin/settings', async (c) => {
 });
 
 // Save admin settings
-app.put('/api/admin/settings', async (c) => {
+app.put('/make-server-cf230d31/api/admin/settings', async (c) => {
   const { error, user } = await verifyAdmin(c.req.raw);
 
   if (error) {
