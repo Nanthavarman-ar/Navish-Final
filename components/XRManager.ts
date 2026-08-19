@@ -479,6 +479,27 @@ export class XRManager {
     container.id = 'naviz-ar-overlay';
     container.style.cssText = 'position:fixed;left:0;right:0;bottom:32px;display:flex;flex-direction:column;align-items:center;gap:10px;pointer-events:none;z-index:999999;';
 
+    // AR sessions (especially phone-based ones, the common case for AR - there's no
+    // squeeze/grip controller to hold for the VR hold-to-exit gesture) had NO way to
+    // exit at all: the desktop toolbar button/'X' hotkey this.exitXR() is normally
+    // wired to are unreachable once the camera feed takes over the screen, and neither
+    // the OS back gesture nor the browser chrome reliably ends a WebXR session on every
+    // device. A single tap always exits (no hold/confirm) since it's placed away from
+    // the scale controls at the bottom, where an accidental tap is unlikely.
+    const exitBtn = document.createElement('button');
+    exitBtn.textContent = '✕';
+    exitBtn.title = 'Exit AR';
+    exitBtn.setAttribute('aria-label', 'Exit AR');
+    exitBtn.style.cssText = 'position:fixed;top:max(20px,env(safe-area-inset-top));right:20px;pointer-events:auto;width:52px;height:52px;border-radius:9999px;border:2px solid rgba(255,255,255,0.85);background:rgba(15,23,42,0.75);color:#fff;font-size:22px;font-weight:600;display:flex;align-items:center;justify-content:center;touch-action:manipulation;user-select:none;';
+    const onExit = (e: Event) => {
+      e.preventDefault();
+      e.stopPropagation();
+      this.exitXR();
+    };
+    exitBtn.addEventListener('touchstart', onExit, { passive: false });
+    exitBtn.addEventListener('mousedown', onExit);
+    container.appendChild(exitBtn);
+
     const readout = document.createElement('div');
     readout.id = 'naviz-ar-scale-readout';
     readout.textContent = `${Math.round(this.placementScale * 100)}%`;
