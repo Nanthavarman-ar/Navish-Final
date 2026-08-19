@@ -143,6 +143,24 @@ export class XRManager {
     });
   }
 
+  // Controllers not responding at all (no movement, no teleport, no laser pointer -
+  // every controller-driven feature dead at once) is the classic symptom of Babylon's
+  // motionController never finishing initialization, which normally happens over a
+  // network fetch to the online WebXR input-profile repository
+  // (immersive-web.github.io) to look up which buttons/axes map to which named
+  // component (squeeze/thumbstick/trigger) for this specific controller model. If that
+  // request is slow, blocked (corporate network, ad blocker) or the CDN is briefly down,
+  // motionController - and everything gated behind onMotionControllerInitObservable,
+  // which is all of movement/teleportation/pointer-selection/the exit gesture - just
+  // never fires, with no visible error. disableOnlineControllerRepository skips that
+  // network request entirely and uses Babylon's own bundled generic controller
+  // profiles instead, which still fully support standard trigger/squeeze/thumbstick
+  // input - only the fancy branded 3D controller model is lost, which is a fine trade
+  // for input actually working.
+  private getInputOptions(): { disableOnlineControllerRepository: boolean } {
+    return { disableOnlineControllerRepository: true };
+  }
+
   // Makes the headset camera actually stop at walls/furniture instead of the thumbstick
   // (WebXRFeatureName.MOVEMENT below) walking straight through solid geometry. WebXR
   // cameras don't move via the normal collision-aware Camera.update() path by default -
@@ -210,7 +228,8 @@ export class XRManager {
         floorMeshes,
         disableTeleportation: !this.teleportationEnabled || floorMeshes.length === 0,
         disableDefaultUI: true,
-        teleportationOptions: { forceHandedness: 'right' }
+        teleportationOptions: { forceHandedness: 'right' },
+        inputOptions: this.getInputOptions()
       });
 
       if (!this.xrExperience?.baseExperience) {
@@ -260,8 +279,8 @@ export class XRManager {
 
       const floorMeshes = this.teleportationEnabled ? this.getFloorMeshes() : [];
 
-      // Create XR experience for AR with audio support (see enterVR for why disableDefaultUI
-      // and teleportationOptions.forceHandedness)
+      // Create XR experience for AR with audio support (see enterVR for why disableDefaultUI,
+      // teleportationOptions.forceHandedness and inputOptions)
       this.xrExperience = await WebXRDefaultExperience.CreateAsync(this.scene, {
         uiOptions: {
           sessionMode: 'immersive-ar'
@@ -269,7 +288,8 @@ export class XRManager {
         floorMeshes,
         disableTeleportation: !this.teleportationEnabled || floorMeshes.length === 0,
         disableDefaultUI: true,
-        teleportationOptions: { forceHandedness: 'right' }
+        teleportationOptions: { forceHandedness: 'right' },
+        inputOptions: this.getInputOptions()
       });
 
       if (!this.xrExperience?.baseExperience) {
