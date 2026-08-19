@@ -1,4 +1,4 @@
-import { Scene, Camera, ArcRotateCamera, FreeCamera, WebXRDefaultExperience, WebXRState, WebXRCamera, WebXRFeaturesManager, WebXRFeatureName, Vector3, Quaternion, AbstractMesh, TransformNode, Mesh, MeshBuilder, StandardMaterial, Color3 } from '@babylonjs/core';
+import { Scene, Camera, ArcRotateCamera, FreeCamera, WebXRDefaultExperience, WebXRState, WebXRCamera, WebXRFeaturesManager, WebXRFeatureName, WebXRControllerComponent, WebXRInputSource, Vector3, Quaternion, AbstractMesh, TransformNode, Mesh, MeshBuilder, StandardMaterial, Color3 } from '@babylonjs/core';
 
 // Minimal shape of what we actually use from Babylon's WebXRHitTest feature - typed
 // locally instead of importing the class directly, since it isn't re-exported from the
@@ -65,6 +65,10 @@ export class XRManager {
   private arScaleReadoutElement: HTMLDivElement | null = null;
   private arSelectListener: (() => void) | null = null;
   private placementScale: number = 1;
+
+  // Pending hold-squeeze-to-exit timers, keyed by controller uniqueId - see
+  // setupControllerEvents for why this gesture exists.
+  private exitHoldTimers: Map<string, ReturnType<typeof setTimeout>> = new Map();
 
   private initPromise: Promise<void>;
 
@@ -196,10 +200,17 @@ export class XRManager {
       // Create XR experience with audio support. disableDefaultUI: true because this app
       // drives entry/exit itself (toolbar button + 'X' hotkey) - Babylon's own floating
       // enter/exit button would otherwise appear unstyled and duplicate that control.
+      //
+      // teleportationOptions.forceHandedness: 'right' pins point-and-teleport to the
+      // right controller only. Without this, Babylon's default teleportation listens on
+      // BOTH controllers' thumbsticks - directly colliding with the left-hand thumbstick
+      // that configureXRFeatures() below dedicates to smooth walking, so both ended up
+      // fighting over the same stick input and neither felt like it worked reliably.
       this.xrExperience = await WebXRDefaultExperience.CreateAsync(this.scene, {
         floorMeshes,
         disableTeleportation: !this.teleportationEnabled || floorMeshes.length === 0,
-        disableDefaultUI: true
+        disableDefaultUI: true,
+        teleportationOptions: { forceHandedness: 'right' }
       });
 
       if (!this.xrExperience?.baseExperience) {
@@ -249,14 +260,16 @@ export class XRManager {
 
       const floorMeshes = this.teleportationEnabled ? this.getFloorMeshes() : [];
 
-      // Create XR experience for AR with audio support (see enterVR for why disableDefaultUI)
+      // Create XR experience for AR with audio support (see enterVR for why disableDefaultUI
+      // and teleportationOptions.forceHandedness)
       this.xrExperience = await WebXRDefaultExperience.CreateAsync(this.scene, {
         uiOptions: {
           sessionMode: 'immersive-ar'
         },
         floorMeshes,
         disableTeleportation: !this.teleportationEnabled || floorMeshes.length === 0,
-        disableDefaultUI: true
+        disableDefaultUI: true,
+        teleportationOptions: { forceHandedness: 'right' }
       });
 
       if (!this.xrExperience?.baseExperience) {
@@ -561,6 +574,11 @@ export class XRManager {
       return;
     }
 
+    // Cancel any in-progress hold-squeeze-to-exit timers so a still-held squeeze from
+    // just now doesn't fire a second exitXR() call after the session has already ended.
+    this.exitHoldTimers.forEach((timer) => clearTimeout(timer));
+    this.exitHoldTimers.clear();
+
     try {
       // Disable spatial audio if audio manager is available
       if (this.audioManager && typeof this.audioManager.disableSpatialAudio === 'function') {
@@ -623,11 +641,31 @@ export class XRManager {
     // half rotation speed, which reads as barely-responsive/broken movement rather than
     // "smooth". Using Babylon's own tuned defaults instead of an arbitrary fraction of
     // them.
+    //
+    // customRegistrationConfigurations restricts this feature to the LEFT thumbstick
+    // only (walk/strafe). Babylon's own default registration binds BOTH controllers'
+    // thumbsticks (left=rotate, right=move) - since teleportation (created above via
+    // CreateAsync) also listens on the right thumbstick for its point-and-teleport arc,
+    // the two features fought over the same physical stick input with neither behaving
+    // reliably. Splitting them by hand - left stick = walk here, right stick = teleport/
+    // snap-turn (teleportationOptions.forceHandedness: 'right' on CreateAsync above) -
+    // is what actually makes both the smooth walk and the joystick teleport work at the
+    // same time instead of fighting each other.
     try {
       featuresManager.enableFeature(WebXRFeatureName.MOVEMENT, 'latest', {
         xrInput: this.xrExperience.input,
         movementSpeed: 1.0,
-        rotationSpeed: 1.0
+        rotationSpeed: 1.0,
+        customRegistrationConfigurations: [
+          {
+            allowedComponentTypes: [WebXRControllerComponent.THUMBSTICK_TYPE, WebXRControllerComponent.TOUCHPAD_TYPE],
+            forceHandedness: 'left',
+            axisChangedHandler: (axes: { x: number; y: number }, movementState: { moveX: number; moveY: number; rotateX: number; rotateY: number }, featureContext: { movementThreshold: number }) => {
+              movementState.moveX = Math.abs(axes.x) > featureContext.movementThreshold ? axes.x : 0;
+              movementState.moveY = Math.abs(axes.y) > featureContext.movementThreshold ? axes.y : 0;
+            }
+          }
+        ]
       }, true, false);
     } catch (error) {
       console.warn('Smooth movement feature not available on this device/browser:', error);
@@ -656,7 +694,12 @@ export class XRManager {
       const floorMeshes = this.getFloorMeshes();
       featuresManager.enableFeature(WebXRFeatureName.TELEPORTATION, 'latest', {
         xrInput: this.xrExperience.input,
-        floorMeshes
+        floorMeshes,
+        // Keep this in sync with the CreateAsync-time teleportationOptions in enterVR/
+        // enterAR - otherwise re-enabling teleportation mid-session (toggleTeleportation)
+        // would go back to listening on both thumbsticks and reintroduce the conflict
+        // with the left-hand-only smooth movement feature.
+        forceHandedness: 'right'
       }, true, false);
       console.log('Teleportation enabled', { floorMeshCount: floorMeshes.length });
     } catch (error) {
@@ -664,17 +707,58 @@ export class XRManager {
     }
   }
 
-  // Set up controller events (simplified for now)
+  // Set up controller events - primarily the hold-squeeze-to-exit-VR gesture below.
+  // This app has no in-headset way to exit otherwise: the toolbar button and 'X' hotkey
+  // this.exitXR() is normally wired to (see enterVR's disableDefaultUI comment) are both
+  // on the flat desktop page, invisible and unreachable once actually wearing the
+  // headset, and Babylon's own floating exit button is disabled for the same reason. The
+  // squeeze/grip button is present on essentially every XR controller (Quest Touch,
+  // Vision Pro's pinch-and-hold maps to the equivalent transient-pointer input) and isn't
+  // used by anything else in this app, so it's a safe, always-available way to get back
+  // out without depending on any menu, laser pointer, or picking working correctly.
   private setupControllerEvents(): void {
     if (!this.xrExperience) return;
 
-    // Basic controller setup - can be expanded later
+    const EXIT_HOLD_MS = 1200;
+
+    const wireExitGesture = (controller: WebXRInputSource) => {
+      const attach = () => {
+        const squeeze = controller.motionController?.getComponentOfType(WebXRControllerComponent.SQUEEZE_TYPE);
+        if (!squeeze) return;
+        squeeze.onButtonStateChangedObservable.add((component) => {
+          if (component.pressed) {
+            if (this.exitHoldTimers.has(controller.uniqueId)) return;
+            this.exitHoldTimers.set(controller.uniqueId, setTimeout(() => {
+              this.exitHoldTimers.delete(controller.uniqueId);
+              console.log('Squeeze held - exiting XR');
+              controller.inputSource.gamepad?.hapticActuators?.[0]?.pulse(1.0, 150);
+              this.exitXR();
+            }, EXIT_HOLD_MS));
+          } else {
+            const timer = this.exitHoldTimers.get(controller.uniqueId);
+            if (timer !== undefined) {
+              clearTimeout(timer);
+              this.exitHoldTimers.delete(controller.uniqueId);
+            }
+          }
+        });
+      };
+      if (controller.motionController) attach();
+      else controller.onMotionControllerInitObservable.addOnce(attach);
+    };
+
     this.xrExperience.input.onControllerAddedObservable.add((controller) => {
       console.log('XR controller added');
+      wireExitGesture(controller);
     });
 
     this.xrExperience.input.onControllerRemovedObservable.add((controller) => {
       console.log('XR controller removed');
+      const timer = this.exitHoldTimers.get(controller.uniqueId);
+      if (timer !== undefined) {
+        clearTimeout(timer);
+        this.exitHoldTimers.delete(controller.uniqueId);
+      }
     });
   }
 
