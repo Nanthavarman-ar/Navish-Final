@@ -119,6 +119,10 @@ export class XRManager {
     this.audioManager = audioManager;
   }
 
+  // Invisible fallback ground created lazily if the loaded model has nothing
+  // getFloorMeshes() can confidently call a floor - see getOrCreateFallbackFloor.
+  private fallbackFloorMesh: Mesh | null = null;
+
   // Find meshes in the scene that can be teleported/walked onto. Matches common
   // floor/ground naming, and falls back to a shape heuristic so teleportation always
   // has *something* to target even if the loaded model doesn't explicitly name a
@@ -134,13 +138,68 @@ export class XRManager {
     // is exactly what "movement kastama" (movement is difficult/broken-feeling) looks
     // like from the user's side. Only meshes whose bounding box is flat and wide
     // (floor-like) rather than tall and thin (wall-like) qualify now.
-    return this.scene.meshes.filter((m) => {
+    const heuristic = this.scene.meshes.filter((m) => {
       if (!m.isEnabled() || !m.isPickable || !m.isVisible || m.getTotalVertices() === 0) return false;
       const bounds = m.getBoundingInfo().boundingBox;
       const size = bounds.maximumWorld.subtract(bounds.minimumWorld);
       const footprint = Math.max(size.x, size.z);
       return footprint > 0 && size.y < footprint * 0.3;
     });
+    if (heuristic.length > 0) return heuristic;
+
+    // Neither search found anything floor-shaped (e.g. a model with no single flat
+    // mesh - floors split per-room, everything merged into one non-flat mesh, etc).
+    // WebXRDefaultExperience only creates the teleportation feature at all when
+    // floorMeshes is non-empty (see webXRDefaultExperience.js:
+    // `if (!options.disableTeleportation)`, which enterVR/enterAR set based on this
+    // array's length) - so an empty result here doesn't mean "no teleport arc shows up
+    // for this spot", it means the ENTIRE teleport feature silently never gets created,
+    // no matter how the controller is configured. A guaranteed invisible fallback floor
+    // is what makes the arc actually always work, the way it does in every other VR app.
+    return [this.getOrCreateFallbackFloor()];
+  }
+
+  // Lazily builds a large, invisible ground plane positioned at the lowest point of the
+  // real loaded geometry (or y=0 if the scene is otherwise empty), sized to comfortably
+  // cover the model's footprint. Exists purely as a teleport/collision target - never
+  // meant to be seen - see getFloorMeshes for why this needs to always succeed.
+  private getOrCreateFallbackFloor(): Mesh {
+    if (this.fallbackFloorMesh && !this.fallbackFloorMesh.isDisposed()) return this.fallbackFloorMesh;
+
+    let minY = 0;
+    let sizeXZ = 40;
+    const realMeshes = this.scene.meshes.filter((m) =>
+      m.isEnabled() && m.isVisible && m.getTotalVertices() > 0 &&
+      !/^(ar_reticle|ar_placement_root|__root__|xr_fallback_floor)/i.test(m.name || '')
+    );
+    if (realMeshes.length > 0) {
+      let minYFound = Infinity;
+      let maxX = -Infinity, minX = Infinity, maxZ = -Infinity, minZ = Infinity;
+      realMeshes.forEach((m) => {
+        const bounds = m.getBoundingInfo().boundingBox;
+        minYFound = Math.min(minYFound, bounds.minimumWorld.y);
+        maxX = Math.max(maxX, bounds.maximumWorld.x);
+        minX = Math.min(minX, bounds.minimumWorld.x);
+        maxZ = Math.max(maxZ, bounds.maximumWorld.z);
+        minZ = Math.min(minZ, bounds.minimumWorld.z);
+      });
+      if (isFinite(minYFound)) minY = minYFound;
+      sizeXZ = Math.max(20, (maxX - minX) * 1.5, (maxZ - minZ) * 1.5);
+    }
+
+    const floor = MeshBuilder.CreateGround('xr_fallback_floor', { width: sizeXZ, height: sizeXZ }, this.scene);
+    floor.position.y = minY;
+    floor.isPickable = true;
+    floor.checkCollisions = true;
+    // Fully transparent rather than isVisible=false - some picking paths (including
+    // this feature's own teleportation raycast) treat isVisible=false meshes as
+    // unpickable, which would silently reintroduce the exact "arc never shows up" bug
+    // this fallback exists to fix.
+    const material = new StandardMaterial('xr_fallback_floor_material', this.scene);
+    material.alpha = 0;
+    floor.material = material;
+    this.fallbackFloorMesh = floor;
+    return floor;
   }
 
   // Controllers not responding at all (no movement, no teleport, no laser pointer -
