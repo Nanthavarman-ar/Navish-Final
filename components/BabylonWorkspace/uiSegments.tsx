@@ -1557,7 +1557,7 @@ const GeoFeaturesSegment: React.FC<Pick<CustomPanelsSegmentProps, 'featureStates
   <>
     {featureStates.showGeoLocation && sceneRef.current && (
       <Suspense fallback={<div>Loading Geo Location...</div>}>
-        <GeoLocationContext scene={sceneRef.current} />
+        <GeoLocationContext scene={sceneRef.current} onClose={() => disableFeature('showGeoLocation')} />
       </Suspense>
     )}
     {featureStates.showGeoSync && sceneRef.current && (

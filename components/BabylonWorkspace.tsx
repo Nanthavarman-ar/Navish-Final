@@ -1573,21 +1573,9 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
           xrManager.setAudioManager(audioManager);
         }
 
-        // Initialize GeoLocation if enabled
-        if (featureStates.showGeoLocation && navigator.geolocation) {
-          navigator.geolocation.getCurrentPosition(
-            (position) => {
-              console.log("GeoLocation initialized:", position);
-              if (cameraRef.current) {
-                cameraRef.current.position = new Vector3(position.coords.longitude * 0.01, position.coords.latitude * 0.01, 10);
-              }
-            },
-            (error) => {
-              console.error("GeoLocation error:", error);
-              showToast.error("Location services unavailable");
-            }
-          );
-        }
+        // Geo Location is handled by the GeoLocationContext panel itself (see the note
+        // further below where its other duplicate used to live) - no scene-init-time
+        // geolocation call belongs here.
 
         // Start render loop
         if (shouldAbort()) {
@@ -2051,21 +2039,15 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
     };
   }, [featureStates.showMultiUser]);
 
-  // Reactively handle geolocation without recreating the scene
-  useEffect(() => {
-    if (!featureStates.showGeoLocation || !navigator.geolocation) return;
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        console.log("GeoLocation updated:", position);
-        if (cameraRef.current) {
-          cameraRef.current.position = new Vector3(position.coords.longitude * 0.01, position.coords.latitude * 0.01, 10);
-        }
-      },
-      (error) => {
-        console.warn("GeoLocation error:", error);
-      }
-    );
-  }, [featureStates.showGeoLocation]);
+  // The actual Geo Location feature is the GeoLocationContext panel (rendered by
+  // GeoFeaturesSegment in uiSegments.tsx when featureStates.showGeoLocation is true) -
+  // it owns real geolocation, sun-position, and weather handling behind its own "Get
+  // current location" button. This effect used to ALSO independently call
+  // getCurrentPosition and yank the camera to
+  // (longitude * 0.01, latitude * 0.01, 10) - raw GPS degrees are not scene units, so
+  // this just teleported the camera to an arbitrary, meaningless position the instant
+  // the panel opened, with no relation to the loaded model. Removed rather than fixed:
+  // camera position has nothing to do with what "Geo Location" is supposed to show.
 
   // Handlers
   // ...existing code...
@@ -2708,27 +2690,14 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
           }
         }
 
-        // Geo Features
-        if (id === 'showGeoLocation' && navigator.geolocation) {
-          try {
-            navigator.geolocation.getCurrentPosition(
-              (position) => {
-                console.log('GeoLocation enabled:', position.coords);
-                if (cameraRef.current) {
-                  cameraRef.current.position.x = position.coords.longitude * 0.01;
-                  cameraRef.current.position.z = position.coords.latitude * 0.01;
-                }
-              },
-              (error) => {
-                console.error('GeoLocation error:', error);
-                showToast.error('Location services unavailable');
-              }
-            );
-          } catch (error) {
-            console.error('Error enabling geo location:', error);
-            showToast.error('Failed to enable geo location');
-          }
-        }
+        // Geo Features: enableFeature(id) above already flips featureStates.showGeoLocation,
+        // which is what makes GeoFeaturesSegment (uiSegments.tsx) render the real
+        // GeoLocationContext panel - that panel owns geolocation/sun-position/weather
+        // itself behind its own "Get current location" button. This branch used to ALSO
+        // independently call getCurrentPosition and set cameraRef.current.position.x/z to
+        // raw GPS degrees * 0.01, which isn't a scene coordinate - it just snapped the
+        // camera to an arbitrary spot with no relation to the loaded model the instant
+        // the button was clicked, before the user had done anything in the actual panel.
 
         // Geo Sync - previously had no handler at all, so clicking this button did
         // nothing visible even though GeoSyncManager existed and was fully functional.

@@ -40,12 +40,14 @@ interface GeoLocationContextProps {
   scene: BABYLON.Scene;
   onLocationChange?: (location: GeoLocation) => void;
   onSunPathUpdate?: (sunPath: SunPathData) => void;
+  onClose?: () => void;
 }
 
 const GeoLocationContext: React.FC<GeoLocationContextProps> = ({
   scene,
   onLocationChange,
-  onSunPathUpdate
+  onSunPathUpdate,
+  onClose
 }) => {
   const [currentLocation, setCurrentLocation] = useState<GeoLocation | null>(null);
   const [isTracking, setIsTracking] = useState(false);
@@ -344,15 +346,41 @@ const GeoLocationContext: React.FC<GeoLocationContextProps> = ({
 
   return (
     <div style={{
+      position: 'fixed',
+      top: '72px',
+      right: '16px',
+      width: '320px',
+      maxWidth: 'calc(100vw - 32px)',
+      zIndex: 50,
       padding: '16px',
       background: '#1e293b',
       border: '1px solid #334155',
       borderRadius: '8px',
       color: '#f1f5f9',
       maxHeight: '80vh',
-      overflowY: 'auto'
+      overflowY: 'auto',
+      boxShadow: '0 10px 25px rgba(0,0,0,0.5)'
     }}>
-      <h3 style={{ margin: '0 0 16px 0', fontSize: '16px' }}>Geo-Location Context</h3>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
+        <h3 style={{ margin: 0, fontSize: '16px' }}>Geo-Location Context</h3>
+        {onClose && (
+          <button
+            onClick={onClose}
+            aria-label="Close"
+            style={{
+              background: 'transparent',
+              border: 'none',
+              color: '#94a3b8',
+              cursor: 'pointer',
+              fontSize: '18px',
+              lineHeight: 1,
+              padding: '2px 6px'
+            }}
+          >
+            ✕
+          </button>
+        )}
+      </div>
 
       {/* API Key Configuration */}
       <div style={{ marginBottom: '16px' }}>
