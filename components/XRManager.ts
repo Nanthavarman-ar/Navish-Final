@@ -66,6 +66,13 @@ export class XRManager {
   private arSelectListener: (() => void) | null = null;
   private placementScale: number = 1;
 
+  // Raw native hit-test bound to the right controller's own pointer direction, instead
+  // of hitTestFeature above (Babylon's WebXRHitTest, which is always head/gaze-locked)
+  // - see setupControllerAnchoredHitTest for why this exists.
+  private controllerHitTestSource: XRHitTestSource | null = null;
+  private controllerHitTestFrameCallback: ((frame: XRFrame) => void) | null = null;
+  private controllerHitTestControllerObserver: ((controller: WebXRInputSource) => void) | null = null;
+
   // Pending hold-squeeze-to-exit timers, keyed by controller uniqueId - see
   // setupControllerEvents for why this gesture exists.
   private exitHoldTimers: Map<string, ReturnType<typeof setTimeout>> = new Map();
@@ -568,6 +575,11 @@ export class XRManager {
 
     if (this.hitTestFeature) {
       this.hitTestFeature.onHitTestResultObservable.add((results) => {
+        // Once the controller-anchored hit test (below) is live, it's authoritative -
+        // this gaze-locked result is only a placeholder for the brief window before a
+        // controller connects (or on devices/sessions with no controller at all, e.g.
+        // hand-tracking-only or phone AR).
+        if (this.controllerHitTestSource) return;
         if (results.length > 0) {
           const hit = results[0];
           reticle.isVisible = true;
@@ -588,6 +600,8 @@ export class XRManager {
       console.warn('No hit-test feature available - tap-to-place will not work this session');
     }
 
+    this.setupControllerAnchoredHitTest();
+
     const session = this.xrExperience.baseExperience.sessionManager.session;
     this.arSelectListener = () => {
       if (!this.lastHitPose) return;
@@ -598,6 +612,86 @@ export class XRManager {
     session?.addEventListener('select', this.arSelectListener);
   }
 
+  // Babylon's own WebXRHitTest feature (this.hitTestFeature, used above) only ever
+  // binds its ray to the VIEWER's pose - Babylon's typed options for it don't expose
+  // binding to a specific input source at all (only viewer-locked or world-locked, see
+  // WebXRHitTest.js's _initHitTestSource). For a headset+controller AR session that
+  // means the placement reticle always follows head/gaze direction no matter where the
+  // controller is actually pointed - which is exactly why placement landed in the
+  // "wrong spot and rotation": users naturally aim with the controller, not their head,
+  // so the two rarely agreed.
+  //
+  // This requests a second, raw native WebXR hit test source bound directly to the
+  // right controller's own targetRaySpace (the same ray Babylon draws its laser pointer
+  // along), and the callback above defers to whatever this produces once it's live.
+  private setupControllerAnchoredHitTest(): void {
+    if (!this.xrExperience) return;
+    const sessionManager = this.xrExperience.baseExperience.sessionManager;
+    const session = sessionManager.session;
+    if (!session?.requestHitTestSource) return;
+
+    const bindController = (controller: WebXRInputSource) => {
+      if (this.controllerHitTestSource || controller.inputSource.handedness !== 'right') return;
+      const targetRaySpace = controller.inputSource.targetRaySpace;
+      if (!targetRaySpace) return;
+      const request = session.requestHitTestSource?.({ space: targetRaySpace });
+      if (!request) return;
+      request.then((source) => {
+        if (source) this.controllerHitTestSource = source;
+      }).catch((error) => {
+        console.warn('Controller-anchored AR hit-test unavailable, falling back to gaze-based placement:', error);
+      });
+    };
+
+    this.xrExperience.input.controllers.forEach(bindController);
+    this.controllerHitTestControllerObserver = bindController;
+    this.xrExperience.input.onControllerAddedObservable.add(bindController);
+
+    this.controllerHitTestFrameCallback = (frame: XRFrame) => {
+      const source = this.controllerHitTestSource;
+      const reticle = this.reticle;
+      if (!source || !reticle || reticle.isDisposed()) return;
+      const results = frame.getHitTestResults(source);
+      if (results.length === 0) {
+        reticle.isVisible = false;
+        this.lastHitPose = null;
+        return;
+      }
+      const pose = results[0].getPose(sessionManager.referenceSpace);
+      if (!pose) return;
+      const p = pose.transform.position;
+      const q = pose.transform.orientation;
+      const position = new Vector3(p.x, p.y, p.z).scale(sessionManager.worldScalingFactor);
+      const rotationQuaternion = new Quaternion(q.x, q.y, q.z, q.w);
+      if (!this.scene.useRightHandedSystem) {
+        position.z *= -1;
+        rotationQuaternion.z *= -1;
+        rotationQuaternion.w *= -1;
+      }
+      reticle.isVisible = true;
+      reticle.position.copyFrom(position);
+      reticle.rotationQuaternion = rotationQuaternion.clone();
+      this.lastHitPose = { position, rotationQuaternion };
+    };
+    sessionManager.onXRFrameObservable.add(this.controllerHitTestFrameCallback);
+  }
+
+  private teardownControllerAnchoredHitTest(): void {
+    if (this.controllerHitTestSource) {
+      this.controllerHitTestSource.cancel();
+      this.controllerHitTestSource = null;
+    }
+    const sessionManager = this.xrExperience?.baseExperience?.sessionManager;
+    if (sessionManager && this.controllerHitTestFrameCallback) {
+      sessionManager.onXRFrameObservable.removeCallback(this.controllerHitTestFrameCallback);
+    }
+    if (this.xrExperience && this.controllerHitTestControllerObserver) {
+      this.xrExperience.input.onControllerAddedObservable.removeCallback(this.controllerHitTestControllerObserver);
+    }
+    this.controllerHitTestFrameCallback = null;
+    this.controllerHitTestControllerObserver = null;
+  }
+
   private teardownARPlacement(): void {
     const session = this.xrExperience?.baseExperience?.sessionManager?.session;
     if (session && this.arSelectListener) {
@@ -605,6 +699,7 @@ export class XRManager {
     }
     this.arSelectListener = null;
     this.hitTestFeature = null;
+    this.teardownControllerAnchoredHitTest();
     this.lastHitPose = null;
     if (this.reticle && !this.reticle.isDisposed()) {
       this.reticle.dispose();
