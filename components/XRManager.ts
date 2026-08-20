@@ -166,13 +166,23 @@ export class XRManager {
     return [this.getOrCreateFallbackFloor()];
   }
 
-  // Lazily builds a large, invisible ground plane positioned at the lowest point of the
-  // real loaded geometry (or y=0 if the scene is otherwise empty), sized to comfortably
-  // cover the model's footprint. Exists purely as a teleport/collision target - never
-  // meant to be seen - see getFloorMeshes for why this needs to always succeed.
+  // Builds (or refreshes) a large, invisible ground plane positioned at the lowest
+  // point of the real loaded geometry (or y=0 if the scene is otherwise empty), sized
+  // to comfortably cover the model's footprint. Exists purely as a teleport/collision
+  // target - never meant to be seen - see getFloorMeshes for why this needs to always
+  // succeed.
+  //
+  // Bounds are recomputed on every call rather than only the first time:
+  // getFloorMeshes() (and so this) runs synchronously the moment VR/AR is entered,
+  // which can easily happen before the model finishes its own async load - a floor
+  // sized/positioned from whatever was in the scene at that first call (an empty
+  // scene, or just the small placeholder box/ground) would otherwise never be
+  // recalculated once the real model actually loaded, silently going right back to
+  // "the arc has nothing valid to land on". The mesh OBJECT itself is still reused
+  // (via scaling, not dispose+recreate) rather than replaced, since an active
+  // teleportation feature holds a direct reference to it in its own floorMeshes array
+  // - swapping in a new mesh instance wouldn't reach that already-created feature.
   private getOrCreateFallbackFloor(): Mesh {
-    if (this.fallbackFloorMesh && !this.fallbackFloorMesh.isDisposed()) return this.fallbackFloorMesh;
-
     let minY = 0;
     let sizeXZ = 40;
     const realMeshes = this.scene.meshes.filter((m) =>
@@ -194,8 +204,15 @@ export class XRManager {
       sizeXZ = Math.max(20, (maxX - minX) * 1.5, (maxZ - minZ) * 1.5);
     }
 
-    const floor = MeshBuilder.CreateGround('xr_fallback_floor', { width: sizeXZ, height: sizeXZ }, this.scene);
+    if (this.fallbackFloorMesh && !this.fallbackFloorMesh.isDisposed()) {
+      this.fallbackFloorMesh.position.y = minY;
+      this.fallbackFloorMesh.scaling.setAll(sizeXZ); // built at a fixed 1x1 base size below
+      return this.fallbackFloorMesh;
+    }
+
+    const floor = MeshBuilder.CreateGround('xr_fallback_floor', { width: 1, height: 1 }, this.scene);
     floor.position.y = minY;
+    floor.scaling.setAll(sizeXZ);
     floor.isPickable = true;
     floor.checkCollisions = true;
     // Fully transparent rather than isVisible=false - some picking paths (including
