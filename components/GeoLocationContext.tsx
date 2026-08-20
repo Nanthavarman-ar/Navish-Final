@@ -2,6 +2,21 @@ import React, { useState, useEffect, useRef } from 'react';
 import * as BABYLON from '@babylonjs/core';
 import { showToast } from './utils/toast';
 
+// The weather API key is one account/key shared across every project (it's yours, not
+// tied to a specific model), so it's stored once in this browser rather than living in
+// component state alone - which reset to the placeholder every time this panel closed
+// (it unmounts when featureStates.showGeoLocation goes false) or the page reloaded,
+// meaning the same key had to be re-pasted over and over.
+const WEATHER_API_KEY_STORAGE_KEY = 'naviz_weather_api_key';
+
+const loadStoredWeatherApiKey = (): string => {
+  try {
+    return localStorage.getItem(WEATHER_API_KEY_STORAGE_KEY) || 'YOUR_API_KEY';
+  } catch {
+    return 'YOUR_API_KEY'; // localStorage unavailable (private browsing, etc.) - fall back to session-only
+  }
+};
+
 interface GeoLocation {
   latitude: number;
   longitude: number;
@@ -62,7 +77,15 @@ const GeoLocationContext: React.FC<GeoLocationContextProps> = ({
   const [locationHistory, setLocationHistory] = useState<LocationHistory[]>([]);
   const [favoriteLocations, setFavoriteLocations] = useState<GeoLocation[]>([]);
   const [isLoadingWeather, setIsLoadingWeather] = useState(false);
-  const [weatherApiKey, setWeatherApiKey] = useState<string>('YOUR_API_KEY'); // Should be from env/config
+  const [weatherApiKey, setWeatherApiKeyState] = useState<string>(loadStoredWeatherApiKey);
+  const setWeatherApiKey = (key: string) => {
+    setWeatherApiKeyState(key);
+    try {
+      localStorage.setItem(WEATHER_API_KEY_STORAGE_KEY, key);
+    } catch {
+      // private browsing / storage disabled - key still works for this session via state
+    }
+  };
 
   // Initialize sun light
   useEffect(() => {
