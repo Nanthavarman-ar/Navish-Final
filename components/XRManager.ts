@@ -550,7 +550,39 @@ export class XRManager {
     row.appendChild(resetBtn);
     row.appendChild(makeButton('+', 'Scale up (hold to keep growing)', () => this.scalePlacedModel(1.04)));
 
+    // A hit-test tap gets the model CLOSE to the real site's actual reference point but
+    // rarely exactly on it, and re-tapping to correct it re-rolls rotation too from
+    // whatever surface the new tap happened to land on - reading as the model jumping
+    // to a totally different orientation rather than settling into place. These nudge it
+    // in small, slow steps instead (~0.25 m/s move, ~25 deg/s rotate while held) so it
+    // can be walked into an accurate final position/heading without re-tapping at all.
+    // Smaller (56px) than the scale buttons above since there are more of them to fit in
+    // one row.
+    const smallButton = (label: string, title: string, onStep: () => void) => {
+      const btn = makeButton(label, title, onStep);
+      btn.style.width = '56px';
+      btn.style.height = '56px';
+      btn.style.fontSize = '20px';
+      return btn;
+    };
+
+    const moveRow = document.createElement('div');
+    moveRow.style.cssText = 'display:flex;align-items:center;gap:10px;';
+    const MOVE_STEP = 0.03; // meters per repeat tick
+    moveRow.appendChild(smallButton('◀', 'Move left (hold)', () => this.nudgePlacedModel(0, -MOVE_STEP)));
+    moveRow.appendChild(smallButton('▲', 'Move forward (hold)', () => this.nudgePlacedModel(MOVE_STEP, 0)));
+    moveRow.appendChild(smallButton('▼', 'Move backward (hold)', () => this.nudgePlacedModel(-MOVE_STEP, 0)));
+    moveRow.appendChild(smallButton('▶', 'Move right (hold)', () => this.nudgePlacedModel(0, MOVE_STEP)));
+
+    const rotateRow = document.createElement('div');
+    rotateRow.style.cssText = 'display:flex;align-items:center;gap:10px;';
+    const ROTATE_STEP = (3 * Math.PI) / 180; // 3 degrees per repeat tick
+    rotateRow.appendChild(smallButton('⟲', 'Rotate left (hold)', () => this.rotatePlacedModel(-ROTATE_STEP)));
+    rotateRow.appendChild(smallButton('⟳', 'Rotate right (hold)', () => this.rotatePlacedModel(ROTATE_STEP)));
+
     container.appendChild(readout);
+    container.appendChild(moveRow);
+    container.appendChild(rotateRow);
     container.appendChild(row);
     document.body.appendChild(container);
     return container;
@@ -731,6 +763,52 @@ export class XRManager {
     this.placementScale = 1;
     this.placementRoot?.scaling.setAll(1);
     this.updateScaleReadout();
+  }
+
+  // Fine manual position adjustment after the initial tap-to-place - a hit-test-driven
+  // tap can land close but not exactly on the real site's actual reference point, and
+  // re-tapping to try again re-rolls rotation too (from whatever surface/plane the new
+  // tap happened to hit), which reads as the model "jumping" rather than correcting.
+  // This nudges the already-placed model in place instead, relative to the CAMERA's
+  // current horizontal facing (so "forward" on the on-screen button always means
+  // "further into the scene from here", regardless of which way the model itself is
+  // rotated) - forwardDelta/rightDelta are in meters, small values so a press-and-hold
+  // button repeatedly calling this reads as smooth, controllable creep rather than a
+  // jump.
+  nudgePlacedModel(forwardDelta: number, rightDelta: number): void {
+    const root = this.placementRoot;
+    const camera = this.xrCamera;
+    if (!root) {
+      console.warn('Tap the screen to place the model before adjusting its position');
+      return;
+    }
+    if (!camera) return;
+    const forward = camera.getDirection(Vector3.Forward());
+    forward.y = 0;
+    if (forward.lengthSquared() < 1e-6) return; // looking straight up/down - no stable horizontal forward
+    forward.normalize();
+    const right = camera.getDirection(Vector3.Right());
+    right.y = 0;
+    right.normalize();
+    root.position.addInPlace(forward.scale(forwardDelta)).addInPlace(right.scale(rightDelta));
+  }
+
+  // Fine manual rotation (around the vertical/up axis only - architectural placement
+  // only ever needs to correct heading, not tilt) after the initial tap-to-place.
+  // deltaRadians is small (driven by a press-and-hold button ticking this repeatedly,
+  // like nudgePlacedModel) rather than the abrupt ~90 degree jump re-tapping caused
+  // before, since each tap fully replaced rotation from whatever the hit-test surface's
+  // detected orientation happened to be at that exact point.
+  rotatePlacedModel(deltaRadians: number): void {
+    const root = this.placementRoot;
+    if (!root) {
+      console.warn('Tap the screen to place the model before rotating it');
+      return;
+    }
+    if (!root.rotationQuaternion) {
+      root.rotationQuaternion = Quaternion.FromEulerVector(root.rotation);
+    }
+    root.rotationQuaternion = root.rotationQuaternion.multiply(Quaternion.RotationAxis(Vector3.Up(), deltaRadians));
   }
 
   // Lets external UI (e.g. the desktop ARScalePanel) drive the SAME live AR placement
