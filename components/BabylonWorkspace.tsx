@@ -942,6 +942,9 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
       newCamera = new ArcRotateCamera('camera', -Math.PI / 2, Math.PI / 2.5, 10, Vector3.Zero(), scene);
       (newCamera as ArcRotateCamera).lowerRadiusLimit = 2;
       (newCamera as ArcRotateCamera).upperRadiusLimit = 30;
+      // See the matching comment on the main scene-init camera for why percentage-based
+      // zoom (not the fixed-step default) is what this project actually wants.
+      (newCamera as ArcRotateCamera).wheelDeltaPercentage = 0.01;
     }
 
     applyMovementKeys(newCamera);
@@ -1126,6 +1129,16 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
         const cameraTarget = Vector3.Zero();
         camera = new ArcRotateCamera("camera", -Math.PI / 2, Math.PI / 2.5, 10, cameraTarget, scene);
         camera.attachControl(canvasRef.current!, true);
+        // Babylon's default mouse-wheel zoom moves the camera by a FIXED distance per
+        // scroll tick (wheelPrecision), regardless of how far away the camera currently
+        // is - fine for a small close-up object, but architectural models are viewed
+        // across a much wider range of distances (walk right up to a wall, then zoom
+        // out to see the whole building), so that same fixed step reads as "way too
+        // fast" once zoomed in close. wheelDeltaPercentage instead moves the camera by a
+        // PERCENTAGE of its current distance to the target every tick - fast when far
+        // away, fine/precise up close - which is how every professional CAD/BIM viewer
+        // (and this project's own touchpad pinch-zoom) already behaves.
+        camera.wheelDeltaPercentage = 0.01;
         cameraRef.current = camera;
 
         // Create basic lighting (HemisphericLight for ambient)
