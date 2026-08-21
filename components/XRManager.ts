@@ -240,8 +240,25 @@ export class XRManager {
   // profiles instead, which still fully support standard trigger/squeeze/thumbstick
   // input - only the fancy branded 3D controller model is lost, which is a fine trade
   // for input actually working.
-  private getInputOptions(): { disableOnlineControllerRepository: boolean } {
-    return { disableOnlineControllerRepository: true };
+  //
+  // forceInputProfile: 'oculus-touch' additionally sidesteps a second failure mode seen
+  // after the above fix - squeeze (the exit gesture) working while BOTH thumbstick-
+  // driven features (smooth movement and the teleport arc) stayed completely dead.
+  // Without this, which exact profile gets resolved locally depends on matching the
+  // browser's own reported profile ID string(s) against Babylon's small locally-
+  // registered set (see webXRMotionControllerManager.js's _AvailableControllers) - if
+  // that match landed on "generic-trigger" (trigger only, no squeeze/thumbstick at all)
+  // rather than "oculus-touch" (trigger+squeeze+thumbstick, Babylon's dedicated Quest
+  // Touch class), squeeze wouldn't work either, which contradicts what was actually
+  // observed - but there's no way to be certain which resolution path this device
+  // actually took without a live device log, so forcing the profile directly removes
+  // that ambiguity rather than requiring another guess. Only affects gamepad/controller
+  // input - hand-tracking (Vision Pro etc) goes through a separate feature entirely, so
+  // this is safe there too, but SHOULD be revisited (made conditional, or dropped) if
+  // this app ever needs to support a non-Quest controller-based headset (Vive, WMR,
+  // Index) with its own distinct button layout.
+  private getInputOptions(): { disableOnlineControllerRepository: boolean; forceInputProfile: string } {
+    return { disableOnlineControllerRepository: true, forceInputProfile: 'oculus-touch' };
   }
 
   // Makes the headset camera actually stop at walls/furniture instead of the thumbstick
