@@ -1001,6 +1001,12 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
 
   // XR Manager ref
   const xrManagerRef = useRef<XRManager | null>(null);
+  // Remembers the desktop SSAO preference (auto-detected or user-toggled) across a VR/AR
+  // session, so entering XR can safely force SSAO off (it's a full-screen, per-eye-cost
+  // post effect - real money on a standalone headset's GPU, on top of the render-scale
+  // reduction XRManager already applies) without losing the user's actual desktop choice
+  // once they exit.
+  const desktopSSAOPreferenceRef = useRef<boolean>(false);
 
   // AI Manager ref
   const aiManagerRef = useRef<any>(null);
@@ -1257,6 +1263,21 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
         const resolvedQuality = renderingQuality === 'auto' ? deviceDetector.getRecommendedQuality() : renderingQuality;
         if (renderingQuality === 'auto' && !shouldAbort()) {
           engine.setHardwareScalingLevel(qualityToScaling[resolvedQuality] ?? qualityToScaling.medium);
+        }
+
+        // Contact shadows (SSAO) meaningfully improve how grounded/realistic the scene
+        // reads - real games lean on this exact effect - but it's a full-screen post
+        // process with a real per-pixel cost, so it only auto-enables on hardware that
+        // actually has headroom for it. getRecommendedQuality() already penalizes mobile
+        // devices in its scoring (see DeviceDetector.getPerformanceScore's mobile
+        // deduction), so requiring 'high'/'ultra' here naturally keeps phones/tablets on
+        // the lighter default rather than needing a separate mobile-specific check. Not
+        // applied if the device/session is already in XR at this point (shouldn't be,
+        // this runs once at mount) - see the showVR/showAR handlers below for why SSAO
+        // is force-disabled for the duration of any actual XR session regardless.
+        if (!capabilities.mobile && (resolvedQuality === 'high' || resolvedQuality === 'ultra') && !shouldAbort()) {
+          desktopSSAOPreferenceRef.current = true;
+          setEnableSSAO(true);
         }
 
         // Sharper textures at oblique viewing angles (a wall/floor texture stays crisp
@@ -2588,6 +2609,12 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
           xrManagerRef.current.enterVR()
             .then((success) => {
               if (success) {
+                // SSAO is a full-screen, per-eye post effect - real cost on a standalone
+                // headset's GPU on top of the render-scale reduction XRManager already
+                // applies for XR. desktopSSAOPreferenceRef remembers whatever the
+                // desktop value actually was so it comes back once this session ends.
+                desktopSSAOPreferenceRef.current = enableSSAO;
+                setEnableSSAO(false);
                 showToast.success('VR mode enabled');
               } else {
                 showToast.error('Failed to enter VR mode', 'This device/browser may not support VR');
@@ -2602,6 +2629,9 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
           xrManagerRef.current.enterAR()
             .then((success) => {
               if (success) {
+                // See the matching comment on the VR entry branch above.
+                desktopSSAOPreferenceRef.current = enableSSAO;
+                setEnableSSAO(false);
                 showToast.success('AR mode enabled');
               } else {
                 showToast.error('Failed to enter AR mode', 'This device/browser may not support AR');
@@ -2890,6 +2920,9 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
         // XR Features
         if ((id === 'showVR' || id === 'showAR') && xrManagerRef.current) {
           xrManagerRef.current.exitXR();
+          // Restore whatever SSAO was set to on the desktop before it was force-disabled
+          // for the XR session - see the showVR/showAR enter handlers above.
+          setEnableSSAO(desktopSSAOPreferenceRef.current);
         }
         if (id === 'showSpatialAudio' && audioManagerRef.current) {
           audioManagerRef.current.disableSpatialAudio();
