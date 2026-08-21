@@ -426,7 +426,7 @@ const AIVoiceAssistant: React.FC<AIVoiceAssistantProps> = ({
         patterns: ['what does', 'what is', 'explain', 'tell me about', 'how do i use', 'how does'],
         action: 'explain_tool',
         parse: (cmd: string) => {
-          const m = cmd.match(/(?:what does|what is|explain|tell me about|how do i use|how does)\s+(?:the\s+)?(.+?)(?:\s+do)?[\?]?$/i);
+          const m = cmd.match(/(?:what does|what is|explain|tell me about|how do i use|how does)\s+(?:the\s+)?(.+?)(?:\s+do)?\??$/i);
           if (m && m[1]) return { target: m[1].trim() };
           return null;
         }
