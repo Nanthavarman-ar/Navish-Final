@@ -92,6 +92,11 @@ export class XRManager {
   private static readonly SNAP_TURN_REARM_THRESHOLD = 0.3;
   private static readonly SNAP_TURN_RADIANS = Math.PI / 8; // 22.5 degrees
 
+  // Custom smooth-walk locomotion (left controller) - see setupCustomMovement.
+  private movementFrameCallback: (() => void) | null = null;
+  private static readonly MOVEMENT_THRESHOLD = 0.15;
+  private static readonly WALK_SPEED_MPS = 1.0; // comfortable walking pace, not a run
+
   private initPromise: Promise<void>;
 
   constructor(scene: Scene) {
@@ -277,11 +282,11 @@ export class XRManager {
   }
 
   // Makes the headset camera actually stop at walls/furniture instead of the thumbstick
-  // (WebXRFeatureName.MOVEMENT below) walking straight through solid geometry. WebXR
-  // cameras don't move via the normal collision-aware Camera.update() path by default -
+  // (setupCustomMovement below) walking straight through solid geometry. WebXR cameras
+  // don't move via the normal collision-aware Camera.update() path by default -
   // enabling checkCollisions + a human-sized capsule here is what makes Babylon's own
-  // collision system apply to the same cameraDirection nudges the movement feature
-  // produces, so it works together with it rather than needing a separate system.
+  // collision system apply to the same cameraDirection nudges custom movement produces,
+  // so it works together with it rather than needing a separate system.
   // scene.collisionsEnabled is also forced on here as a safety net in case this runs
   // against a scene that doesn't set it itself (e.g. embedded outside BabylonWorkspace).
   // scene.gravity already defaults to real-world (0,-9.807,0) - left untouched.
@@ -908,6 +913,7 @@ export class XRManager {
       // a no-op if AR placement was never set up (e.g. exiting a VR session).
       this.teardownARPlacement();
       this.teardownCustomTeleportation();
+      this.teardownCustomMovement();
 
       // End XR session
       await this.xrExperience.baseExperience.sessionManager.exitXRAsync();
@@ -952,34 +958,9 @@ export class XRManager {
       this.enableHandTracking(featuresManager);
     }
 
-    // Smooth thumbstick locomotion - the "hold thumbstick to walk" movement most
-    // headset users (Quest included) expect. Point-and-teleport is handled entirely
-    // separately by setupCustomTeleportation() below, on the right controller only, so
-    // this stays dedicated to the LEFT thumbstick (walk/strafe) with no overlap.
-    //
-    // movementSpeed was previously 1.0 - Babylon's own default for this feature, tuned
-    // for a generic scene rather than this app's architectural walkthrough scale -
-    // which read as running rather than walking. Halved for a more natural walking pace;
-    // still easy to tune further from here if it needs to move again.
-    try {
-      featuresManager.enableFeature(WebXRFeatureName.MOVEMENT, 'latest', {
-        xrInput: this.xrExperience.input,
-        movementSpeed: 0.5,
-        rotationSpeed: 1.0,
-        customRegistrationConfigurations: [
-          {
-            allowedComponentTypes: [WebXRControllerComponent.THUMBSTICK_TYPE, WebXRControllerComponent.TOUCHPAD_TYPE],
-            forceHandedness: 'left',
-            axisChangedHandler: (axes: { x: number; y: number }, movementState: { moveX: number; moveY: number; rotateX: number; rotateY: number }, featureContext: { movementThreshold: number }) => {
-              movementState.moveX = Math.abs(axes.x) > featureContext.movementThreshold ? axes.x : 0;
-              movementState.moveY = Math.abs(axes.y) > featureContext.movementThreshold ? axes.y : 0;
-            }
-          }
-        ]
-      }, true, false);
-    } catch (error) {
-      console.warn('Smooth movement feature not available on this device/browser:', error);
-    }
+    // Smooth thumbstick locomotion (left controller) - see setupCustomMovement for why
+    // this is a full reimplementation rather than WebXRFeatureName.MOVEMENT.
+    this.setupCustomMovement();
 
     if (this.teleportationEnabled) {
       this.setupCustomTeleportation(floorMeshes);
@@ -999,6 +980,70 @@ export class XRManager {
     } catch (error) {
       console.warn('Hand tracking not supported:', error);
     }
+  }
+
+  // Smooth thumbstick locomotion (left controller), entirely reimplemented rather than
+  // using Babylon's own WebXRFeatureName.MOVEMENT.
+  //
+  // Reported symptom on real Quest hardware: pushing the stick forward walks normally,
+  // pushing it backward - even standing in open space, nothing behind - does nothing at
+  // all. Babylon's own movement feature's forward/backward handling
+  // (WebXRControllerMovement.js's _onXRFrame) is genuinely symmetric for both signs of
+  // the stick's Y axis, so this wasn't traceable to a specific line the way the
+  // teleportation bug above was - but by the same principle that fixed that one
+  // (stop depending on Babylon's own internal feature state entirely, replace it with a
+  // small direct implementation), this sidesteps whatever that asymmetry actually was.
+  //
+  // Also computes movement direction from the camera's YAW only (heading), not its full
+  // 3D orientation including pitch - Babylon's own feature uses the full quaternion via
+  // movementOrientationFollowsViewerPose, meaning looking down while holding "forward"
+  // pushes you into the floor. Standard VR locomotion comfort practice keeps movement
+  // on the horizontal plane regardless of where the headset is currently pointed, which
+  // this now does (the same yaw-only, Y-zeroed direction pattern nudgePlacedModel
+  // already uses for AR placement).
+  private setupCustomMovement(): void {
+    if (!this.xrExperience) return;
+    this.teardownCustomMovement();
+
+    const sessionManager = this.xrExperience.baseExperience.sessionManager;
+    this.movementFrameCallback = () => {
+      const camera = this.xrCamera;
+      const controller = this.xrExperience?.input.controllers.find((c) => c.inputSource.handedness === 'left');
+      const thumbstick = controller?.motionController?.getComponentOfType(WebXRControllerComponent.THUMBSTICK_TYPE)
+        ?? controller?.motionController?.getComponentOfType(WebXRControllerComponent.TOUCHPAD_TYPE);
+      if (!camera || !controller || !thumbstick) return;
+
+      const { x, y } = thumbstick.axes;
+      const moveX = Math.abs(x) > XRManager.MOVEMENT_THRESHOLD ? x : 0;
+      const moveY = Math.abs(y) > XRManager.MOVEMENT_THRESHOLD ? y : 0;
+      if (moveX === 0 && moveY === 0) return;
+
+      const forward = camera.getDirection(Vector3.Forward());
+      forward.y = 0;
+      if (forward.lengthSquared() < 1e-6) return; // looking straight up/down - no stable horizontal forward this frame
+      forward.normalize();
+      const right = camera.getDirection(Vector3.Right());
+      right.y = 0;
+      right.normalize();
+
+      // y is WebXR's standard thumbstick convention: negative = pushed away/forward.
+      const distance = XRManager.WALK_SPEED_MPS * (this.scene.getEngine().getDeltaTime() / 1000);
+      const translation = forward.scale(-moveY * distance).add(right.scale(moveX * distance));
+      // Same accumulate-then-let-the-camera's-own-update-loop-consume-it mechanism
+      // Babylon's own feature used, so this still works together with the collision
+      // ellipsoid/gravity set up in applyWalkingCollisions rather than needing a
+      // separate system for it.
+      camera.cameraDirection.addInPlace(translation);
+    };
+    sessionManager.onXRFrameObservable.add(this.movementFrameCallback);
+  }
+
+  private teardownCustomMovement(): void {
+    const sessionManager = this.xrExperience?.baseExperience?.sessionManager;
+    if (sessionManager && this.movementFrameCallback) {
+      sessionManager.onXRFrameObservable.removeCallback(this.movementFrameCallback);
+    }
+    this.movementFrameCallback = null;
   }
 
   // Point-and-teleport arc + right-stick snap-turn, entirely reimplemented rather than
