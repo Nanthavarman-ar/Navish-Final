@@ -155,8 +155,24 @@ export class XRManager {
   // has *something* to target even if the loaded model doesn't explicitly name a
   // floor/ground mesh.
   private getFloorMeshes(): AbstractMesh[] {
+    // Flat (wide relative to its own height) AND at least a metre across, not a small
+    // decorative object that merely has "floor" somewhere in its name - a floor lamp, a
+    // per-tile rug, a ceiling beam labelled "GroundFloor_Beam", etc. Reported symptom
+    // without this size check: the teleport aim ray was always red/never landed on
+    // anything, because the name search below matched some unrelated small mesh with
+    // "floor" in its name (satisfying `named.length > 0` and returning ONLY that) well
+    // before either the shape heuristic or the guaranteed fallback further down ever
+    // got a chance to run.
+    const isFloorShaped = (m: AbstractMesh): boolean => {
+      if (!m.isEnabled() || !m.isPickable || !m.isVisible || m.getTotalVertices() === 0) return false;
+      const bounds = m.getBoundingInfo().boundingBox;
+      const size = bounds.maximumWorld.subtract(bounds.minimumWorld);
+      const footprint = Math.max(size.x, size.z);
+      return footprint > 1 && size.y < footprint * 0.3;
+    };
+
     const named = this.scene.meshes.filter(
-      (m) => m.isEnabled() && m.isPickable && /ground|floor|terrain|site|plot|land/i.test(m.name || '')
+      (m) => /ground|floor|terrain|site|plot|land/i.test(m.name || '') && isFloorShaped(m)
     );
     if (named.length > 0) return named;
     // Fallback for unnamed floors: previously treated EVERY pickable/visible mesh as a
@@ -165,13 +181,7 @@ export class XRManager {
     // is exactly what "movement kastama" (movement is difficult/broken-feeling) looks
     // like from the user's side. Only meshes whose bounding box is flat and wide
     // (floor-like) rather than tall and thin (wall-like) qualify now.
-    const heuristic = this.scene.meshes.filter((m) => {
-      if (!m.isEnabled() || !m.isPickable || !m.isVisible || m.getTotalVertices() === 0) return false;
-      const bounds = m.getBoundingInfo().boundingBox;
-      const size = bounds.maximumWorld.subtract(bounds.minimumWorld);
-      const footprint = Math.max(size.x, size.z);
-      return footprint > 0 && size.y < footprint * 0.3;
-    });
+    const heuristic = this.scene.meshes.filter(isFloorShaped);
     if (heuristic.length > 0) return heuristic;
 
     // Neither search found anything floor-shaped (e.g. a model with no single flat
