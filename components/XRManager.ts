@@ -957,15 +957,14 @@ export class XRManager {
     // separately by setupCustomTeleportation() below, on the right controller only, so
     // this stays dedicated to the LEFT thumbstick (walk/strafe) with no overlap.
     //
-    // movementSpeed/rotationSpeed were previously 0.15/0.5 - Babylon's own defaults for
-    // this feature are 1.0/1.0, so this was running at 15% of normal walking speed and
-    // half rotation speed, which reads as barely-responsive/broken movement rather than
-    // "smooth". Using Babylon's own tuned defaults instead of an arbitrary fraction of
-    // them.
+    // movementSpeed was previously 1.0 - Babylon's own default for this feature, tuned
+    // for a generic scene rather than this app's architectural walkthrough scale -
+    // which read as running rather than walking. Halved for a more natural walking pace;
+    // still easy to tune further from here if it needs to move again.
     try {
       featuresManager.enableFeature(WebXRFeatureName.MOVEMENT, 'latest', {
         xrInput: this.xrExperience.input,
-        movementSpeed: 1.0,
+        movementSpeed: 0.5,
         rotationSpeed: 1.0,
         customRegistrationConfigurations: [
           {
@@ -1072,6 +1071,11 @@ export class XRManager {
       }
 
       if (y < XRManager.TELEPORT_FORWARD_THRESHOLD) {
+        if (!this.teleportAiming) {
+          // Starting a fresh aim - clear out whatever target was left over from the
+          // previous one rather than carrying it forward.
+          this.teleportTargetPoint = null;
+        }
         this.teleportAiming = true;
         controller.getWorldPointerRayToRef(ray);
         const pick = this.scene.pickWithRay(ray, (m) => this.teleportFloorMeshes.indexOf(m) !== -1);
@@ -1079,7 +1083,13 @@ export class XRManager {
           this.teleportTargetPoint = pick.pickedPoint.clone();
           this.showTeleportVisuals(ray.origin, this.teleportTargetPoint, true);
         } else {
-          this.teleportTargetPoint = null;
+          // Deliberately NOT clearing teleportTargetPoint here - a real hand naturally
+          // wobbles the controller off-target for a frame or two while easing off the
+          // stick to release, and clearing the target on that single missed frame meant
+          // a perfectly good aim (reticle shown cyan a moment earlier) silently taught
+          // nothing on release - reported as "red/blue shows but doesn't teleport". The
+          // last confirmed-valid target stays live until either a new hit updates it or
+          // a fresh aim (above) explicitly resets it.
           this.showTeleportVisuals(ray.origin, ray.origin.add(ray.direction.scale(8)), false);
         }
       } else if (this.teleportAiming && y > XRManager.TELEPORT_RELEASE_THRESHOLD) {
