@@ -96,6 +96,14 @@ export class XRManager {
   private movementFrameCallback: (() => void) | null = null;
   private static readonly MOVEMENT_THRESHOLD = 0.15;
   private static readonly WALK_SPEED_MPS = 1.0; // comfortable walking pace, not a run
+  private static readonly SPRINT_THRESHOLD = 0.9; // stick magnitude - near-full deflection
+  private static readonly SPRINT_MULTIPLIER = 1.8;
+
+  // VR comfort: vignette-on-turn - see pulseTurnVignette.
+  private preXRVignetteState: { enabled: boolean; weight: number; color: Color4 | null } | null = null;
+  private vignetteFadeTimer: ReturnType<typeof setTimeout> | null = null;
+  private static readonly VIGNETTE_TURN_WEIGHT = 4;
+  private static readonly VIGNETTE_TURN_DURATION_MS = 250;
 
   private initPromise: Promise<void>;
 
@@ -306,6 +314,51 @@ export class XRManager {
     camera.applyGravity = true;
     camera.ellipsoid = new Vector3(0.3, 0.9, 0.3);
     camera.ellipsoidOffset = new Vector3(0, 0, 0);
+  }
+
+  // VR comfort: briefly darkens the peripheral view on every snap-turn - rotation is
+  // the single most nausea-inducing locomotion type in VR (the vestibular system feels
+  // no matching physical rotation), and narrowing the effective field of view for a
+  // moment during the turn is the standard, widely-used mitigation across VR games/apps.
+  // Uses scene.imageProcessingConfiguration directly rather than a dedicated post-process
+  // pipeline: with applyByPostProcess left at its default false, image processing
+  // (vignette included) is baked directly into each material's own shader, so this
+  // works even though no DefaultRenderingPipeline is attached to the XR camera (the
+  // desktop one - see BabylonWorkspace - isn't, deliberately, to keep VR light).
+  private pulseTurnVignette(): void {
+    const config = this.scene.imageProcessingConfiguration;
+    if (!this.preXRVignetteState) {
+      // First pulse this session - remember whatever the scene's vignette was set to
+      // beforehand (normally off) so it can be restored exactly, not just switched off,
+      // once the session ends.
+      this.preXRVignetteState = {
+        enabled: config.vignetteEnabled,
+        weight: config.vignetteWeight,
+        color: config.vignetteColor?.clone() ?? null
+      };
+    }
+    if (this.vignetteFadeTimer) clearTimeout(this.vignetteFadeTimer);
+    config.vignetteEnabled = true;
+    config.vignetteColor = new Color4(0, 0, 0, 1);
+    config.vignetteWeight = XRManager.VIGNETTE_TURN_WEIGHT;
+    this.vignetteFadeTimer = setTimeout(() => {
+      config.vignetteWeight = this.preXRVignetteState?.weight ?? 0;
+      this.vignetteFadeTimer = null;
+    }, XRManager.VIGNETTE_TURN_DURATION_MS);
+  }
+
+  private restorePreXRVignette(): void {
+    if (this.vignetteFadeTimer) {
+      clearTimeout(this.vignetteFadeTimer);
+      this.vignetteFadeTimer = null;
+    }
+    if (this.preXRVignetteState) {
+      const config = this.scene.imageProcessingConfiguration;
+      config.vignetteEnabled = this.preXRVignetteState.enabled;
+      config.vignetteWeight = this.preXRVignetteState.weight;
+      if (this.preXRVignetteState.color) config.vignetteColor = this.preXRVignetteState.color;
+      this.preXRVignetteState = null;
+    }
   }
 
   // Reduce render resolution for headset use. Standalone headsets (Quest and similar)
@@ -924,6 +977,7 @@ export class XRManager {
       this.teardownARPlacement();
       this.teardownCustomTeleportation();
       this.teardownCustomMovement();
+      this.restorePreXRVignette();
 
       // End XR session
       await this.xrExperience.baseExperience.sessionManager.exitXRAsync();
@@ -1036,8 +1090,19 @@ export class XRManager {
       right.y = 0;
       right.normalize();
 
+      // Auto-sprint: no separate button for it (squeeze is already the exit gesture,
+      // and there's nothing else free on this controller) - pushing the stick to
+      // (near) full deflection is itself the sprint trigger, the way many VR games with
+      // limited controller buttons already work. magnitude rather than either axis
+      // alone so it also triggers on a fully-deflected diagonal, not just straight
+      // forward/back.
+      const magnitude = Math.sqrt(moveX * moveX + moveY * moveY);
+      const speedMps = magnitude > XRManager.SPRINT_THRESHOLD
+        ? XRManager.WALK_SPEED_MPS * XRManager.SPRINT_MULTIPLIER
+        : XRManager.WALK_SPEED_MPS;
+
       // y is WebXR's standard thumbstick convention: negative = pushed away/forward.
-      const distance = XRManager.WALK_SPEED_MPS * (this.scene.getEngine().getDeltaTime() / 1000);
+      const distance = speedMps * (this.scene.getEngine().getDeltaTime() / 1000);
       const translation = forward.scale(-moveY * distance).add(right.scale(moveX * distance));
       // Same accumulate-then-let-the-camera's-own-update-loop-consume-it mechanism
       // Babylon's own feature used, so this still works together with the collision
@@ -1119,6 +1184,7 @@ export class XRManager {
             const turn = XRManager.SNAP_TURN_RADIANS * (x > 0 ? 1 : -1) * (this.scene.useRightHandedSystem ? -1 : 1);
             camera.rotationQuaternion = Quaternion.FromEulerAngles(0, turn, 0).multiply(camera.rotationQuaternion);
           }
+          this.pulseTurnVignette();
           this.teleportRotationArmed = false;
         } else if (Math.abs(x) < XRManager.SNAP_TURN_REARM_THRESHOLD) {
           this.teleportRotationArmed = true;

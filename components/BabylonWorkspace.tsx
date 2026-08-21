@@ -1280,6 +1280,18 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
           setEnableSSAO(true);
         }
 
+        // Shadow map resolution - created at a safe 1024 baseline above (before device
+        // capability was known), bumped up here on the same capable-desktop condition as
+        // SSAO. mapSize has a live setter (unlike most ShadowGenerator options, which
+        // need a fresh instance), so this doesn't need to recreate the generator or its
+        // shadow casters. Left untouched for mobile/VR - shadows there stay at the safe
+        // baseline rather than adding more GPU cost on top of the resolution scale-down
+        // XRManager already applies for headset use.
+        if (!capabilities.mobile && (resolvedQuality === 'high' || resolvedQuality === 'ultra') && shadowGeneratorRef.current && !shouldAbort()) {
+          shadowGeneratorRef.current.mapSize = 2048;
+          shadowGeneratorRef.current.blurKernel = 64;
+        }
+
         // Sharper textures at oblique viewing angles (a wall/floor texture stays crisp
         // instead of turning to mush toward the horizon) - this was never actively set
         // for uploaded models, since glTF import loads textures straight through
