@@ -87,7 +87,6 @@ export class XRManager {
   private teleportTargetPoint: Vector3 | null = null;
   private teleportRotationArmed: boolean = true;
   private static readonly TELEPORT_FORWARD_THRESHOLD = -0.7;
-  private static readonly TELEPORT_RELEASE_THRESHOLD = -0.3;
   private static readonly SNAP_TURN_THRESHOLD = 0.7;
   private static readonly SNAP_TURN_REARM_THRESHOLD = 0.3;
   private static readonly SNAP_TURN_RADIANS = Math.PI / 8; // 22.5 degrees
@@ -1213,7 +1212,19 @@ export class XRManager {
           // a fresh aim (above) explicitly resets it.
           this.showTeleportVisuals(ray.origin, ray.origin.add(ray.direction.scale(8)), false);
         }
-      } else if (this.teleportAiming && y > XRManager.TELEPORT_RELEASE_THRESHOLD) {
+      } else if (this.teleportAiming) {
+        // Released - the stick is no longer pushed past the forward-aim threshold at
+        // all, regardless of exactly how far back toward centre it's actually returned.
+        // Previously required crossing a SEPARATE, further release threshold
+        // (TELEPORT_RELEASE_THRESHOLD, -0.3 vs the -0.7 aim threshold) - a real
+        // hysteresis band, deliberately added so aiming couldn't flicker on/off near one
+        // boundary, but it meant the stick had to travel through that entire 0.4-wide
+        // gap to actually commit a teleport. Reported symptom: a clearly valid (cyan)
+        // target aimed at, then... nothing on release. Worn/cheap analog sticks in
+        // particular don't return to centre smoothly and can stall partway back,
+        // possibly never crossing the second boundary. Committing as soon as the aim
+        // threshold itself is no longer met removes that dead zone entirely while still
+        // only ever firing after a real aim (teleportAiming) was in progress.
         this.teleportAiming = false;
         this.hideTeleportVisuals();
         const camera = this.xrCamera;
@@ -1222,6 +1233,10 @@ export class XRManager {
           camera.position.x = this.teleportTargetPoint.x;
           camera.position.z = this.teleportTargetPoint.z;
           camera.position.y = this.teleportTargetPoint.y + height;
+          // Confirms the teleport actually executed even with no visible landmark
+          // nearby to judge by - if this pulse is felt but the view doesn't move,
+          // that narrows the problem to camera/rendering rather than input/detection.
+          controller.inputSource.gamepad?.hapticActuators?.[0]?.pulse(0.6, 80);
         }
         this.teleportTargetPoint = null;
       }
