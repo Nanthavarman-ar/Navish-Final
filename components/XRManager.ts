@@ -1,4 +1,4 @@
-import { Scene, Camera, ArcRotateCamera, FreeCamera, WebXRDefaultExperience, WebXRState, WebXRCamera, WebXRFeaturesManager, WebXRFeatureName, WebXRControllerComponent, WebXRInputSource, Vector3, Quaternion, AbstractMesh, TransformNode, Mesh, MeshBuilder, StandardMaterial, Color3 } from '@babylonjs/core';
+import { Scene, Camera, ArcRotateCamera, FreeCamera, WebXRDefaultExperience, WebXRState, WebXRCamera, WebXRFeaturesManager, WebXRFeatureName, WebXRControllerComponent, WebXRInputSource, Vector3, Quaternion, AbstractMesh, TransformNode, Mesh, LinesMesh, MeshBuilder, StandardMaterial, Color3, Color4, Ray } from '@babylonjs/core';
 
 // Minimal shape of what we actually use from Babylon's WebXRHitTest feature - typed
 // locally instead of importing the class directly, since it isn't re-exported from the
@@ -76,6 +76,21 @@ export class XRManager {
   // Pending hold-squeeze-to-exit timers, keyed by controller uniqueId - see
   // setupControllerEvents for why this gesture exists.
   private exitHoldTimers: Map<string, ReturnType<typeof setTimeout>> = new Map();
+
+  // Custom point-and-teleport (right controller) - see setupCustomTeleportation for why
+  // this is a full reimplementation instead of Babylon's own teleportation feature.
+  private teleportReticle: Mesh | null = null;
+  private teleportArcLine: LinesMesh | null = null;
+  private teleportFloorMeshes: AbstractMesh[] = [];
+  private teleportFrameCallback: (() => void) | null = null;
+  private teleportAiming: boolean = false;
+  private teleportTargetPoint: Vector3 | null = null;
+  private teleportRotationArmed: boolean = true;
+  private static readonly TELEPORT_FORWARD_THRESHOLD = -0.7;
+  private static readonly TELEPORT_RELEASE_THRESHOLD = -0.3;
+  private static readonly SNAP_TURN_THRESHOLD = 0.7;
+  private static readonly SNAP_TURN_REARM_THRESHOLD = 0.3;
+  private static readonly SNAP_TURN_RADIANS = Math.PI / 8; // 22.5 degrees
 
   private initPromise: Promise<void>;
 
@@ -319,16 +334,14 @@ export class XRManager {
       // drives entry/exit itself (toolbar button + 'X' hotkey) - Babylon's own floating
       // enter/exit button would otherwise appear unstyled and duplicate that control.
       //
-      // teleportationOptions.forceHandedness: 'right' pins point-and-teleport to the
-      // right controller only. Without this, Babylon's default teleportation listens on
-      // BOTH controllers' thumbsticks - directly colliding with the left-hand thumbstick
-      // that configureXRFeatures() below dedicates to smooth walking, so both ended up
-      // fighting over the same stick input and neither felt like it worked reliably.
+      // disableTeleportation: true unconditionally - Babylon's own stock teleportation
+      // feature is replaced entirely by setupCustomTeleportation() below (see its comment
+      // for why: a real-hardware bug in Babylon's own snap-turn logic that permanently
+      // wedges the whole feature dead after the first turn).
       this.xrExperience = await WebXRDefaultExperience.CreateAsync(this.scene, {
         floorMeshes,
-        disableTeleportation: !this.teleportationEnabled || floorMeshes.length === 0,
+        disableTeleportation: true,
         disableDefaultUI: true,
-        teleportationOptions: { forceHandedness: 'right' },
         inputOptions: this.getInputOptions()
       });
 
@@ -355,7 +368,7 @@ export class XRManager {
       }
 
       // Configure XR features
-      this.configureXRFeatures();
+      this.configureXRFeatures(floorMeshes);
 
       console.log('Entered VR mode', { floorMeshCount: floorMeshes.length });
       return true;
@@ -379,16 +392,15 @@ export class XRManager {
 
       const floorMeshes = this.teleportationEnabled ? this.getFloorMeshes() : [];
 
-      // Create XR experience for AR with audio support (see enterVR for why disableDefaultUI,
-      // teleportationOptions.forceHandedness and inputOptions)
+      // Create XR experience for AR with audio support (see enterVR for why
+      // disableDefaultUI, disableTeleportation and inputOptions)
       this.xrExperience = await WebXRDefaultExperience.CreateAsync(this.scene, {
         uiOptions: {
           sessionMode: 'immersive-ar'
         },
         floorMeshes,
-        disableTeleportation: !this.teleportationEnabled || floorMeshes.length === 0,
+        disableTeleportation: true,
         disableDefaultUI: true,
-        teleportationOptions: { forceHandedness: 'right' },
         inputOptions: this.getInputOptions()
       });
 
@@ -442,7 +454,7 @@ export class XRManager {
       }
 
       // Configure XR features
-      this.configureXRFeatures();
+      this.configureXRFeatures(floorMeshes);
 
       // Manual "tap to place near me" + scale, so the model doesn't just sit wherever
       // the source file's authored origin happens to be relative to the user.
@@ -895,6 +907,7 @@ export class XRManager {
       // Remove the AR reticle/overlay/select-listener while the session is still live -
       // a no-op if AR placement was never set up (e.g. exiting a VR session).
       this.teardownARPlacement();
+      this.teardownCustomTeleportation();
 
       // End XR session
       await this.xrExperience.baseExperience.sessionManager.exitXRAsync();
@@ -918,7 +931,7 @@ export class XRManager {
   }
 
   // Configure XR features
-  private configureXRFeatures(): void {
+  private configureXRFeatures(floorMeshes: AbstractMesh[]): void {
     if (!this.xrExperience) return;
 
     this.applyXRPerformanceProfile();
@@ -939,25 +952,16 @@ export class XRManager {
       this.enableHandTracking(featuresManager);
     }
 
-    // Smooth thumbstick locomotion, in addition to point-and-teleport - this is the
-    // "hold thumbstick to walk" movement most headset users (Quest included) expect.
-    // Teleportation itself is already wired up via floorMeshes passed to CreateAsync.
+    // Smooth thumbstick locomotion - the "hold thumbstick to walk" movement most
+    // headset users (Quest included) expect. Point-and-teleport is handled entirely
+    // separately by setupCustomTeleportation() below, on the right controller only, so
+    // this stays dedicated to the LEFT thumbstick (walk/strafe) with no overlap.
     //
     // movementSpeed/rotationSpeed were previously 0.15/0.5 - Babylon's own defaults for
     // this feature are 1.0/1.0, so this was running at 15% of normal walking speed and
     // half rotation speed, which reads as barely-responsive/broken movement rather than
     // "smooth". Using Babylon's own tuned defaults instead of an arbitrary fraction of
     // them.
-    //
-    // customRegistrationConfigurations restricts this feature to the LEFT thumbstick
-    // only (walk/strafe). Babylon's own default registration binds BOTH controllers'
-    // thumbsticks (left=rotate, right=move) - since teleportation (created above via
-    // CreateAsync) also listens on the right thumbstick for its point-and-teleport arc,
-    // the two features fought over the same physical stick input with neither behaving
-    // reliably. Splitting them by hand - left stick = walk here, right stick = teleport/
-    // snap-turn (teleportationOptions.forceHandedness: 'right' on CreateAsync above) -
-    // is what actually makes both the smooth walk and the joystick teleport work at the
-    // same time instead of fighting each other.
     try {
       featuresManager.enableFeature(WebXRFeatureName.MOVEMENT, 'latest', {
         xrInput: this.xrExperience.input,
@@ -978,6 +982,10 @@ export class XRManager {
       console.warn('Smooth movement feature not available on this device/browser:', error);
     }
 
+    if (this.teleportationEnabled) {
+      this.setupCustomTeleportation(floorMeshes);
+    }
+
     // Set up controller events
     this.setupControllerEvents();
   }
@@ -994,24 +1002,137 @@ export class XRManager {
     }
   }
 
-  // Enable teleportation
-  private enableTeleportation(featuresManager: WebXRFeaturesManager): void {
+  // Point-and-teleport arc + right-stick snap-turn, entirely reimplemented rather than
+  // using Babylon's own WebXRFeatureName.TELEPORTATION.
+  //
+  // Reported symptom on real Quest hardware: snap-turn (right stick left/right) worked
+  // exactly ONCE, and after that, absolutely nothing else - not the arc, not another
+  // turn - ever responded again for the rest of the session. Traced this to a genuine
+  // bug in Babylon's own feature (WebXRControllerTeleportation.js): its snap-turn state
+  // machine only resets its internal "rotating" latch when the stick's X axis reads
+  // EXACTLY 0 (`axesData.x === 0`), and the arc's own forward-trigger explicitly
+  // requires that latch to be false (`!controllerData.teleportationState.rotating`).
+  // Real analog thumbsticks - Quest Touch included - essentially never report a
+  // mathematically perfect 0.0 at rest (hall-sensor/potentiometer noise keeps them a
+  // hair off centre), so after the first turn the latch never clears and the arc is
+  // permanently locked out. This isn't a version-specific regression to wait out; the
+  // exact-equality check is fundamental to how that feature is written.
+  //
+  // This polls the right controller's thumbstick directly every XR frame (not an
+  // axis-CHANGE event, sidestepping any equivalent stuck-latch risk entirely) and uses
+  // a proper hysteresis band for both gestures - trigger past 0.7, only re-arm once
+  // back under 0.3 - which real hardware noise near zero can never accidentally trip.
+  private setupCustomTeleportation(floorMeshes: AbstractMesh[]): void {
     if (!this.xrExperience) return;
-    try {
-      const floorMeshes = this.getFloorMeshes();
-      featuresManager.enableFeature(WebXRFeatureName.TELEPORTATION, 'latest', {
-        xrInput: this.xrExperience.input,
-        floorMeshes,
-        // Keep this in sync with the CreateAsync-time teleportationOptions in enterVR/
-        // enterAR - otherwise re-enabling teleportation mid-session (toggleTeleportation)
-        // would go back to listening on both thumbsticks and reintroduce the conflict
-        // with the left-hand-only smooth movement feature.
-        forceHandedness: 'right'
-      }, true, false);
-      console.log('Teleportation enabled', { floorMeshCount: floorMeshes.length });
-    } catch (error) {
-      console.warn('Teleportation not supported:', error);
+    this.teardownCustomTeleportation();
+    this.teleportFloorMeshes = floorMeshes;
+
+    const reticle = MeshBuilder.CreateTorus('xr_teleport_reticle', { diameter: 0.6, thickness: 0.05, tessellation: 32 }, this.scene);
+    const reticleMaterial = new StandardMaterial('xr_teleport_reticle_material', this.scene);
+    reticleMaterial.emissiveColor = new Color3(0.3, 0.9, 1);
+    reticleMaterial.disableLighting = true;
+    reticle.material = reticleMaterial;
+    reticle.isPickable = false;
+    reticle.isVisible = false;
+    this.teleportReticle = reticle;
+
+    const arcLine = MeshBuilder.CreateLines('xr_teleport_arc', { points: [Vector3.Zero(), Vector3.One()], updatable: true }, this.scene);
+    arcLine.color = new Color3(0.3, 0.9, 1);
+    arcLine.isPickable = false;
+    arcLine.isVisible = false;
+    this.teleportArcLine = arcLine;
+
+    const ray = new Ray(Vector3.Zero(), Vector3.Forward());
+    const sessionManager = this.xrExperience.baseExperience.sessionManager;
+
+    this.teleportFrameCallback = () => {
+      if (!this.xrExperience) return;
+      const controller = this.xrExperience.input.controllers.find((c) => c.inputSource.handedness === 'right');
+      const thumbstick = controller?.motionController?.getComponentOfType(WebXRControllerComponent.THUMBSTICK_TYPE)
+        ?? controller?.motionController?.getComponentOfType(WebXRControllerComponent.TOUCHPAD_TYPE);
+      if (!controller || !thumbstick) {
+        this.hideTeleportVisuals();
+        return;
+      }
+      const { x, y } = thumbstick.axes;
+
+      // Snap-turn, only while not actively aiming a teleport with the same stick.
+      if (!this.teleportAiming) {
+        if (this.teleportRotationArmed && Math.abs(x) > XRManager.SNAP_TURN_THRESHOLD) {
+          const camera = this.xrCamera;
+          if (camera) {
+            camera.rotationQuaternion = camera.rotationQuaternion || Quaternion.Identity();
+            const turn = XRManager.SNAP_TURN_RADIANS * (x > 0 ? 1 : -1) * (this.scene.useRightHandedSystem ? -1 : 1);
+            camera.rotationQuaternion = Quaternion.FromEulerAngles(0, turn, 0).multiply(camera.rotationQuaternion);
+          }
+          this.teleportRotationArmed = false;
+        } else if (Math.abs(x) < XRManager.SNAP_TURN_REARM_THRESHOLD) {
+          this.teleportRotationArmed = true;
+        }
+      }
+
+      if (y < XRManager.TELEPORT_FORWARD_THRESHOLD) {
+        this.teleportAiming = true;
+        controller.getWorldPointerRayToRef(ray);
+        const pick = this.scene.pickWithRay(ray, (m) => this.teleportFloorMeshes.indexOf(m) !== -1);
+        if (pick?.hit && pick.pickedPoint) {
+          this.teleportTargetPoint = pick.pickedPoint.clone();
+          this.showTeleportVisuals(ray.origin, this.teleportTargetPoint, true);
+        } else {
+          this.teleportTargetPoint = null;
+          this.showTeleportVisuals(ray.origin, ray.origin.add(ray.direction.scale(8)), false);
+        }
+      } else if (this.teleportAiming && y > XRManager.TELEPORT_RELEASE_THRESHOLD) {
+        this.teleportAiming = false;
+        this.hideTeleportVisuals();
+        const camera = this.xrCamera;
+        if (this.teleportTargetPoint && camera) {
+          const height = camera.realWorldHeight;
+          camera.position.x = this.teleportTargetPoint.x;
+          camera.position.z = this.teleportTargetPoint.z;
+          camera.position.y = this.teleportTargetPoint.y + height;
+        }
+        this.teleportTargetPoint = null;
+      }
+    };
+    sessionManager.onXRFrameObservable.add(this.teleportFrameCallback);
+  }
+
+  private showTeleportVisuals(from: Vector3, to: Vector3, valid: boolean): void {
+    if (this.teleportReticle) {
+      this.teleportReticle.isVisible = valid;
+      if (valid) this.teleportReticle.position.copyFrom(to);
     }
+    if (this.teleportArcLine && !this.teleportArcLine.isDisposed()) {
+      this.teleportArcLine = MeshBuilder.CreateLines('xr_teleport_arc', {
+        points: [from, to],
+        instance: this.teleportArcLine,
+        updatable: true
+      }, this.scene);
+      this.teleportArcLine.color = valid ? new Color3(0.3, 0.9, 1) : new Color3(1, 0.3, 0.3);
+      this.teleportArcLine.isVisible = true;
+    }
+  }
+
+  private hideTeleportVisuals(): void {
+    if (this.teleportReticle) this.teleportReticle.isVisible = false;
+    if (this.teleportArcLine) this.teleportArcLine.isVisible = false;
+  }
+
+  private teardownCustomTeleportation(): void {
+    const sessionManager = this.xrExperience?.baseExperience?.sessionManager;
+    if (sessionManager && this.teleportFrameCallback) {
+      sessionManager.onXRFrameObservable.removeCallback(this.teleportFrameCallback);
+    }
+    this.teleportFrameCallback = null;
+    if (this.teleportReticle && !this.teleportReticle.isDisposed()) this.teleportReticle.dispose();
+    this.teleportReticle = null;
+    if (this.teleportArcLine && !this.teleportArcLine.isDisposed()) this.teleportArcLine.dispose();
+    this.teleportArcLine = null;
+    this.teleportAiming = false;
+    this.teleportTargetPoint = null;
+    this.teleportRotationArmed = true;
+    this.teleportFloorMeshes = [];
   }
 
   // Set up controller events - primarily the hold-squeeze-to-exit-VR gesture below.
@@ -1094,15 +1215,10 @@ export class XRManager {
     this.teleportationEnabled = !this.teleportationEnabled;
 
     if (this.xrExperience && this.currentSessionMode !== 'none') {
-      const featuresManager = this.xrExperience.baseExperience.featuresManager;
       if (this.teleportationEnabled) {
-        this.enableTeleportation(featuresManager);
+        this.setupCustomTeleportation(this.getFloorMeshes());
       } else {
-        try {
-          featuresManager.disableFeature(WebXRFeatureName.TELEPORTATION);
-        } catch (error) {
-          console.warn('Failed to disable teleportation:', error);
-        }
+        this.teardownCustomTeleportation();
       }
     }
 
