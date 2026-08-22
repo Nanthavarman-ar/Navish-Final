@@ -550,7 +550,79 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
       loadedModelMeshesRef.current = [];
     }
 
+    // Floor plan PDFs aren't 3D models - SceneLoader has no plugin for them at all.
+    // Instead: render the PDF's first page (floor plans are effectively always single-
+    // page) to an offscreen canvas via pdf.js, then treat that image as a texture on a
+    // flat plane laid on the ground - viewed from above, the way a real printed floor
+    // plan would be laid on a table or the site itself. It's registered in
+    // loadedModelMeshesRef the same as a real model's meshes, so the existing
+    // dispose-on-next-load cleanup above and every AR placement/scale/rotate control
+    // already built for 3D models work on it completely unchanged.
+    const loadPdfFloorPlan = async () => {
+      try {
+        const [pdfjsLib, workerUrlModule] = await Promise.all([
+          import('pdfjs-dist'),
+          import('pdfjs-dist/build/pdf.worker.mjs?url')
+        ]);
+        if (cancelled) return;
+        pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrlModule.default;
+
+        const pdfDocument = await pdfjsLib.getDocument({ url }).promise;
+        if (cancelled) return;
+        const page = await pdfDocument.getPage(1);
+        // scale: 2 renders at roughly double the PDF's native point resolution - sharp
+        // enough to read room labels/dimensions up close without an enormous texture.
+        const viewport = page.getViewport({ scale: 2 });
+
+        const canvas = document.createElement('canvas');
+        canvas.width = viewport.width;
+        canvas.height = viewport.height;
+        const context = canvas.getContext('2d');
+        if (!context) throw new Error('Could not create a 2D canvas context to render the PDF page');
+        await page.render({ canvas, canvasContext: context, viewport }).promise;
+        if (cancelled) return;
+
+        // Longer side normalized to 4 metres - a reasonable default "on the table"
+        // scale for a floor plan with no inherent real-world size of its own; the AR
+        // Scale panel and the AR overlay's own scale buttons (already built for 3D
+        // models) resize it from there to actually match the real site.
+        const aspect = viewport.width / viewport.height;
+        const planeWidth = aspect >= 1 ? 4 : 4 * aspect;
+        const planeHeight = aspect >= 1 ? 4 / aspect : 4;
+
+        const plane = MeshBuilder.CreatePlane('pdf_floorplan', { width: planeWidth, height: planeHeight }, scene);
+        plane.rotation.x = Math.PI / 2; // lie flat on the ground, viewed from above
+        plane.position.y = 0.01; // just clear of the ground plane - avoids z-fighting
+
+        const texture = new Texture(canvas.toDataURL('image/png'), scene, false, false, Texture.TRILINEAR_SAMPLINGMODE);
+        const material = new StandardMaterial('pdf_floorplan_material', scene);
+        material.diffuseTexture = texture;
+        // Unlit (reads like a printed page/photo regardless of scene lighting/shadows,
+        // rather than a 3D surface that darkens toward the edges of a light's range).
+        material.emissiveTexture = texture;
+        material.disableLighting = true;
+        material.backFaceCulling = false;
+        plane.material = material;
+        plane.isPickable = true;
+
+        loadedModelMeshesRef.current = [plane];
+        showToast.dismiss(toastId);
+        showToast.success(`Floor plan loaded: ${selectedModel?.name || 'Floor plan'}`);
+        setSelectedModel(null);
+      } catch (error) {
+        if (cancelled) return;
+        console.error('Failed to load PDF floor plan:', error);
+        showToast.dismiss(toastId);
+        showToast.error('Failed to load floor plan PDF', error instanceof Error ? error.message : undefined);
+        setSelectedModel(null);
+      }
+    };
+
     const attemptLoad = (attempt: number) => {
+      if (pluginExtension === '.pdf') {
+        loadPdfFloorPlan();
+        return;
+      }
       // @babylonjs/loaders registers the glTF/OBJ/STL/etc plugins as a side effect of
       // being imported - it was previously fired off without awaiting it, so
       // SceneLoader.Append below could (and on a fresh page load, reliably did) run

@@ -70,10 +70,14 @@ export function UploadPage() {
   const { data: clientsResponse, loading: clientsLoading } = useApi<{ clients: any[] }>('/clients');
 
   const supportedFormats = [
-    '.glb', '.gltf', '.fbx', '.obj', '.dae', '.3ds', '.ply', 
-    '.stl', '.x3d', '.blend', '.max', '.ma', '.mb', '.c4d', 
+    '.glb', '.gltf', '.fbx', '.obj', '.dae', '.3ds', '.ply',
+    '.stl', '.x3d', '.blend', '.max', '.ma', '.mb', '.c4d',
     '.lwo', '.lws', '.3dm', '.step', '.stp', '.iges', '.igs',
-    '.dwg', '.dxf', '.ifc', '.skp', '.usd', '.usda', '.usdc'
+    '.dwg', '.dxf', '.ifc', '.skp', '.usd', '.usda', '.usdc',
+    // Floor plans, not 3D models - rendered as a flat image plane instead of
+    // through SceneLoader (see the model-load effect in BabylonWorkspace.tsx),
+    // but placed/scaled/rotated in AR through the exact same flow otherwise.
+    '.pdf'
   ];
 
   const handleFileSelect = (files: FileList | null) => {
