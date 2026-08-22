@@ -88,7 +88,16 @@ export function UploadPage() {
 
     Array.from(files).forEach(file => {
       const extension = '.' + file.name.split('.').pop()?.toLowerCase();
-      const maxSize = 5 * 1024 * 1024 * 1024; // 5GB limit - direct-to-storage upload (see directModelUpload.ts) no longer routes the file through the Edge Function, which is what capped this lower before
+      // 50MB - Supabase's Free plan hard-caps every bucket's upload size at 50MB
+      // (Project Settings > Storage > "Global file size limit" cannot be raised past
+      // that without upgrading to Pro or higher), independent of anything set in
+      // application code or supabase/migrations/0003_raise_model_bucket_size_limit.sql -
+      // matching this to that real ceiling client-side means a too-large file is
+      // rejected immediately with a clear reason, instead of uploading for a while and
+      // then failing with a confusing 413 straight from Supabase's own endpoint.
+      // Raise this (and the migration's 5GB bucket limit, and the Dashboard global
+      // setting) together if/when the project moves to a paid plan.
+      const maxSize = 50 * 1024 * 1024;
       
       if (!supportedFormats.includes(extension)) {
         invalidFiles.push(`${file.name} (unsupported format)`);
@@ -96,7 +105,7 @@ export function UploadPage() {
       }
       
       if (file.size > maxSize) {
-        invalidFiles.push(`${file.name} (file too large, max 500MB)`);
+        invalidFiles.push(`${file.name} (file too large, max 50MB on the current plan)`);
         return;
       }
 
@@ -323,7 +332,7 @@ export function UploadPage() {
                   Drop your 3D models here
                 </h3>
                 <p className="text-gray-400 mb-4">
-                  or click to browse your files (Max 500MB per file)
+                  or click to browse your files (Max 50MB per file)
                 </p>
                 <div className="grid grid-cols-4 gap-2 max-w-md mx-auto">
                   {supportedFormats.slice(0, 12).map((format) => (
