@@ -108,6 +108,7 @@
     "stompjs": "^2.3.3",
     "tailwind-merge": "^3.3.1",
     "three": "^0.180.0",
+    "tus-js-client": "^4.3.1",
     "use-undo": "^1.1.1",
     "uuid": "^13.0.0",
     "vaul": "^1.1.2",

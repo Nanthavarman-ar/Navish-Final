@@ -14,7 +14,7 @@ import { Checkbox } from '../ui/checkbox';
 import { useApi, apiCall } from '../../hooks/useApi';
 import { projectId } from '../../supabase/client';
 import { showToast } from '../utils/toast';
-import { supabase } from '../../supabase/client';
+import { uploadFileDirectToStorage, finalizeModelUpload } from '../utils/directModelUpload';
 import { useApp } from '../../contexts/AppContext';
 import {
   Upload,
@@ -88,7 +88,7 @@ export function UploadPage() {
 
     Array.from(files).forEach(file => {
       const extension = '.' + file.name.split('.').pop()?.toLowerCase();
-      const maxSize = 500 * 1024 * 1024; // 500MB limit
+      const maxSize = 5 * 1024 * 1024 * 1024; // 5GB limit - direct-to-storage upload (see directModelUpload.ts) no longer routes the file through the Edge Function, which is what capped this lower before
       
       if (!supportedFormats.includes(extension)) {
         invalidFiles.push(`${file.name} (unsupported format)`);
@@ -169,77 +169,52 @@ export function UploadPage() {
           f.id === uploadFile.id ? { ...f, status: 'uploading' } : f
         ));
 
-        // Create FormData
-        const formData = new FormData();
-        formData.append('file', uploadFile.file);
-        if (uploadFile.thumbnailFile) {
-          formData.append('thumbnail', uploadFile.thumbnailFile);
-        }
-        formData.append('title', modelTitle);
-        formData.append('description', modelDescription);
-        formData.append('tags', modelTags);
-        formData.append('assignedClients', JSON.stringify(selectedClients));
-
-        // Progress simulation while uploading
-        let progress = 0;
-        const progressInterval = setInterval(() => {
-          progress += Math.random() * 15;
-          if (progress < 95) {
-            setUploadFiles(prev => prev.map(f => 
-              f.id === uploadFile.id ? { ...f, progress } : f
-            ));
-          }
-        }, 200);
-
         try {
-          const { data: { session } } = await supabase.auth.getSession();
-          const accessToken = session?.access_token;
-          if (!accessToken) {
-            throw new Error('Authentication required');
-          }
-
-          const response = await fetch(
-            `${functionsBaseUrl}/upload-model`,
-            {
-              method: 'POST',
-              headers: { 'Authorization': `Bearer ${accessToken}` },
-              body: formData
-            }
-          );
-
-          clearInterval(progressInterval);
-
-          if (response.ok) {
-            const body = await response.json().catch(() => null);
+          // Uploads the file bytes DIRECTLY to Supabase Storage (TUS resumable
+          // protocol above 6MB) rather than through the /upload-model Edge Function -
+          // see components/utils/directModelUpload.ts for why: Edge Functions aren't a
+          // reliable path for large request bodies, well before the 500MB-5GB this app
+          // needs to support, and TUS can resume after a network drop instead of
+          // restarting the whole transfer, which the old fake progress-bar animation
+          // (and single all-or-nothing fetch) couldn't offer at all.
+          const filePath = await uploadFileDirectToStorage(uploadFile.file, 'models', ({ bytesUploaded, bytesTotal }) => {
+            const pct = bytesTotal > 0 ? Math.round((bytesUploaded / bytesTotal) * 100) : 0;
             setUploadFiles(prev => prev.map(f =>
-              f.id === uploadFile.id ? {
-                ...f,
-                progress: 100,
-                status: 'complete',
-                convertedSize: (uploadFile.file.size / (1024 * 1024)).toFixed(1) + ' MB',
-                uploadedModel: body?.model
-              } : f
+              f.id === uploadFile.id ? { ...f, progress: pct } : f
             ));
-          } else {
-            // Was showing the raw JSON body text (e.g. `{"error":"..."}`) verbatim in
-            // the toast instead of the actual message inside it - readable if you
-            // squinted, but not what a real "here's what's wrong" error should look like.
-            const rawBody = await response.text().catch(() => '');
-            let serverMessage = rawBody;
-            try {
-              const parsed = JSON.parse(rawBody);
-              if (parsed?.error) serverMessage = parsed.error;
-            } catch {
-              // body wasn't JSON - fall back to the raw text as-is
-            }
-            throw new Error(serverMessage || `Upload failed (${response.status})`);
+          });
+
+          let thumbnailPath: string | undefined;
+          if (uploadFile.thumbnailFile) {
+            thumbnailPath = await uploadFileDirectToStorage(uploadFile.thumbnailFile, 'thumbnails');
           }
+
+          const result = await finalizeModelUpload(functionsBaseUrl, {
+            filePath,
+            fileName: uploadFile.file.name,
+            fileSize: uploadFile.file.size,
+            format: uploadFile.originalFormat,
+            thumbnailPath,
+            title: modelTitle,
+            description: modelDescription,
+            tags: modelTags,
+            assignedClients: selectedClients
+          });
+
+          setUploadFiles(prev => prev.map(f =>
+            f.id === uploadFile.id ? {
+              ...f,
+              progress: 100,
+              status: 'complete',
+              convertedSize: (uploadFile.file.size / (1024 * 1024)).toFixed(1) + ' MB',
+              uploadedModel: result?.model
+            } : f
+          ));
         } catch (err) {
-          clearInterval(progressInterval);
           const message = err instanceof Error ? err.message : 'Unknown upload error';
           console.error(`Upload failed for ${uploadFile.file.name}:`, message);
           showToast.error(`Failed to upload ${uploadFile.file.name}`, message);
-          setUploadFiles(prev => prev.map(f => 
+          setUploadFiles(prev => prev.map(f =>
             f.id === uploadFile.id ? { ...f, status: 'error', errorMessage: message } : f
           ));
         }

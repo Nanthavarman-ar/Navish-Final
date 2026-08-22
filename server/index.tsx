@@ -1098,6 +1098,118 @@ app.post('/make-server-cf230d31/upload-model', async (c) => {
   }
 });
 
+// Finalizes a model record for a file the client already uploaded DIRECTLY to Supabase
+// Storage (via the TUS resumable protocol - see UserUploadForm.tsx/admin/UploadPage.tsx),
+// instead of proxying the whole file body through this Edge Function the way
+// /upload-model above does. Edge Functions are not a reliable path for large request
+// bodies - fine for a small file, but this app needs to support uploads up to 5GB, well
+// beyond what should ever be sent through a function invocation. The direct-upload path
+// relies on the storage.objects RLS policies in
+// supabase/migrations/0002_direct_upload_storage_policies.sql for the actual admin-only
+// enforcement at upload time; this endpoint's own admin check below still gates who can
+// create the resulting model record, and (re-)verifies the file really exists at the
+// given path rather than trusting the client's claim about what it uploaded.
+app.post('/make-server-cf230d31/finalize-model-upload', async (c) => {
+  const { error, user } = await verifyUser(c.req.raw);
+
+  if (error) {
+    return c.json({ error }, 401);
+  }
+
+  try {
+    const userRole = user.user_metadata?.role || 'client';
+    const isAdmin = userRole === 'admin';
+    const username = user.user_metadata?.username || user.email || 'user';
+
+    if (!isAdmin) {
+      return c.json({ error: 'Only administrators can upload models' }, 403);
+    }
+
+    const body = await c.req.json();
+    const { filePath, fileName, fileSize, format, thumbnailPath, title, description, tags, assignedClients: assignedClientsRaw } = body;
+
+    if (!filePath || !fileName || !title) {
+      return c.json({ error: 'Missing required fields (filePath, fileName, title)' }, 400);
+    }
+    const assignedClients = Array.isArray(assignedClientsRaw) ? assignedClientsRaw : [];
+
+    // Confirm the file actually landed in Storage at the claimed path rather than
+    // trusting the client - createSignedUrl fails for a path with no object there.
+    const { data: signedUrlData, error: signedUrlError } = await supabase.storage
+      .from('make-cf230d31-models')
+      .createSignedUrl(filePath, 60 * 60 * 24 * 365); // 1 year expiry
+
+    if (signedUrlError || !signedUrlData?.signedUrl) {
+      console.error('Finalize upload error - file not found in storage:', signedUrlError);
+      return c.json({ error: 'Uploaded file not found in storage at the given path - the upload may not have completed' }, 400);
+    }
+
+    let thumbnailUrl: string | undefined;
+    if (thumbnailPath) {
+      const { data: thumbSignedUrlData } = await supabase.storage
+        .from('make-cf230d31-models')
+        .createSignedUrl(thumbnailPath, 60 * 60 * 24 * 365);
+      thumbnailUrl = thumbSignedUrlData?.signedUrl;
+    }
+
+    const modelId = `model_${Date.now()}`;
+    const modelData = {
+      id: modelId,
+      name: title,
+      description,
+      tags: String(tags || '').split(',').map((tag: string) => tag.trim()).filter(Boolean),
+      fileName,
+      filePath,
+      fileSize: Number(fileSize) || 0,
+      format: String(format || fileName.split('.').pop() || '').toLowerCase(),
+      uploadedBy: user.id,
+      uploadedByUsername: username,
+      assignedClients,
+      uploadDate: new Date().toISOString(),
+      views: 0,
+      signedUrl: signedUrlData.signedUrl,
+      thumbnail: thumbnailUrl
+    };
+
+    await kv.set(`model:${modelId}`, modelData);
+
+    for (const clientUsername of assignedClients) {
+      const clients = await kv.getByPrefix('user:');
+      const client = clients.find((c: any) => c.username === clientUsername);
+      if (client) {
+        client.assignedModels = client.assignedModels || [];
+        client.assignedModels.push(modelId);
+        await kv.set(`user:${client.id}`, client);
+      }
+    }
+
+    await logAuditEvent(
+      user.id,
+      username,
+      'MODEL_UPLOADED',
+      title,
+      `Uploaded model: ${title} (${modelData.fileSize} bytes, direct-to-storage)`,
+      c.req.header('cf-connecting-ip') || 'unknown',
+      c.req.header('user-agent') || 'unknown'
+    );
+
+    return c.json({
+      message: 'Model uploaded successfully',
+      model: modelData
+    });
+
+  } catch (error) {
+    console.error('Finalize upload error:', error);
+    const message = error instanceof Error ? error.message : String(error);
+    if (/kv_store_cf230d31/i.test(message) || /relation .* does not exist/i.test(message)) {
+      return c.json({
+        error: 'Database not set up: the "kv_store_cf230d31" table does not exist in this Supabase project yet. Run supabase/migrations/0001_init_kv_store_and_storage.sql in the Supabase Dashboard > SQL Editor once, then try uploading again.'
+      }, 500);
+    }
+    return c.json({ error: 'Internal server error' }, 500);
+  }
+});
+
 // Get models (different for admin vs client)
 app.get('/make-server-cf230d31/models', async (c) => {
   const { error, user } = await verifyUser(c.req.raw);
