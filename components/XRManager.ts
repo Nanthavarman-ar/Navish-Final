@@ -1227,16 +1227,22 @@ export class XRManager {
         // only ever firing after a real aim (teleportAiming) was in progress.
         this.teleportAiming = false;
         this.hideTeleportVisuals();
+        // Fires the instant a release is DETECTED at all, regardless of whether a valid
+        // target was actually captured - this is what separates "the release itself
+        // never gets recognized" (no pulse at all) from "release IS recognized but
+        // there was no target to teleport to" (pulse, camera still doesn't move) as two
+        // genuinely different failure modes. A pulse placed only inside the
+        // teleportTargetPoint check below couldn't tell those apart. Whether this is
+        // even felt also depends on this specific controller/browser actually exposing
+        // a haptic actuator at all, which hasn't been independently confirmed yet
+        // either (see the hold-to-exit gesture's own pulse, elsewhere in this file).
+        controller.inputSource.gamepad?.hapticActuators?.[0]?.pulse(0.6, 80);
         const camera = this.xrCamera;
         if (this.teleportTargetPoint && camera) {
           const height = camera.realWorldHeight;
           camera.position.x = this.teleportTargetPoint.x;
           camera.position.z = this.teleportTargetPoint.z;
           camera.position.y = this.teleportTargetPoint.y + height;
-          // Confirms the teleport actually executed even with no visible landmark
-          // nearby to judge by - if this pulse is felt but the view doesn't move,
-          // that narrows the problem to camera/rendering rather than input/detection.
-          controller.inputSource.gamepad?.hapticActuators?.[0]?.pulse(0.6, 80);
         }
         this.teleportTargetPoint = null;
       }
