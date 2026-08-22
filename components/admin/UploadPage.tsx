@@ -14,7 +14,8 @@ import { Checkbox } from '../ui/checkbox';
 import { useApi, apiCall } from '../../hooks/useApi';
 import { projectId } from '../../supabase/client';
 import { showToast } from '../utils/toast';
-import { uploadFileDirectToStorage, finalizeModelUpload } from '../utils/directModelUpload';
+import { finalizeModelUpload } from '../utils/directModelUpload';
+import { uploadFileToR2 } from '../utils/r2ModelUpload';
 import { useApp } from '../../contexts/AppContext';
 import {
   Upload,
@@ -88,24 +89,20 @@ export function UploadPage() {
 
     Array.from(files).forEach(file => {
       const extension = '.' + file.name.split('.').pop()?.toLowerCase();
-      // 50MB - Supabase's Free plan hard-caps every bucket's upload size at 50MB
-      // (Project Settings > Storage > "Global file size limit" cannot be raised past
-      // that without upgrading to Pro or higher), independent of anything set in
-      // application code or supabase/migrations/0003_raise_model_bucket_size_limit.sql -
-      // matching this to that real ceiling client-side means a too-large file is
-      // rejected immediately with a clear reason, instead of uploading for a while and
-      // then failing with a confusing 413 straight from Supabase's own endpoint.
-      // Raise this (and the migration's 5GB bucket limit, and the Dashboard global
-      // setting) together if/when the project moves to a paid plan.
-      const maxSize = 50 * 1024 * 1024;
-      
+      // Model files now go to Cloudflare R2 (see components/utils/r2ModelUpload.ts) -
+      // its free tier has no per-file size cap (only a 10GB TOTAL storage ceiling),
+      // unlike Supabase Storage's Free-plan-wide 50MB-per-file hard limit. 500MB here
+      // is an app-level sanity guard (a multi-GB model would strain the viewer/AR
+      // experience regardless of where it's stored), not a storage-backend limit.
+      const maxSize = 500 * 1024 * 1024;
+
       if (!supportedFormats.includes(extension)) {
         invalidFiles.push(`${file.name} (unsupported format)`);
         return;
       }
-      
+
       if (file.size > maxSize) {
-        invalidFiles.push(`${file.name} (file too large, max 50MB on the current plan)`);
+        invalidFiles.push(`${file.name} (file too large, max 500MB)`);
         return;
       }
 
@@ -179,31 +176,33 @@ export function UploadPage() {
         ));
 
         try {
-          // Uploads the file bytes DIRECTLY to Supabase Storage (TUS resumable
-          // protocol above 6MB) rather than through the /upload-model Edge Function -
-          // see components/utils/directModelUpload.ts for why: Edge Functions aren't a
-          // reliable path for large request bodies, well before the 500MB-5GB this app
-          // needs to support, and TUS can resume after a network drop instead of
-          // restarting the whole transfer, which the old fake progress-bar animation
-          // (and single all-or-nothing fetch) couldn't offer at all.
-          const filePath = await uploadFileDirectToStorage(uploadFile.file, 'models', ({ bytesUploaded, bytesTotal }) => {
+          // Uploads the file bytes DIRECTLY to Cloudflare R2 (multipart, ~8MB parts,
+          // each retried on its own if a part fails) rather than through the
+          // /upload-model Edge Function - see components/utils/r2ModelUpload.ts for why:
+          // Edge Functions aren't a reliable path for large request bodies, and
+          // Supabase Storage's Free plan hard-caps at 50MB/file regardless. Per-part
+          // retry is what actually helps on a slow/unstable connection - one hiccuping
+          // part gets retried on its own instead of restarting the whole file from byte
+          // zero, which the old fake progress-bar animation (and single all-or-nothing
+          // fetch) couldn't offer at all.
+          const r2Key = await uploadFileToR2(functionsBaseUrl, uploadFile.file, 'models', ({ bytesUploaded, bytesTotal }) => {
             const pct = bytesTotal > 0 ? Math.round((bytesUploaded / bytesTotal) * 100) : 0;
             setUploadFiles(prev => prev.map(f =>
               f.id === uploadFile.id ? { ...f, progress: pct } : f
             ));
           });
 
-          let thumbnailPath: string | undefined;
+          let thumbnailR2Key: string | undefined;
           if (uploadFile.thumbnailFile) {
-            thumbnailPath = await uploadFileDirectToStorage(uploadFile.thumbnailFile, 'thumbnails');
+            thumbnailR2Key = await uploadFileToR2(functionsBaseUrl, uploadFile.thumbnailFile, 'thumbnails');
           }
 
           const result = await finalizeModelUpload(functionsBaseUrl, {
-            filePath,
+            r2Key,
             fileName: uploadFile.file.name,
             fileSize: uploadFile.file.size,
             format: uploadFile.originalFormat,
-            thumbnailPath,
+            thumbnailR2Key,
             title: modelTitle,
             description: modelDescription,
             tags: modelTags,
@@ -332,7 +331,7 @@ export function UploadPage() {
                   Drop your 3D models here
                 </h3>
                 <p className="text-gray-400 mb-4">
-                  or click to browse your files (Max 50MB per file)
+                  or click to browse your files (Max 500MB per file)
                 </p>
                 <div className="grid grid-cols-4 gap-2 max-w-md mx-auto">
                   {supportedFormats.slice(0, 12).map((format) => (

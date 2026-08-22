@@ -101,11 +101,16 @@ export async function uploadFileDirectToStorage(
 }
 
 export interface FinalizeModelUploadParams {
-  filePath: string;
+  // Exactly one of these two - filePath for a file uploaded via
+  // uploadFileDirectToStorage above (Supabase Storage), r2Key for one uploaded via
+  // uploadFileToR2 (components/utils/r2ModelUpload.ts) instead.
+  filePath?: string;
+  r2Key?: string;
   fileName: string;
   fileSize: number;
   format: string;
   thumbnailPath?: string;
+  thumbnailR2Key?: string;
   title: string;
   description: string;
   tags: string;

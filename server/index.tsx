@@ -3,6 +3,8 @@ import { cors } from 'npm:hono/cors'
 import { logger } from 'npm:hono/logger'
 import { csrf } from 'npm:hono/csrf'
 import { createClient } from 'npm:@supabase/supabase-js'
+import { S3Client, CreateMultipartUploadCommand, UploadPartCommand, CompleteMultipartUploadCommand, AbortMultipartUploadCommand } from 'npm:@aws-sdk/client-s3'
+import { getSignedUrl } from 'npm:@aws-sdk/s3-request-presigner'
 import * as kv from './kv_store.tsx'
 import { getIoTService } from './iot_service.tsx'
 
@@ -211,6 +213,39 @@ function getEnvOrThrow(name: string): string {
     throw new Error(`Missing required environment variable: ${name}`);
   }
   return value;
+}
+
+// Cloudflare R2 - large model uploads moved here from Supabase Storage, whose Free plan
+// hard-caps every bucket at 50MB (see supabase/migrations/0003_raise_model_bucket_size_limit.sql).
+// R2 is S3-compatible, so the AWS SDK works against it unchanged aside from a custom
+// endpoint and region: 'auto'.
+function getR2Client(): S3Client {
+  const accountId = getEnvOrThrow('R2_ACCOUNT_ID');
+  return new S3Client({
+    region: 'auto',
+    endpoint: `https://${accountId}.r2.cloudflarestorage.com`,
+    credentials: {
+      accessKeyId: getEnvOrThrow('R2_ACCESS_KEY_ID'),
+      secretAccessKey: getEnvOrThrow('R2_SECRET_ACCESS_KEY'),
+    },
+  });
+}
+
+function getR2Bucket(): string {
+  return getEnvOrThrow('R2_BUCKET_NAME');
+}
+
+// The bucket's "Public access" r2.dev URL, or a connected custom domain - either way, no
+// trailing slash. Files are served directly from here rather than through time-limited
+// signed URLs, since these public-development URLs (or a custom domain) don't expire.
+function getR2PublicUrlBase(): string {
+  return getEnvOrThrow('R2_PUBLIC_URL_BASE').replace(/\/+$/, '');
+}
+
+function requireAdminRole(user: any): { isAdmin: boolean; username: string } {
+  const userRole = user.user_metadata?.role || 'client';
+  const username = user.user_metadata?.username || user.email || 'user';
+  return { isAdmin: userRole === 'admin', username };
 }
 
 function normalizePlanEnvKey(planId: string): string {
@@ -1126,26 +1161,39 @@ app.post('/make-server-cf230d31/finalize-model-upload', async (c) => {
     }
 
     const body = await c.req.json();
-    const { filePath, fileName, fileSize, format, thumbnailPath, title, description, tags, assignedClients: assignedClientsRaw } = body;
+    const { filePath, r2Key, fileName, fileSize, format, thumbnailPath, thumbnailR2Key, title, description, tags, assignedClients: assignedClientsRaw } = body;
 
-    if (!filePath || !fileName || !title) {
-      return c.json({ error: 'Missing required fields (filePath, fileName, title)' }, 400);
+    if ((!filePath && !r2Key) || !fileName || !title) {
+      return c.json({ error: 'Missing required fields (filePath or r2Key, fileName, title)' }, 400);
     }
     const assignedClients = Array.isArray(assignedClientsRaw) ? assignedClientsRaw : [];
 
-    // Confirm the file actually landed in Storage at the claimed path rather than
-    // trusting the client - createSignedUrl fails for a path with no object there.
-    const { data: signedUrlData, error: signedUrlError } = await supabase.storage
-      .from('make-cf230d31-models')
-      .createSignedUrl(filePath, 60 * 60 * 24 * 365); // 1 year expiry
+    let resolvedSignedUrl: string;
+    if (r2Key) {
+      // R2 objects are served from the bucket's public-access URL directly (see
+      // getR2PublicUrlBase) rather than a time-limited signed URL - the multipart
+      // upload completing successfully (checked in /r2-complete-upload before this
+      // endpoint is ever called) is what confirms the object exists, so there's no
+      // separate existence check to make here the way the Supabase path below needs.
+      resolvedSignedUrl = `${getR2PublicUrlBase()}/${r2Key}`;
+    } else {
+      // Confirm the file actually landed in Storage at the claimed path rather than
+      // trusting the client - createSignedUrl fails for a path with no object there.
+      const { data: signedUrlData, error: signedUrlError } = await supabase.storage
+        .from('make-cf230d31-models')
+        .createSignedUrl(filePath, 60 * 60 * 24 * 365); // 1 year expiry
 
-    if (signedUrlError || !signedUrlData?.signedUrl) {
-      console.error('Finalize upload error - file not found in storage:', signedUrlError);
-      return c.json({ error: 'Uploaded file not found in storage at the given path - the upload may not have completed' }, 400);
+      if (signedUrlError || !signedUrlData?.signedUrl) {
+        console.error('Finalize upload error - file not found in storage:', signedUrlError);
+        return c.json({ error: 'Uploaded file not found in storage at the given path - the upload may not have completed' }, 400);
+      }
+      resolvedSignedUrl = signedUrlData.signedUrl;
     }
 
     let thumbnailUrl: string | undefined;
-    if (thumbnailPath) {
+    if (thumbnailR2Key) {
+      thumbnailUrl = `${getR2PublicUrlBase()}/${thumbnailR2Key}`;
+    } else if (thumbnailPath) {
       const { data: thumbSignedUrlData } = await supabase.storage
         .from('make-cf230d31-models')
         .createSignedUrl(thumbnailPath, 60 * 60 * 24 * 365);
@@ -1159,7 +1207,8 @@ app.post('/make-server-cf230d31/finalize-model-upload', async (c) => {
       description,
       tags: String(tags || '').split(',').map((tag: string) => tag.trim()).filter(Boolean),
       fileName,
-      filePath,
+      filePath: filePath || r2Key,
+      storageProvider: r2Key ? 'r2' : 'supabase',
       fileSize: Number(fileSize) || 0,
       format: String(format || fileName.split('.').pop() || '').toLowerCase(),
       uploadedBy: user.id,
@@ -1167,7 +1216,7 @@ app.post('/make-server-cf230d31/finalize-model-upload', async (c) => {
       assignedClients,
       uploadDate: new Date().toISOString(),
       views: 0,
-      signedUrl: signedUrlData.signedUrl,
+      signedUrl: resolvedSignedUrl,
       thumbnail: thumbnailUrl
     };
 
@@ -1207,6 +1256,133 @@ app.post('/make-server-cf230d31/finalize-model-upload', async (c) => {
       }, 500);
     }
     return c.json({ error: 'Internal server error' }, 500);
+  }
+});
+
+// Cloudflare R2 multipart upload (large model files) - four small steps instead of one
+// endpoint receiving the file, so the actual bytes go directly from the browser to R2 and
+// never pass through this Edge Function at all:
+//   1. /r2-start-upload      - opens a multipart upload, returns { uploadId, key }
+//   2. /r2-part-url          - a presigned PUT URL for ONE part (client uploads to R2
+//                              directly with this, retrying just that one part on failure -
+//                              this per-part retry is what gives large uploads real
+//                              resilience on a bad connection, the same goal Supabase's TUS
+//                              protocol served for the smaller Supabase-Storage path)
+//   3. /r2-complete-upload   - finalizes the object once every part has succeeded
+//   4. /r2-abort-upload      - cleans up an in-progress upload that won't be finished
+//                              (otherwise incomplete parts sit in the bucket accruing
+//                              storage cost indefinitely)
+// All four require the same admin role /upload-model already enforces - R2 has no
+// equivalent to Supabase's storage.objects RLS policies, so this Edge Function is the
+// only gate here, not an extra/redundant one.
+
+async function requireAdminForR2(c: any): Promise<{ user: any; username: string } | Response> {
+  const { error, user } = await verifyUser(c.req.raw);
+  if (error) return c.json({ error }, 401);
+  const { isAdmin, username } = requireAdminRole(user);
+  if (!isAdmin) return c.json({ error: 'Only administrators can upload models' }, 403);
+  return { user, username };
+}
+
+app.post('/make-server-cf230d31/r2-start-upload', async (c) => {
+  const auth = await requireAdminForR2(c);
+  if (auth instanceof Response) return auth;
+
+  try {
+    const { fileName, contentType, pathPrefix } = await c.req.json();
+    if (!fileName) {
+      return c.json({ error: 'Missing fileName' }, 400);
+    }
+    const safePrefix = pathPrefix === 'thumbnails' ? 'thumbnails' : 'models';
+    const key = `${safePrefix}/${Date.now()}-${String(fileName).replace(/[^a-zA-Z0-9._-]/g, '_')}`;
+
+    const client = getR2Client();
+    const result = await client.send(new CreateMultipartUploadCommand({
+      Bucket: getR2Bucket(),
+      Key: key,
+      ContentType: contentType || 'application/octet-stream'
+    }));
+
+    return c.json({ uploadId: result.UploadId, key });
+  } catch (error) {
+    console.error('R2 start upload error:', error);
+    return c.json({ error: error instanceof Error ? error.message : 'Failed to start upload' }, 500);
+  }
+});
+
+app.post('/make-server-cf230d31/r2-part-url', async (c) => {
+  const auth = await requireAdminForR2(c);
+  if (auth instanceof Response) return auth;
+
+  try {
+    const { key, uploadId, partNumber } = await c.req.json();
+    if (!key || !uploadId || !partNumber) {
+      return c.json({ error: 'Missing key, uploadId, or partNumber' }, 400);
+    }
+
+    const client = getR2Client();
+    const url = await getSignedUrl(client, new UploadPartCommand({
+      Bucket: getR2Bucket(),
+      Key: key,
+      UploadId: uploadId,
+      PartNumber: partNumber
+    }), { expiresIn: 3600 }); // 1 hour - generous for one ~8MB part even on a slow link
+
+    return c.json({ url });
+  } catch (error) {
+    console.error('R2 part URL error:', error);
+    return c.json({ error: error instanceof Error ? error.message : 'Failed to get part upload URL' }, 500);
+  }
+});
+
+app.post('/make-server-cf230d31/r2-complete-upload', async (c) => {
+  const auth = await requireAdminForR2(c);
+  if (auth instanceof Response) return auth;
+
+  try {
+    const { key, uploadId, parts } = await c.req.json();
+    if (!key || !uploadId || !Array.isArray(parts) || parts.length === 0) {
+      return c.json({ error: 'Missing key, uploadId, or parts' }, 400);
+    }
+
+    const client = getR2Client();
+    await client.send(new CompleteMultipartUploadCommand({
+      Bucket: getR2Bucket(),
+      Key: key,
+      UploadId: uploadId,
+      MultipartUpload: {
+        Parts: parts.map((p: { partNumber: number; eTag: string }) => ({ PartNumber: p.partNumber, ETag: p.eTag }))
+      }
+    }));
+
+    return c.json({ key, url: `${getR2PublicUrlBase()}/${key}` });
+  } catch (error) {
+    console.error('R2 complete upload error:', error);
+    return c.json({ error: error instanceof Error ? error.message : 'Failed to complete upload' }, 500);
+  }
+});
+
+app.post('/make-server-cf230d31/r2-abort-upload', async (c) => {
+  const auth = await requireAdminForR2(c);
+  if (auth instanceof Response) return auth;
+
+  try {
+    const { key, uploadId } = await c.req.json();
+    if (!key || !uploadId) {
+      return c.json({ error: 'Missing key or uploadId' }, 400);
+    }
+
+    const client = getR2Client();
+    await client.send(new AbortMultipartUploadCommand({
+      Bucket: getR2Bucket(),
+      Key: key,
+      UploadId: uploadId
+    }));
+
+    return c.json({ message: 'Upload aborted' });
+  } catch (error) {
+    console.error('R2 abort upload error:', error);
+    return c.json({ error: error instanceof Error ? error.message : 'Failed to abort upload' }, 500);
   }
 });
 
