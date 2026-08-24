@@ -209,41 +209,6 @@ function removePlaceholderGeometry(scene: Scene): void {
   scene.getMeshByName('defaultBox')?.dispose();
 }
 
-// Uploaded .glb/.gltf models already come in as real PBRMaterial (glTF's native format),
-// which is correct - but most quick/test exports never actually author proper glass or
-// mirror surfaces (alpha, metallic, roughness are usually left at generic defaults), so
-// windows/mirrors end up looking like plain opaque walls. This scans newly-imported
-// meshes by name (mesh name and material name - glTF exporters usually preserve
-// whatever the surface was called in the original 3D app, e.g. "Window_Glass",
-// "Mirror_01") and nudges PBR properties toward a believable glass or mirror/chrome
-// look automatically, without requiring the user to find and fix each surface by hand
-// in the Material Editor. Materials that don't match any keyword are left untouched.
-function enhanceRealisticMaterials(meshes: AbstractMesh[]): void {
-  const mirrorPattern = /mirror|chrome|polished[_\s-]?(metal|steel)/i;
-  const seen = new Set<Material>();
-
-  meshes.forEach((mesh) => {
-    const material = mesh.material;
-    if (!material || !(material instanceof PBRMaterial) || seen.has(material)) return;
-    const nameHint = `${mesh.name || ''} ${material.name || ''}`;
-
-    if (GLASS_NAME_PATTERN.test(nameHint)) {
-      seen.add(material);
-      material.metallic = 0;
-      material.roughness = 0.05;
-      material.alpha = Math.min(material.alpha, 0.25) || 0.2;
-      material.transparencyMode = PBRMaterial.PBRMATERIAL_ALPHABLEND;
-      material.subSurface.isRefractionEnabled = true;
-      material.subSurface.indexOfRefraction = 1.5;
-    } else if (mirrorPattern.test(nameHint)) {
-      seen.add(material);
-      material.metallic = 1;
-      material.roughness = 0.04;
-      material.alpha = 1;
-    }
-  });
-}
-
 // Shared by rain and snow: sizes the precipitation emission area to the actual loaded
 // model's real footprint, not a fixed box - a fixed box doesn't match whatever model
 // happens to be loaded (too small a building sits lost in a huge field; too large a
@@ -640,7 +605,6 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
           if (cancelled) return;
           const newMeshes = scene.meshes.filter((m) => !meshesBefore.has(m));
           loadedModelMeshesRef.current = newMeshes;
-          enhanceRealisticMaterials(newMeshes);
           removePlaceholderGeometry(scene);
           // Some exported CAD/BIM files mark certain nodes hidden (e.g. glTF's
           // KHR_node_visibility, from an alternate design option or hidden layer in the
@@ -931,7 +895,6 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
             m.isVisible = true;
             if (m.getTotalVertices() > 0) m.checkCollisions = true;
           });
-          enhanceRealisticMaterials(newMeshes);
           removePlaceholderGeometry(sceneRef.current!);
           showToast.dismiss(toastId);
           showToast.success(`Model loaded: ${file.name}`);
