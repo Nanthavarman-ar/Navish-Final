@@ -475,7 +475,15 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
   React.useEffect(() => {
     const scene = sceneRef?.current;
     const url = selectedModel?.modelUrl;
-    if (!sceneReadyForLoad || !scene || !url || typeof url !== 'string') return;
+    if (!sceneReadyForLoad || !scene || !url || typeof url !== 'string') {
+      // Traces the other half of the restore-on-refresh handoff (see the
+      // '[restore-last-model]' logs in AppLayout.tsx) - if that side logs "found model,
+      // handing off" but this line never logs "loading", the scene/sceneReadyForLoad
+      // side of this guard is where the hand-off is actually getting dropped.
+      if (url) console.log('[model-load-effect] skipped despite having a URL', { sceneReadyForLoad, hasScene: !!scene, url });
+      return;
+    }
+    console.log('[model-load-effect] loading', { id: selectedModel?.id, url });
 
     // Keep currentModelId in sync with whatever model is actually loaded - this feeds
     // every model-scoped feature (cost estimate, sustainability report, annotations,

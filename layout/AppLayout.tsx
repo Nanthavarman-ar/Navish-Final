@@ -184,16 +184,42 @@ export default function AppLayout() {
   // load-reset-reload cycle that looked like the model repeatedly reloading/flickering.
   const hasRestoredLastModelRef = useRef(false);
   useEffect(() => {
+    // Every branch below logs why it's skipping - these guards used to fail completely
+    // silently, which is indistinguishable from the network/lookup failures further down
+    // (which DO now toast/log) from the outside: both looked like "refresh just loses the
+    // model, nothing on screen explains why". Check the console after a refresh that
+    // lands on the default/empty scene - one of these lines will say exactly which
+    // condition it was.
     if (hasRestoredLastModelRef.current) return;
-    if (currentPath !== '/workspace' || !user || selectedModel || searchParams.get('model')) return;
+    if (currentPath !== '/workspace') {
+      console.log('[restore-last-model] skipped: not on /workspace', { currentPath });
+      return;
+    }
+    if (!user) {
+      console.log('[restore-last-model] skipped: no authenticated user yet');
+      return;
+    }
+    if (selectedModel) {
+      console.log('[restore-last-model] skipped: a model is already selected', { selectedModel });
+      return;
+    }
+    if (searchParams.get('model')) {
+      console.log('[restore-last-model] skipped: a ?model= query param is present, deferring to the shared-link flow');
+      return;
+    }
 
     let lastModelId: string | null = null;
     try {
       lastModelId = localStorage.getItem(LAST_MODEL_ID_KEY);
     } catch {
+      console.log('[restore-last-model] skipped: localStorage is unavailable (private browsing?)');
       return;
     }
-    if (!lastModelId) return;
+    if (!lastModelId) {
+      console.log('[restore-last-model] skipped: no last-opened model id in localStorage');
+      return;
+    }
+    console.log('[restore-last-model] attempting to restore', { lastModelId });
 
     hasRestoredLastModelRef.current = true;
     let cancelled = false;
@@ -203,10 +229,28 @@ export default function AppLayout() {
         const model = (data.models || []).find((m: any) => String(m.id) === lastModelId);
         if (cancelled) return;
         if (model) {
-          setSelectedModel(withModelUrl(model));
+          const withUrl = withModelUrl(model);
+          if (!withUrl.modelUrl) {
+            // Found the record but it has no usable file location at all (signedUrl/url/
+            // fileUrl all missing) - previously this still called setSelectedModel with
+            // no modelUrl, which BabylonWorkspace's load effect silently no-ops on, so the
+            // workspace just sat on its empty placeholder scene with no indication why.
+            console.error('Last opened model has no file URL to load:', model);
+            showToast.error('Could not reopen your last model', 'It has no file location on record - try opening it again from your models list.');
+            return;
+          }
+          console.log('[restore-last-model] found model, handing off to the workspace load effect', { id: withUrl.id, modelUrl: withUrl.modelUrl });
+          setSelectedModel(withUrl);
+        } else {
+          // The remembered id no longer matches anything /models returns for this user
+          // (deleted, unassigned, or a stale id from a previous account) - previously a
+          // silent no-op, which read as "refreshing just loses your model" with nothing
+          // to go on.
+          console.warn('Last opened model id not found in /models response:', lastModelId);
         }
       } catch (error) {
         console.error('Failed to restore last opened model:', error);
+        showToast.error('Could not reopen your last model', 'Check your connection and try opening it again from your models list.');
       }
     })();
 

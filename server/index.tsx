@@ -1415,13 +1415,26 @@ app.get('/make-server-cf230d31/models', async (c) => {
       );
     }
     
-    // Refresh signed URLs if needed
+    // Refresh signed URLs if needed. R2-backed models (storageProvider === 'r2', see
+    // /finalize-model-upload) are served from the bucket's public URL directly and never
+    // need a signed URL to begin with - routing them through Supabase's createSignedUrl
+    // here would look them up by their R2 key, which doesn't exist in the Supabase
+    // bucket, silently fail (createSignedUrl just returns no signedUrl, no thrown error),
+    // and leave model.signedUrl permanently unset. That model would then load fine right
+    // after upload (finalize already set signedUrl correctly) but come back with no
+    // modelUrl at all the next time it's fetched here if that field were ever missing -
+    // e.g. on any KV record written before this field existed.
     for (const model of models) {
       if (!model.signedUrl) {
+        if (model.storageProvider === 'r2') {
+          model.signedUrl = `${getR2PublicUrlBase()}/${model.filePath}`;
+          await kv.set(`model:${model.id}`, model);
+          continue;
+        }
         const { data: signedUrlData } = await supabase.storage
           .from('make-cf230d31-models')
           .createSignedUrl(model.filePath, 60 * 60 * 24 * 365);
-        
+
         if (signedUrlData?.signedUrl) {
           model.signedUrl = signedUrlData.signedUrl;
           await kv.set(`model:${model.id}`, model);

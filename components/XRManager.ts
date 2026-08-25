@@ -76,6 +76,15 @@ export class XRManager {
   // Pending hold-squeeze-to-exit timers, keyed by controller uniqueId - see
   // setupControllerEvents for why this gesture exists.
   private exitHoldTimers: Map<string, ReturnType<typeof setTimeout>> = new Map();
+  // Pending hold-Y/B-button-to-reset-position timers, keyed by controller uniqueId - see
+  // setupControllerEvents for the recenter gesture this drives.
+  private resetHoldTimers: Map<string, ReturnType<typeof setTimeout>> = new Map();
+  // Where the player started this VR session - captured once, right after entering, as
+  // the "reset position" gesture's target. Getting stuck (e.g. wedged against geometry,
+  // or disoriented after a bad teleport) had no recovery besides exiting and re-entering
+  // VR entirely; this gives an always-available way back to a known-good spot without
+  // ending the session.
+  private vrSpawnPosition: Vector3 | null = null;
 
   // Custom point-and-teleport (right controller) - see setupCustomTeleportation for why
   // this is a full reimplementation instead of Babylon's own teleportation feature.
@@ -86,7 +95,17 @@ export class XRManager {
   private teleportAiming: boolean = false;
   private teleportTargetPoint: Vector3 | null = null;
   private teleportRotationArmed: boolean = true;
-  private static readonly TELEPORT_FORWARD_THRESHOLD = -0.7;
+  // Reported symptom on real hardware: right-stick snap-turn (x axis) and left-stick
+  // walking both work, but pushing the right stick forward to aim a teleport (y axis)
+  // never shows so much as the red/invalid arc - the aim gate below (`y <
+  // TELEPORT_FORWARD_THRESHOLD`) was simply never being crossed. Most analog thumbsticks
+  // don't have a perfectly circular range - forward/back travel commonly reports a
+  // smaller max magnitude than left/right does on the same stick - so the same 0.7
+  // magnitude that's comfortably reachable on x can sit out of reach on y. Lowered just
+  // the forward-aim threshold rather than the (confirmed-working) turn threshold; -0.5
+  // is still well clear of MOVEMENT_THRESHOLD (0.15) and centred-stick noise, so this
+  // can't spuriously trigger aiming from an idle/resting controller.
+  private static readonly TELEPORT_FORWARD_THRESHOLD = -0.5;
   private static readonly SNAP_TURN_THRESHOLD = 0.7;
   private static readonly SNAP_TURN_REARM_THRESHOLD = 0.3;
   private static readonly SNAP_TURN_RADIANS = Math.PI / 8; // 22.5 degrees
@@ -97,6 +116,27 @@ export class XRManager {
   private static readonly WALK_SPEED_MPS = 1.0; // comfortable walking pace, not a run
   private static readonly SPRINT_THRESHOLD = 0.9; // stick magnitude - near-full deflection
   private static readonly SPRINT_MULTIPLIER = 1.8;
+
+  // Continuous floor-following ("grounding") - see setupGrounding for why this fully
+  // replaces Babylon's gravity/collision for vertical position.
+  private groundFrameCallback: (() => void) | null = null;
+  private groundFloorMeshes: AbstractMesh[] = [];
+  // How fast camera height is allowed to change per second when the floor underfoot
+  // rises or falls (stairs, ramps, stepping off a curb). Climb is capped comfortably
+  // faster than a real walking pace up stairs so it never feels like it's dragging
+  // behind the player's actual forward movement; fall is capped faster than climb (falls
+  // feel wrong if they're slow) but still far short of instant, which is what made
+  // crossing a stair read as "teleporting" - a whole riser's height changing in a single
+  // frame. Both bounded so a bad raycast (e.g. a momentary gap between floor meshes)
+  // can't move the camera in one uncomfortable jump either way.
+  private static readonly GROUND_CLIMB_SPEED_MPS = 3.0;
+  private static readonly GROUND_FALL_SPEED_MPS = 6.0;
+  // The downward probe starts this far above the camera's current feet estimate - tall
+  // enough to already see a rising stair tread just ahead before the collision capsule
+  // itself would reach it - and searches this far below that start point before giving
+  // up (no floor found this frame - height is simply left unchanged rather than guessed).
+  private static readonly GROUND_PROBE_ABOVE_M = 1.0;
+  private static readonly GROUND_PROBE_BELOW_M = 3.0;
 
   // VR comfort: vignette-on-turn - see pulseTurnVignette.
   private preXRVignetteState: { enabled: boolean; weight: number; color: Color4 | null } | null = null;
@@ -307,12 +347,33 @@ export class XRManager {
   // scene.collisionsEnabled is also forced on here as a safety net in case this runs
   // against a scene that doesn't set it itself (e.g. embedded outside BabylonWorkspace).
   // scene.gravity already defaults to real-world (0,-9.807,0) - left untouched.
+  //
+  // Reported symptoms while walking (not teleporting) in VR: visible floor
+  // "glitching"/jitter, the camera bobbing up and down or drifting upward and never
+  // coming back down after a single stick push, being unable to walk up stairs, and
+  // climbing what stairs did work feeling like an abrupt teleport rather than a walk.
+  // Root cause: applyGravity=true means Babylon's OWN collision system also resolves
+  // vertical position every frame (via the ellipsoid vs. scene geometry), fighting with
+  // updateGrounding() below, which resolves vertical position too (via a direct
+  // raycast against the known floor meshes) - two independent systems both writing
+  // camera.position.y every frame, each unaware of the other, is exactly what produces
+  // unpredictable drift/sticking and instant pops instead of a smooth climb. Gravity is
+  // now fully OFF: updateGrounding() is the single source of truth for height, walking
+  // up or down stairs at a smooth, capped rate instead of via collision-response
+  // side-effects. ellipsoidOffset.y is kept (not removed) purely so the horizontal
+  // collision capsule's belly still clears a stair riser's vertical face - checkCollisions
+  // still runs every frame to block walls/furniture, and without this offset it would
+  // block forward movement into ANY stair exactly like a wall, regardless of what
+  // updateGrounding() does for height. 0.3m comfortably clears a real ~15-18cm riser
+  // with margin while staying well under furniture/wall height.
+  private static readonly WALK_STEP_HEIGHT = 0.3;
+
   private applyWalkingCollisions(camera: WebXRCamera): void {
     this.scene.collisionsEnabled = true;
     camera.checkCollisions = true;
-    camera.applyGravity = true;
+    camera.applyGravity = false;
     camera.ellipsoid = new Vector3(0.3, 0.9, 0.3);
-    camera.ellipsoidOffset = new Vector3(0, 0, 0);
+    camera.ellipsoidOffset = new Vector3(0, XRManager.WALK_STEP_HEIGHT, 0);
   }
 
   // VR comfort: briefly darkens the peripheral view on every snap-turn - rotation is
@@ -960,10 +1021,13 @@ export class XRManager {
       return;
     }
 
-    // Cancel any in-progress hold-squeeze-to-exit timers so a still-held squeeze from
-    // just now doesn't fire a second exitXR() call after the session has already ended.
+    // Cancel any in-progress hold-squeeze-to-exit / hold-to-reset timers so a still-held
+    // button from just now doesn't fire again after the session has already ended.
     this.exitHoldTimers.forEach((timer) => clearTimeout(timer));
     this.exitHoldTimers.clear();
+    this.resetHoldTimers.forEach((timer) => clearTimeout(timer));
+    this.resetHoldTimers.clear();
+    this.vrSpawnPosition = null;
 
     try {
       // Disable spatial audio if audio manager is available
@@ -976,6 +1040,7 @@ export class XRManager {
       this.teardownARPlacement();
       this.teardownCustomTeleportation();
       this.teardownCustomMovement();
+      this.teardownGrounding();
       this.restorePreXRVignette();
 
       // End XR session
@@ -1025,12 +1090,84 @@ export class XRManager {
     // this is a full reimplementation rather than WebXRFeatureName.MOVEMENT.
     this.setupCustomMovement();
 
+    // Continuous floor-following (walking height, stairs) - independent of whether
+    // point-and-teleport itself is enabled, since it also grounds plain walking.
+    this.setupGrounding(floorMeshes);
+
     if (this.teleportationEnabled) {
       this.setupCustomTeleportation(floorMeshes);
     }
 
     // Set up controller events
     this.setupControllerEvents();
+
+    // Capture the reset-position gesture's target once the headset has actually
+    // reported a real pose - camera.position right after enterXRAsync resolves can
+    // still be whatever it was before entering (the first real device pose only lands
+    // on the session's first XR frame), so grabbing it immediately here risks resetting
+    // the player into a stale/default spot instead of back to where they actually began.
+    const sessionManager = this.xrExperience.baseExperience.sessionManager;
+    sessionManager.onXRFrameObservable.addOnce(() => {
+      if (this.xrCamera) this.vrSpawnPosition = this.xrCamera.position.clone();
+    });
+  }
+
+  // Continuous floor-following ("grounding"). Fully replaces Babylon's own
+  // gravity/collision for vertical position - see the comment on applyWalkingCollisions
+  // for why running both at once caused unpredictable height drift. Every XR frame, this
+  // probes straight down from just above the camera's current implied feet position for
+  // the nearest known floor mesh, and eases camera height toward it at a capped
+  // speed - the same mechanism (a direct raycast against the curated floor-mesh list,
+  // then setting camera.position.y = floorY + camera.realWorldHeight) the one-shot
+  // teleport-on-release already uses successfully, just applied continuously instead of
+  // once, which is what turns a passable stair riser into an actual smooth climb instead
+  // of either a wall or a sudden pop.
+  private setupGrounding(floorMeshes: AbstractMesh[]): void {
+    if (!this.xrExperience) return;
+    this.teardownGrounding();
+    this.groundFloorMeshes = floorMeshes;
+
+    const sessionManager = this.xrExperience.baseExperience.sessionManager;
+    const probeRay = new Ray(Vector3.Zero(), Vector3.Down());
+
+    this.groundFrameCallback = () => {
+      const camera = this.xrCamera;
+      if (!camera || this.groundFloorMeshes.length === 0) return;
+
+      const feetY = camera.position.y - camera.realWorldHeight;
+      probeRay.origin.set(camera.position.x, feetY + XRManager.GROUND_PROBE_ABOVE_M, camera.position.z);
+      probeRay.direction.set(0, -1, 0);
+      probeRay.length = XRManager.GROUND_PROBE_ABOVE_M + XRManager.GROUND_PROBE_BELOW_M;
+
+      const pick = this.scene.pickWithRay(probeRay, (m) => this.groundFloorMeshes.indexOf(m) !== -1);
+      // No floor found under the current spot this frame (e.g. a gap between floor
+      // meshes, or mid-teleport-arc edge case) - hold height rather than guess.
+      if (!pick?.hit || !pick.pickedPoint) return;
+
+      const delta = pick.pickedPoint.y - feetY;
+      if (Math.abs(delta) < 1e-4) return;
+      const deltaSeconds = this.scene.getEngine().getDeltaTime() / 1000;
+      const maxStep = (delta >= 0 ? XRManager.GROUND_CLIMB_SPEED_MPS : XRManager.GROUND_FALL_SPEED_MPS) * deltaSeconds;
+      camera.position.y += Math.abs(delta) <= maxStep ? delta : Math.sign(delta) * maxStep;
+    };
+    sessionManager.onXRFrameObservable.add(this.groundFrameCallback);
+  }
+
+  private teardownGrounding(): void {
+    const sessionManager = this.xrExperience?.baseExperience?.sessionManager;
+    if (sessionManager && this.groundFrameCallback) {
+      sessionManager.onXRFrameObservable.removeCallback(this.groundFrameCallback);
+    }
+    this.groundFrameCallback = null;
+    this.groundFloorMeshes = [];
+  }
+
+  // Snaps the player back to wherever this VR session started - the "reset position"
+  // gesture's action (see setupControllerEvents for the button that triggers it).
+  private resetPlayerPosition(): void {
+    if (this.xrCamera && this.vrSpawnPosition) {
+      this.xrCamera.position.copyFrom(this.vrSpawnPosition);
+    }
   }
 
   // Enable hand tracking
@@ -1327,17 +1464,63 @@ export class XRManager {
       else controller.onMotionControllerInitObservable.addOnce(attach);
     };
 
+    // Hold-Y-to-reset-position, left controller only. Getting stuck (wedged against
+    // geometry by a bad collision resolve, or just disoriented after moving around a
+    // large model) previously had no recovery besides fully exiting and re-entering VR.
+    // The oculus-touch profile this app forces (see getInputOptions) exposes the left
+    // controller's upper face button as 'y-button' - it isn't used for anything else
+    // here, unlike the right controller's face buttons which the built-in pointer
+    // selection feature can use for UI clicks. A shorter hold than the exit gesture
+    // (which deliberately needs a deliberate 1200ms hold, since it ends the session) -
+    // long enough that a stray touch while adjusting grip doesn't teleport the player by
+    // accident, short enough to actually be quick to use.
+    const RESET_HOLD_MS = 500;
+
+    const wireResetGesture = (controller: WebXRInputSource) => {
+      if (controller.inputSource.handedness !== 'left') return;
+      const attach = () => {
+        const resetButton = controller.motionController?.getComponent('y-button')
+          ?? controller.motionController?.getComponent('b-button');
+        if (!resetButton) return;
+        resetButton.onButtonStateChangedObservable.add((component) => {
+          if (component.pressed) {
+            if (this.resetHoldTimers.has(controller.uniqueId)) return;
+            this.resetHoldTimers.set(controller.uniqueId, setTimeout(() => {
+              this.resetHoldTimers.delete(controller.uniqueId);
+              console.log('Reset button held - resetting player position');
+              controller.inputSource.gamepad?.hapticActuators?.[0]?.pulse(0.8, 100);
+              this.resetPlayerPosition();
+            }, RESET_HOLD_MS));
+          } else {
+            const timer = this.resetHoldTimers.get(controller.uniqueId);
+            if (timer !== undefined) {
+              clearTimeout(timer);
+              this.resetHoldTimers.delete(controller.uniqueId);
+            }
+          }
+        });
+      };
+      if (controller.motionController) attach();
+      else controller.onMotionControllerInitObservable.addOnce(attach);
+    };
+
     this.xrExperience.input.onControllerAddedObservable.add((controller) => {
       console.log('XR controller added');
       wireExitGesture(controller);
+      wireResetGesture(controller);
     });
 
     this.xrExperience.input.onControllerRemovedObservable.add((controller) => {
       console.log('XR controller removed');
-      const timer = this.exitHoldTimers.get(controller.uniqueId);
-      if (timer !== undefined) {
-        clearTimeout(timer);
+      const exitTimer = this.exitHoldTimers.get(controller.uniqueId);
+      if (exitTimer !== undefined) {
+        clearTimeout(exitTimer);
         this.exitHoldTimers.delete(controller.uniqueId);
+      }
+      const resetTimer = this.resetHoldTimers.get(controller.uniqueId);
+      if (resetTimer !== undefined) {
+        clearTimeout(resetTimer);
+        this.resetHoldTimers.delete(controller.uniqueId);
       }
     });
   }
