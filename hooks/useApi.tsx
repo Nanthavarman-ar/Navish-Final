@@ -16,13 +16,31 @@ const safelySignOut = async () => {
   }
 };
 
+// supabase-js v2's session methods serialize through a navigator.locks-backed mutex
+// (to stop concurrent tabs/calls from racing a token refresh) - under some browser/
+// timing conditions that lock is never released back to this page (observed in
+// production: getSession() hangs forever, no resolve, no reject, no console output),
+// which silently wedged every apiCall() caller awaiting it - e.g. AppLayout's
+// restore-last-model-on-refresh effect, which would log "attempting to restore" and
+// then simply never proceed, leaving the workspace on its empty placeholder forever
+// with no error surfaced anywhere. Racing it against a timeout guarantees this
+// resolves (to "no session") instead of hanging the caller indefinitely.
+const withTimeout = <T,>(promise: Promise<T>, ms: number, label: string): Promise<T> =>
+  new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
+    promise.then(
+      (value) => { clearTimeout(timer); resolve(value); },
+      (error) => { clearTimeout(timer); reject(error); }
+    );
+  });
+
 const getAccessToken = async (): Promise<string | null> => {
   if (authSessionInvalid) return null;
 
   try {
     const {
       data: { session },
-    } = await supabase.auth.getSession();
+    } = await withTimeout(supabase.auth.getSession(), 8000, 'supabase.auth.getSession()');
     const accessToken = session?.access_token ?? null;
 
     if (accessToken) {
@@ -35,6 +53,10 @@ const getAccessToken = async (): Promise<string | null> => {
     if (isRefreshTokenError(message)) {
       authSessionInvalid = true;
       await safelySignOut();
+      return null;
+    }
+    if (/timed out/i.test(message)) {
+      console.error('[auth] getSession() hung and timed out - treating as no session:', message);
       return null;
     }
     throw error;
