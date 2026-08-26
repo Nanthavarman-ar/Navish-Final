@@ -221,13 +221,22 @@ export default function AppLayout() {
     }
     console.log('[restore-last-model] attempting to restore', { lastModelId });
 
+    // No cancellation flag here on purpose: hasRestoredLastModelRef already guarantees
+    // this async block only ever starts once per mount, so there's nothing to guard
+    // against by discarding its result. A `cancelled = true` cleanup used to sit here,
+    // set whenever this effect re-ran (e.g. BabylonWorkspace's onSceneReady callback
+    // flips AppLayout's own sceneReady state within the first second of mount, which
+    // re-renders AppLayout and can hand `user`/`searchParams` new references before this
+    // fetch resolves). Because the ref already blocks any actual re-attempt, that
+    // cancellation only ever threw away the one real attempt's result once it finally
+    // came back - silently, with no log and no retry - which is exactly what made this
+    // look like "restore just hangs forever" with the trace showing "attempting to
+    // restore" and then nothing else, ever.
     hasRestoredLastModelRef.current = true;
-    let cancelled = false;
     (async () => {
       try {
         const data = await apiCall('/models');
         const model = (data.models || []).find((m: any) => String(m.id) === lastModelId);
-        if (cancelled) return;
         if (model) {
           const withUrl = withModelUrl(model);
           if (!withUrl.modelUrl) {
@@ -258,8 +267,6 @@ export default function AppLayout() {
         showToast.error('Could not reopen your last model', 'Check your connection and try opening it again from your models list.');
       }
     })();
-
-    return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentPath, user, selectedModel, searchParams]);
   // Was defaulted to true, so the panel auto-opened on every load with no user action -
