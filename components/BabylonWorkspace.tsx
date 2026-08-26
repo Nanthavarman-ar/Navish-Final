@@ -21,7 +21,7 @@ import { Maximize, MapPin, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Mo
 import { useFeatureStates, UseFeatureStatesReturn } from '../hooks/useFeatureStates';
 import { useWorkspaceState, WorkspaceState } from '../hooks/useWorkspaceState';
 import { useUIHandlers } from '../hooks/useUIHandlers';
-import { useApp } from '../contexts/AppContext';
+import { useApp, LAST_MODEL_ID_KEY } from '../contexts/AppContext';
 import { supabase, projectId } from '../supabase/client';
 
 // Import extracted modules
@@ -1519,11 +1519,29 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
           // demo geometry sits in the scene alongside (or ahead of) the real
           // model and looks like "my upload isn't showing, only the default
           // model is".
-          if (typeof bimManager.loadDemoModel === 'function' && !selectedModel?.modelUrl) {
+          //
+          // On a full page refresh, selectedModel is still null right here even when a
+          // model WILL be restored - AppLayout's restore-last-model effect is an async
+          // /models fetch that hasn't resolved yet at this point in the scene-init
+          // sequence. Without this extra check, the demo BIM building loaded below every
+          // single time the page was refreshed while a model was open, and
+          // removePlaceholderGeometry() (called once the real model loads) only disposes
+          // the generic ground/defaultBox placeholder - it has no way to find and remove
+          // the demo's own walls/floors/ceiling/wiring/plumbing/hvac meshes, so they sat
+          // in the scene permanently once created. Checking localStorage's remembered id
+          // (the same key the restore effect itself reads) tells us a restore is pending
+          // so we can skip creating the demo at all and let the real model load cleanly.
+          let hasPendingModelRestore = false;
+          try {
+            hasPendingModelRestore = !!localStorage.getItem(LAST_MODEL_ID_KEY);
+          } catch {
+            // localStorage unavailable (private browsing, etc) - fall through to demo model
+          }
+          if (typeof bimManager.loadDemoModel === 'function' && !selectedModel?.modelUrl && !hasPendingModelRestore) {
             await bimManager.loadDemoModel();
             console.log("BIMManager initialized with demo model");
           } else {
-            console.log("BIMManager initialized" + (selectedModel?.modelUrl ? " (demo model skipped, loading selected model)" : ""));
+            console.log("BIMManager initialized" + (selectedModel?.modelUrl || hasPendingModelRestore ? " (demo model skipped, loading selected model)" : ""));
           }
         } catch (error) {
           console.error("Failed to initialize BIMManager:", error);

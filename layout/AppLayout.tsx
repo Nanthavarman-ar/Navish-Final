@@ -237,6 +237,10 @@ export default function AppLayout() {
             // workspace just sat on its empty placeholder scene with no indication why.
             console.error('Last opened model has no file URL to load:', model);
             showToast.error('Could not reopen your last model', 'It has no file location on record - try opening it again from your models list.');
+            // This id will never resolve to a loadable model - clear it so a future
+            // refresh doesn't keep skipping BabylonWorkspace's demo-model fallback (see
+            // hasPendingModelRestore there) for an id that's permanently broken.
+            try { localStorage.removeItem(LAST_MODEL_ID_KEY); } catch { /* ignore */ }
             return;
           }
           console.log('[restore-last-model] found model, handing off to the workspace load effect', { id: withUrl.id, modelUrl: withUrl.modelUrl });
@@ -245,8 +249,9 @@ export default function AppLayout() {
           // The remembered id no longer matches anything /models returns for this user
           // (deleted, unassigned, or a stale id from a previous account) - previously a
           // silent no-op, which read as "refreshing just loses your model" with nothing
-          // to go on.
+          // to go on. Also clear it (see comment above) since it will never match.
           console.warn('Last opened model id not found in /models response:', lastModelId);
+          try { localStorage.removeItem(LAST_MODEL_ID_KEY); } catch { /* ignore */ }
         }
       } catch (error) {
         console.error('Failed to restore last opened model:', error);
