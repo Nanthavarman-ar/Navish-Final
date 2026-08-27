@@ -220,6 +220,18 @@ const MaterialEditor: React.FC<MaterialEditorProps> = ({ sceneManager, selectedM
     snapshotForUndo(babylonMaterial);
 
     if (babylonMaterial instanceof BABYLON.StandardMaterial) {
+      // StandardMaterial has no emissiveIntensity of its own - applyChangesToMaterial
+      // simulates it by scaling emissiveColor's RGB past 1.0 (see there). Reading
+      // emissiveColor straight back with intensity hardcoded to 1 (as this used to)
+      // fed the raw, possibly->1 scaled channel values straight into the hex color
+      // picker: rgbToHex would round e.g. 8.0 to a 3-digit hex chunk instead of 2,
+      // producing a garbled swatch, and the intensity slider forgot whatever value
+      // was actually set - moving any other slider afterward then reapplied that
+      // garbled color at intensity 1, silently changing the glow that was already
+      // there. Decomposing back into a normalized [0,1] color + the intensity that
+      // produced it keeps re-selecting a previously-glowing material accurate.
+      const rawEmissive = babylonMaterial.emissiveColor;
+      const emissiveIntensity = Math.max(1, rawEmissive.r, rawEmissive.g, rawEmissive.b);
       setMaterialProperties({
         diffuseColor: {
           r: babylonMaterial.diffuseColor.r,
@@ -232,9 +244,9 @@ const MaterialEditor: React.FC<MaterialEditorProps> = ({ sceneManager, selectedM
           b: babylonMaterial.specularColor.b
         },
         emissiveColor: {
-          r: babylonMaterial.emissiveColor.r,
-          g: babylonMaterial.emissiveColor.g,
-          b: babylonMaterial.emissiveColor.b
+          r: rawEmissive.r / emissiveIntensity,
+          g: rawEmissive.g / emissiveIntensity,
+          b: rawEmissive.b / emissiveIntensity
         },
         alpha: babylonMaterial.alpha,
         metallic: 0,
@@ -245,7 +257,7 @@ const MaterialEditor: React.FC<MaterialEditorProps> = ({ sceneManager, selectedM
         indexOfRefraction: 1.5,
         autoScaleReflection: true,
         autoScaleRefraction: true,
-        emissiveIntensity: 1,
+        emissiveIntensity,
         uScale: (babylonMaterial.diffuseTexture as BABYLON.Texture)?.uScale ?? 1,
         vScale: (babylonMaterial.diffuseTexture as BABYLON.Texture)?.vScale ?? 1
       });
@@ -791,8 +803,15 @@ const MaterialEditor: React.FC<MaterialEditorProps> = ({ sceneManager, selectedM
   };
 
   const rgbToHex = (r: number, g: number, b: number) => {
+    // Emissive channels can legitimately exceed 1.0 (StandardMaterial simulates
+    // "intensity" by scaling color past 1.0 - see loadMaterialProperties/
+    // applyChangesToMaterial). Un-clamped, Math.round(x * 255) for e.g. x=8 produces
+    // 2040 -> a 3-digit hex chunk instead of 2, which this function's "pad single
+    // digit" logic doesn't handle, corrupting the whole hex string. The <input
+    // type="color"> picker is 0-255 per channel anyway, so clamping here is exactly
+    // what should feed it regardless of the material's true HDR emissive value.
     return '#' + [r, g, b].map(x => {
-      const h = Math.round(x * 255).toString(16);
+      const h = Math.round(Math.min(1, Math.max(0, x)) * 255).toString(16);
       return h.length === 1 ? '0' + h : h;
     }).join('');
   };
