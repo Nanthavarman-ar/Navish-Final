@@ -111,15 +111,54 @@ const Minimap: React.FC<MinimapProps> = ({
     return { min, max };
   };
 
-  // Keep the "Objects" count and "Bounds" readout in sync with what's
-  // actually in the scene - these were previously stuck at their initial
-  // values (0 objects, -50..50) forever, since nothing ever updated them.
+  type FootprintPoint = { x: number; z: number };
+
+  // 2D convex hull (Andrew's monotone chain) over each mesh's real world-space
+  // bounding box corners (BoundingBox.vectorsWorld already accounts for the mesh's
+  // actual position/rotation/scale, unlike a plain min/max AABB merge).
+  const convexHull = (points: FootprintPoint[]): FootprintPoint[] => {
+    const pts = [...points].sort((a, b) => (a.x - b.x) || (a.z - b.z));
+    if (pts.length < 3) return pts;
+    const cross = (o: FootprintPoint, a: FootprintPoint, b: FootprintPoint) =>
+      (a.x - o.x) * (b.z - o.z) - (a.z - o.z) * (b.x - o.x);
+    const lower: FootprintPoint[] = [];
+    for (const p of pts) {
+      while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], p) <= 0) lower.pop();
+      lower.push(p);
+    }
+    const upper: FootprintPoint[] = [];
+    for (let i = pts.length - 1; i >= 0; i--) {
+      const p = pts[i];
+      while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], p) <= 0) upper.pop();
+      upper.push(p);
+    }
+    lower.pop();
+    upper.pop();
+    return lower.concat(upper);
+  };
+
+  // The real building's footprint outline - replaces drawing one rectangle per
+  // mesh (walls, railings, small fixtures all got their own overlapping box,
+  // which rendered as a noisy jagged blob with no resemblance to the actual
+  // uploaded model). A single hull over every mesh's real world-space corners
+  // gives one clean silhouette that actually matches the model's real shape.
+  const [footprintHull, setFootprintHull] = useState<FootprintPoint[]>([]);
+
+  // Keep the "Objects" count, "Bounds" readout, and footprint outline in sync
+  // with what's actually in the scene - these were previously stuck at their
+  // initial values (0 objects, -50..50) forever, since nothing ever updated them.
   useEffect(() => {
     if (!scene) return;
     const sync = () => {
       const meshes = getRelevantMeshes(scene);
       setObjects(meshes.map((m) => ({ id: m.uniqueId, type: 'mesh' })));
       setSceneBounds(computeBounds(meshes));
+      const corners: FootprintPoint[] = [];
+      meshes.forEach((m) => {
+        const info = m.getBoundingInfo?.();
+        info?.boundingBox.vectorsWorld.forEach((v) => corners.push({ x: v.x, z: v.z }));
+      });
+      setFootprintHull(convexHull(corners));
     };
     sync();
     const interval = setInterval(sync, 1000);
@@ -151,33 +190,35 @@ const Minimap: React.FC<MinimapProps> = ({
         y: oy + (z - bounds.min.z) * scale
       });
 
-      // Draw each mesh's footprint (its XZ bounding rectangle) so the minimap
-      // reads as an actual top-down floor plan of the loaded model instead of
-      // a scatter of unrelated dots.
+      // Draw the real building's footprint as one outline (see footprintHull
+      // above) so the minimap reads as an actual top-down silhouette of the
+      // loaded model instead of a noisy pile of overlapping per-mesh boxes.
       ctx.fillStyle = 'rgba(16, 185, 129, 0.35)';
       ctx.strokeStyle = '#10b981';
-      ctx.lineWidth = 1;
-      getRelevantMeshes(scene).forEach((m) => {
-        const boundingInfo = m.getBoundingInfo?.();
-        if (!boundingInfo) return;
-        const min = boundingInfo.boundingBox.minimumWorld;
-        const max = boundingInfo.boundingBox.maximumWorld;
-        const topLeft = toScreen(min.x, min.z);
-        const bottomRight = toScreen(max.x, max.z);
-        const rectX = Math.min(topLeft.x, bottomRight.x);
-        const rectY = Math.min(topLeft.y, bottomRight.y);
-        const rectW = Math.abs(bottomRight.x - topLeft.x);
-        const rectH = Math.abs(bottomRight.y - topLeft.y);
-        if (rectW < 1 && rectH < 1) {
-          // Degenerate/point-like mesh - still show it as a small marker.
-          ctx.beginPath();
-          ctx.arc(rectX, rectY, 2, 0, Math.PI * 2);
-          ctx.fill();
-          return;
-        }
-        ctx.fillRect(rectX, rectY, rectW, rectH);
-        ctx.strokeRect(rectX, rectY, rectW, rectH);
-      });
+      ctx.lineWidth = 1.5;
+      if (footprintHull.length >= 3) {
+        ctx.beginPath();
+        footprintHull.forEach((p, i) => {
+          const s = toScreen(p.x, p.z);
+          if (i === 0) ctx.moveTo(s.x, s.y);
+          else ctx.lineTo(s.x, s.y);
+        });
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+      } else if (footprintHull.length === 2) {
+        const a = toScreen(footprintHull[0].x, footprintHull[0].z);
+        const b = toScreen(footprintHull[1].x, footprintHull[1].z);
+        ctx.beginPath();
+        ctx.moveTo(a.x, a.y);
+        ctx.lineTo(b.x, b.y);
+        ctx.stroke();
+      } else if (footprintHull.length === 1) {
+        const p = toScreen(footprintHull[0].x, footprintHull[0].z);
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, 2, 0, Math.PI * 2);
+        ctx.fill();
+      }
 
       // Draw lights
       scene.lights.forEach((l) => {
@@ -204,7 +245,7 @@ const Minimap: React.FC<MinimapProps> = ({
     draw();
     const interval = setInterval(draw, 100);
     return () => clearInterval(interval);
-  }, [scene, camera, sceneBounds, zoom]);
+  }, [scene, camera, sceneBounds, zoom, footprintHull]);
 
   // Canvas click handler
   const handleCanvasClick = (event: React.MouseEvent<HTMLCanvasElement>) => {
