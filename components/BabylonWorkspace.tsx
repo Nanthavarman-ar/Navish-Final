@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import './BabylonWorkspace.css';
 
 // Core Babylon.js imports only (minimal for initial load)
-import { Engine, Scene, ArcRotateCamera, FreeCamera, UniversalCamera, HemisphericLight, DirectionalLight, Vector3, Vector2, Quaternion, Color3, Color4, Mesh, AbstractMesh, StandardMaterial, DefaultRenderingPipeline, SSAORenderingPipeline, HighlightLayer, PBRMaterial, Material, ImageProcessingConfiguration, ColorCurves, PointerInfo, PickingInfo, Camera, PointerEventTypes, ParticleSystem, MeshBuilder, Texture, GizmoManager, ShadowGenerator, Ray } from '@babylonjs/core';
+import { Engine, Scene, ArcRotateCamera, FreeCamera, UniversalCamera, HemisphericLight, DirectionalLight, Vector3, Vector2, Quaternion, Color3, Color4, Mesh, AbstractMesh, StandardMaterial, DefaultRenderingPipeline, SSAORenderingPipeline, HighlightLayer, PBRMaterial, Material, ImageProcessingConfiguration, ColorCurves, PointerInfo, PickingInfo, Camera, PointerEventTypes, ParticleSystem, MeshBuilder, Texture, GizmoManager, GizmoAnchorPoint, ShadowGenerator, Ray } from '@babylonjs/core';
 import { WaterMaterial } from '@babylonjs/materials/water';
 import { PerlinNoiseProceduralTexture } from '@babylonjs/procedural-textures';
 
@@ -1942,10 +1942,31 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
   }, []);
 
   // Attach the gizmo to whatever is currently selected
+  const pivotedMeshRef = useRef<Mesh | null>(null);
   useEffect(() => {
     const gizmoManager = gizmoManagerRef.current;
     const mesh = workspaceState.selectedMesh;
     if (!gizmoManager) return;
+
+    // Imported GLB/glTF meshes (this app's whole real-model path, see SceneLoader.Append
+    // above) very commonly bake absolute vertex positions with an identity local
+    // transform - every mesh's own pivot sits at (0,0,0), often nowhere near where the
+    // object actually looks like it is. With the gizmo's default anchor (the raw pivot,
+    // see GizmoAnchorPoint.Pivot below), selecting a wall or piece of furniture then
+    // showed the move/rotate handles off at the building's origin instead of on the
+    // object - clicking/dragging them didn't look like it was moving the thing you'd
+    // just selected at all. Re-anchoring the pivot to the mesh's own real bounding-box
+    // center fixes this without moving the mesh (setPivotPoint only changes what
+    // position/rotation are measured from, not the mesh's actual world position).
+    if (pivotedMeshRef.current && pivotedMeshRef.current !== mesh) {
+      pivotedMeshRef.current.setPivotPoint(Vector3.Zero());
+      pivotedMeshRef.current = null;
+    }
+    if (mesh) {
+      mesh.setPivotPoint(mesh.getBoundingInfo().boundingBox.center);
+      pivotedMeshRef.current = mesh;
+    }
+
     gizmoManager.attachToMesh(mesh || null);
   }, [workspaceState.selectedMesh]);
 
@@ -1958,6 +1979,12 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
     gizmoManager.positionGizmoEnabled = transformMode === 'position';
     gizmoManager.rotationGizmoEnabled = transformMode === 'rotation';
     gizmoManager.scaleGizmoEnabled = transformMode === 'scale';
+    // Anchor to the (now bounding-box-centered, see above) pivot rather than the raw
+    // mesh origin - see the pivot re-anchoring comment in the attach effect for why the
+    // default (Origin) anchor put the gizmo somewhere unrelated to the visible object.
+    [gizmoManager.gizmos.positionGizmo, gizmoManager.gizmos.rotationGizmo, gizmoManager.gizmos.scaleGizmo].forEach((g) => {
+      if (g) g.anchorPoint = GizmoAnchorPoint.Pivot;
+    });
 
     const recordSnapshot = () => {
       const mesh = workspaceState.selectedMesh;
