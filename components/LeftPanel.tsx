@@ -4,7 +4,7 @@ import { CardHeader, CardTitle } from './ui/card';
 import { Input } from './ui/input';
 import { Button } from './ui/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuCheckboxItem, DropdownMenuSeparator } from './ui/dropdown-menu';
-import { Search, X, ChevronLeft, ChevronDown, ChevronRight, MoreVertical, CloudRain, Droplet, Wind, Sun, MapPin, Ruler, Palette, Settings, Layers, Eye, EyeOff } from 'lucide-react';
+import { Search, X, ChevronLeft, ChevronDown, ChevronRight, MoreVertical, CloudRain, Droplet, Wind, Sun, MapPin, Ruler, Palette, Settings, Layers, Eye, EyeOff, Gauge } from 'lucide-react';
 import FeatureButton from './FeatureButton';
 
 const CORE_TOOLS = [
@@ -13,7 +13,8 @@ const CORE_TOOLS = [
   { id: 'showMaterialEditor', name: 'Material', icon: Palette },
   { id: 'showPropertyInspector', name: 'Inspector', icon: Settings },
   { id: 'showSceneBrowser', name: 'Scene', icon: Layers },
-  { id: 'showLighting', name: 'Lighting', icon: Sun }
+  { id: 'showLighting', name: 'Lighting', icon: Sun },
+  { id: 'showGraphicsQuality', name: 'Graphics', icon: Gauge }
 ] as const;
 
 const SIMULATION_FEATURES = [

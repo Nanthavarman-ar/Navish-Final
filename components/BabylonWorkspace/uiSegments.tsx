@@ -513,6 +513,7 @@ const GeoLocationContext = React.lazy(() => import('../GeoLocationContext'));
 const FloodSimulation = React.lazy(() => import('../FloodSimulation'));
 const WindTunnelSimulation = React.lazy(() => import('../WindTunnelSimulation'));
 const LightingPresets = React.lazy(() => import('../LightingPresets'));
+const GraphicsQualityPanel = React.lazy(() => import('../GraphicsQualityPanel'));
 const VersionHistoryPanel = React.lazy(() => import('../VersionHistoryPanel'));
 const AnnotationTool = React.lazy(() => import('../AnnotationTool'));
 const SiteContextPanel = React.lazy(() => import('../SiteContextPanel'));
@@ -584,6 +585,11 @@ interface CustomPanelsSegmentProps {
     selectedMesh: any;
   };
   updateState: (updates: any) => void;
+  graphicsQuality?: 'auto' | 'low' | 'medium' | 'high' | 'ultra';
+  setGraphicsQuality?: (value: 'auto' | 'low' | 'medium' | 'high' | 'ultra') => void;
+  recommendedQuality?: 'low' | 'medium' | 'high' | 'ultra';
+  gpuName?: string;
+  deviceCapabilities?: any;
   sustainabilityReport?: {
     greenScore: number;
     energyEfficiency: number;
@@ -615,8 +621,8 @@ export const CustomPanelsSegment: React.FC<CustomPanelsSegmentProps> = (props) =
 );
 
 // Sub-segment components for CustomPanels
-const CoreFeaturesSegment: React.FC<Pick<CustomPanelsSegmentProps, 'featureStates' | 'sceneRef' | 'engineRef' | 'cameraRef' | 'bimManagerRef' | 'aiManagerRef' | 'workspaces' | 'selectedWorkspaceId' | 'handleWorkspaceSelect' | 'handleMaterialApplied' | 'handleAnimationCreate' | 'handleSequencePlay' | 'disableFeature' | 'workspaceState' | 'scenarioManagerRef' | 'moodSceneManagerRef' | 'animationManagerRef' | 'cloudAnchorManagerRef' | 'arCloudAnchorsRef' | 'gpsTransformUtilsRef' | 'xrManagerRef'>> = ({
-  featureStates, sceneRef, engineRef, cameraRef, bimManagerRef, aiManagerRef, workspaces, selectedWorkspaceId, handleWorkspaceSelect, handleMaterialApplied, handleAnimationCreate, handleSequencePlay, disableFeature, workspaceState, scenarioManagerRef, moodSceneManagerRef, animationManagerRef, cloudAnchorManagerRef, arCloudAnchorsRef, gpsTransformUtilsRef, xrManagerRef
+const CoreFeaturesSegment: React.FC<Pick<CustomPanelsSegmentProps, 'featureStates' | 'sceneRef' | 'engineRef' | 'cameraRef' | 'bimManagerRef' | 'aiManagerRef' | 'workspaces' | 'selectedWorkspaceId' | 'handleWorkspaceSelect' | 'handleMaterialApplied' | 'handleAnimationCreate' | 'handleSequencePlay' | 'disableFeature' | 'workspaceState' | 'scenarioManagerRef' | 'moodSceneManagerRef' | 'animationManagerRef' | 'cloudAnchorManagerRef' | 'arCloudAnchorsRef' | 'gpsTransformUtilsRef' | 'xrManagerRef' | 'graphicsQuality' | 'setGraphicsQuality' | 'recommendedQuality' | 'gpuName' | 'deviceCapabilities'>> = ({
+  featureStates, sceneRef, engineRef, cameraRef, bimManagerRef, aiManagerRef, workspaces, selectedWorkspaceId, handleWorkspaceSelect, handleMaterialApplied, handleAnimationCreate, handleSequencePlay, disableFeature, workspaceState, scenarioManagerRef, moodSceneManagerRef, animationManagerRef, cloudAnchorManagerRef, arCloudAnchorsRef, gpsTransformUtilsRef, xrManagerRef, graphicsQuality, setGraphicsQuality, recommendedQuality, gpuName, deviceCapabilities
 }) => (
   <>
     {featureStates.showMaterialEditor && sceneRef.current && (
@@ -671,6 +677,27 @@ const CoreFeaturesSegment: React.FC<Pick<CustomPanelsSegmentProps, 'featureState
         </div>
         <div className="flex-1 min-h-0 overflow-hidden p-4">
           <LightingPresets scene={sceneRef.current} />
+        </div>
+      </div>
+      </Suspense>
+    )}
+    {featureStates.showGraphicsQuality && (
+      <Suspense fallback={<div className="fixed top-20 right-4 z-50 w-80 max-w-[90vw] h-48 bg-slate-900/95 rounded-xl animate-pulse border border-slate-600" />}>
+      <div className="fixed top-20 right-4 z-50 w-80 max-w-[90vw] flex flex-col bg-slate-900/95 backdrop-blur-sm border border-slate-600 rounded-xl shadow-2xl pointer-events-auto overflow-hidden">
+        <div className="flex justify-between items-center px-4 py-3 border-b border-slate-600 bg-slate-800/80 shrink-0">
+          <span className="text-sm font-semibold text-slate-200 flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-sky-400" /> Graphics Quality
+          </span>
+          <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-400 hover:text-white" onClick={() => disableFeature('showGraphicsQuality')} aria-label="Close Graphics Quality">✕</Button>
+        </div>
+        <div className="flex-1 min-h-0 overflow-y-auto p-4">
+          <GraphicsQualityPanel
+            value={graphicsQuality ?? 'auto'}
+            onChange={(v) => setGraphicsQuality?.(v)}
+            recommended={recommendedQuality ?? 'medium'}
+            gpuName={gpuName}
+            capabilities={deviceCapabilities}
+          />
         </div>
       </div>
       </Suspense>
@@ -1719,6 +1746,11 @@ interface RenderCustomPanelsProps {
   onFloodWaveSpeedChange?: (speed: number) => void;
   workspaceState: { selectedMesh: any };
   updateState: (updates: any) => void;
+  graphicsQuality?: CustomPanelsSegmentProps['graphicsQuality'];
+  setGraphicsQuality?: CustomPanelsSegmentProps['setGraphicsQuality'];
+  recommendedQuality?: CustomPanelsSegmentProps['recommendedQuality'];
+  gpuName?: string;
+  deviceCapabilities?: any;
   sustainabilityReport?: CustomPanelsSegmentProps['sustainabilityReport'];
 }
 

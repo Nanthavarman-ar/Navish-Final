@@ -319,6 +319,26 @@ export class SSAORenderingPipeline {
   }
 }
 
+export class SSRRenderingPipeline {
+  strength: number;
+  thickness: number;
+  environmentTexture: any;
+  attenuateScreenBorders: boolean;
+  attenuateIntersectionDistance: boolean;
+  attenuateIntersectionIterations: boolean;
+
+  constructor(name: string, scene: Scene, cameras?: any[]) {
+    this.strength = 1;
+    this.thickness = 0.5;
+    this.environmentTexture = null;
+    this.attenuateScreenBorders = true;
+    this.attenuateIntersectionDistance = true;
+    this.attenuateIntersectionIterations = true;
+  }
+
+  dispose() {}
+}
+
 export class SceneOptimizer {
   static OptimizeAsync(scene: Scene, options?: any): Promise<any> {
     return Promise.resolve({ success: true });
@@ -559,6 +579,7 @@ const BabylonJS = {
   ShadowGenerator,
   DefaultRenderingPipeline,
   SSAORenderingPipeline,
+  SSRRenderingPipeline,
   SceneOptimizer,
   SceneOptimizerOptions,
   HardwareScalingOptimization,

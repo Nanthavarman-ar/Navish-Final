@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import './BabylonWorkspace.css';
 
 // Core Babylon.js imports only (minimal for initial load)
-import { Engine, Scene, ArcRotateCamera, FreeCamera, UniversalCamera, HemisphericLight, DirectionalLight, Vector3, Vector2, Quaternion, Color3, Color4, Mesh, AbstractMesh, StandardMaterial, DefaultRenderingPipeline, SSAORenderingPipeline, HighlightLayer, PBRMaterial, Material, ImageProcessingConfiguration, ColorCurves, PointerInfo, PickingInfo, Camera, PointerEventTypes, ParticleSystem, MeshBuilder, Texture, GizmoManager, GizmoAnchorPoint, ShadowGenerator, Ray } from '@babylonjs/core';
+import { Engine, Scene, ArcRotateCamera, FreeCamera, UniversalCamera, HemisphericLight, DirectionalLight, Vector3, Vector2, Quaternion, Color3, Color4, Mesh, AbstractMesh, StandardMaterial, DefaultRenderingPipeline, SSAORenderingPipeline, SSRRenderingPipeline, HighlightLayer, PBRMaterial, Material, ImageProcessingConfiguration, ColorCurves, PointerInfo, PickingInfo, Camera, PointerEventTypes, ParticleSystem, MeshBuilder, Texture, GizmoManager, GizmoAnchorPoint, ShadowGenerator, Ray } from '@babylonjs/core';
 import { WaterMaterial } from '@babylonjs/materials/water';
 import { PerlinNoiseProceduralTexture } from '@babylonjs/procedural-textures';
 
@@ -397,6 +397,7 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
     showKeyboardShortcuts: true,
     showDomainSelector: false,
     showLighting: true,
+    showGraphicsQuality: false,
     showMiscellaneous: false,
     // false so these don't render as "pressed" on load while transformMode is still 'none' -
     // they used to default true while the state actually driving the tool defaulted false, so
@@ -763,6 +764,14 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
 
   // Local state declarations
   const [deviceCapabilities, setDeviceCapabilities] = React.useState<any>(null);
+  // User-selectable graphics quality override ('auto' defers to recommendedQuality, the
+  // device-detected recommendation) - lets someone drop to Low on a device that's
+  // lagging, or force Ultra on a strong desktop that auto-detection under-recommended,
+  // without reloading. Applied live by the effect keyed on [graphicsQuality,
+  // recommendedQuality] further below.
+  const [graphicsQuality, setGraphicsQuality] = React.useState<'auto' | 'low' | 'medium' | 'high' | 'ultra'>(renderingQuality);
+  const [recommendedQuality, setRecommendedQuality] = React.useState<'low' | 'medium' | 'high' | 'ultra'>('medium');
+  const [gpuName, setGpuName] = React.useState<string>('');
   const gizmoManagerRef = useRef<GizmoManager | null>(null);
   const [transformMode, setTransformMode] = React.useState<'none' | 'position' | 'rotation' | 'scale'>('none');
   type UndoEntry =
@@ -786,6 +795,15 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
   const [enableDepthOfField, setEnableDepthOfField] = React.useState(false);
   const [enableMotionBlur, setEnableMotionBlur] = React.useState(false);
   const [enableSSAO, setEnableSSAO] = React.useState(false);
+  // Real screen-space reflections, gated to the Ultra quality tier only - the earlier
+  // attempt at this used Babylon's older ScreenSpaceReflectionPostProcess and was pulled
+  // for visible flicker near geometry edges under camera movement (see the removed-code
+  // comment further down). SSRRenderingPipeline (Babylon's newer SSR2 implementation) has
+  // built-in edge/distance/iteration attenuation specifically to fade reflections out
+  // instead of hard-cutting them at the exact spots that caused that flicker, so it's
+  // worth a second attempt - restricted to Ultra since ray-marching a reflection buffer
+  // per pixel is the most expensive effect in this pipeline.
+  const [enableSSR, setEnableSSR] = React.useState(false);
   const [enableGrain, setEnableGrain] = React.useState(false);
   const [enableVignette, setEnableVignette] = React.useState(false);
   const [viewMode, setViewMode] = React.useState<'walk' | 'orbit' | 'dollhouse' | 'vr' | 'ar'>('orbit');
@@ -939,6 +957,7 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
   const cameraRef = useRef<ArcRotateCamera | null>(null);
   const pipelineRef = useRef<DefaultRenderingPipeline | null>(null);
   const ssaoPipelineRef = useRef<SSAORenderingPipeline | null>(null);
+  const ssrPipelineRef = useRef<SSRRenderingPipeline | null>(null);
   const highlightLayerRef = useRef<HighlightLayer | null>(null);
   // Shadow generator for the scene's "sun" light - lets Sun Study actually show
   // moving shadows instead of only a faint brightness/color shift.
@@ -1050,6 +1069,7 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
   // reduction XRManager already applies) without losing the user's actual desktop choice
   // once they exit.
   const desktopSSAOPreferenceRef = useRef<boolean>(false);
+  const desktopSSRPreferenceRef = useRef<boolean>(false);
 
   // AI Manager ref
   const aiManagerRef = useRef<any>(null);
@@ -1307,6 +1327,12 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
         if (renderingQuality === 'auto' && !shouldAbort()) {
           engine.setHardwareScalingLevel(qualityToScaling[resolvedQuality] ?? qualityToScaling.medium);
         }
+        // Drives the Graphics Quality panel: what auto-detection actually recommends for
+        // this device, and the GPU name shown there so the choice isn't a black box.
+        if (!shouldAbort()) {
+          setRecommendedQuality(deviceDetector.getRecommendedQuality());
+          setGpuName(deviceDetector.getHardwareInfo?.()?.gpu?.renderer ?? '');
+        }
 
         // Contact shadows (SSAO) meaningfully improve how grounded/realistic the scene
         // reads - real games lean on this exact effect - but it's a full-screen post
@@ -1343,12 +1369,12 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
         // sampling cost per pixel.
         Texture.DEFAULT_ANISOTROPIC_FILTERING_LEVEL = (resolvedQuality === 'low' || resolvedQuality === 'medium') ? 4 : 8;
 
-        // Screen-space reflections were tried here and pulled back out - SSR is
-        // inherently prone to flickering under camera movement (the ray-marched
-        // intersection shifts frame to frame near geometry edges/gaps), and that
-        // showed up as visible flicker/"blinking" on the model with no way to tune it
-        // further without live device testing. Reflections now come only from the
-        // environment texture above, which is stable even if less dynamic.
+        // Screen-space reflections were originally tried here using Babylon's older
+        // ScreenSpaceReflectionPostProcess and pulled back out for visible flicker under
+        // camera movement near geometry edges/gaps. Revisited via SSRRenderingPipeline
+        // (Babylon's SSR2, with built-in edge/distance/iteration attenuation meant to fade
+        // reflections at exactly those trouble spots instead of hard-cutting them) - see
+        // the enableSSR reactive effect below, which only turns it on at Ultra quality.
 
         // Initialize FeatureManager
         const featureManager = new FeatureManager(capabilities);
@@ -1864,6 +1890,29 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
     }
   }, [enableSSAO]);
 
+  // Reactively create/dispose the SSR (screen-space reflections) pipeline when toggled -
+  // only ever turned on by the graphicsQuality effect below at the Ultra tier. Defaults
+  // lean on Babylon SSR2's built-in attenuation (all three attenuate* flags default true)
+  // to fade reflections at screen edges/max-distance/max-iterations rather than cutting
+  // them off hard, which is what caused the flicker in the earlier removed attempt.
+  useEffect(() => {
+    const scene = sceneRef.current;
+    const camera = cameraRef.current;
+    if (!scene || !camera) return;
+    if (enableSSR && !ssrPipelineRef.current) {
+      const ssr = new SSRRenderingPipeline("ssr", scene, [camera]);
+      ssr.strength = 0.9;
+      ssr.thickness = 0.5;
+      ssr.blurDispersionStrength = 0.03;
+      ssr.reflectivityThreshold = 0.04;
+      ssr.environmentTexture = (scene.environmentTexture as any) ?? null;
+      ssrPipelineRef.current = ssr;
+    } else if (!enableSSR && ssrPipelineRef.current) {
+      ssrPipelineRef.current.dispose();
+      ssrPipelineRef.current = null;
+    }
+  }, [enableSSR]);
+
   // Reactively update post-processing pipeline settings without recreating the scene
   useEffect(() => {
     const pipeline = pipelineRef.current;
@@ -1897,6 +1946,31 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
     if (!ssao) return;
     ssao.totalStrength = ssaoIntensity;
   }, [enableSSAO, ssaoIntensity]);
+
+  // Live-apply the selected graphics quality (from the Graphics Quality panel) any time
+  // it changes, or the auto-detected recommendation changes ('auto' tracks that). This is
+  // the same tier logic that used to only run once at mount (see qualityToScaling above in
+  // initializeScene) - repeated here so a user can actually move between tiers afterward
+  // instead of needing to reload. Bloom is gated off on 'low' since bloomKernel=64 has a
+  // real per-pixel cost; SSAO/higher shadow resolution/anisotropic filtering follow the
+  // same high/ultra-only rule the initial auto-detect already used.
+  useEffect(() => {
+    const engine = engineRef.current;
+    const scene = sceneRef.current;
+    if (!engine || !scene) return;
+    const resolved = graphicsQuality === 'auto' ? recommendedQuality : graphicsQuality;
+    const qualityToScaling: Record<string, number> = { low: 1.3, medium: 1.1, high: 1.0, ultra: 1.0 };
+    engine.setHardwareScalingLevel(qualityToScaling[resolved] ?? qualityToScaling.medium);
+    const isHighTier = resolved === 'high' || resolved === 'ultra';
+    setEnableSSAO(isHighTier);
+    setEnableBloom(resolved !== 'low');
+    setEnableSSR(resolved === 'ultra');
+    if (shadowGeneratorRef.current) {
+      shadowGeneratorRef.current.mapSize = isHighTier ? 2048 : 1024;
+      shadowGeneratorRef.current.blurKernel = isHighTier ? 64 : 32;
+    }
+    Texture.DEFAULT_ANISOTROPIC_FILTERING_LEVEL = isHighTier ? 8 : 4;
+  }, [graphicsQuality, recommendedQuality]);
 
   // Reactively toggle spatial audio without recreating AudioManager
   useEffect(() => {
@@ -2715,6 +2789,10 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
                 // desktop value actually was so it comes back once this session ends.
                 desktopSSAOPreferenceRef.current = enableSSAO;
                 setEnableSSAO(false);
+                // SSR ray-marches a reflection buffer per pixel, even more expensive than
+                // SSAO - same headset-GPU-headroom reasoning applies.
+                desktopSSRPreferenceRef.current = enableSSR;
+                setEnableSSR(false);
                 showToast.success('VR mode enabled');
               } else {
                 showToast.error('Failed to enter VR mode', 'This device/browser may not support VR');
@@ -2732,6 +2810,8 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
                 // See the matching comment on the VR entry branch above.
                 desktopSSAOPreferenceRef.current = enableSSAO;
                 setEnableSSAO(false);
+                desktopSSRPreferenceRef.current = enableSSR;
+                setEnableSSR(false);
                 showToast.success('AR mode enabled');
               } else {
                 showToast.error('Failed to enter AR mode', 'This device/browser may not support AR');
@@ -3020,9 +3100,10 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
         // XR Features
         if ((id === 'showVR' || id === 'showAR') && xrManagerRef.current) {
           xrManagerRef.current.exitXR();
-          // Restore whatever SSAO was set to on the desktop before it was force-disabled
-          // for the XR session - see the showVR/showAR enter handlers above.
+          // Restore whatever SSAO/SSR were set to on the desktop before they were
+          // force-disabled for the XR session - see the showVR/showAR enter handlers above.
           setEnableSSAO(desktopSSAOPreferenceRef.current);
+          setEnableSSR(desktopSSRPreferenceRef.current);
         }
         if (id === 'showSpatialAudio' && audioManagerRef.current) {
           audioManagerRef.current.disableSpatialAudio();
@@ -3622,6 +3703,11 @@ const getCategoryDescription = (categoryName: string): string => {
               handleTourSequencePlay,
               disableFeature,
               enableFeature,
+              graphicsQuality,
+              setGraphicsQuality,
+              recommendedQuality,
+              gpuName,
+              deviceCapabilities,
               sustainabilityReport,
               onRainToggle,
               rainOn,
