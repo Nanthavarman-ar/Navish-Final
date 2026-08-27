@@ -1900,11 +1900,23 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
     const camera = cameraRef.current;
     if (!scene || !camera) return;
     if (enableSSR && !ssrPipelineRef.current) {
-      const ssr = new SSRRenderingPipeline("ssr", scene, [camera]);
-      ssr.strength = 0.9;
+      // forceGeometryBuffer=true keeps SSR on Babylon's older GeometryBufferRenderer path
+      // instead of switching the whole scene into PrePassRenderer mode (SSR2's default) -
+      // nothing else in this scene (DefaultRenderingPipeline's tonemapping/bloom, the
+      // environment/background compositing) was built expecting prepass mode, and turning
+      // it on at Ultra was what broke the background rendering (only enableSSR differs
+      // between High and Ultra in the quality effect below).
+      const ssr = new SSRRenderingPipeline("ssr", scene, [camera], true);
+      // Tuned down from Babylon's SSR2 defaults (strength=1, blurDispersionStrength=0.03,
+      // reflectivityThreshold=0.04) - at those values flat surfaces like a road or plain
+      // wall read as a hard mirror instead of a subtle reflective hint, because the
+      // roughness-based blur wasn't strong enough to scatter the reflection and
+      // low-reflectivity dielectric materials weren't being filtered out.
+      ssr.strength = 0.5;
       ssr.thickness = 0.5;
-      ssr.blurDispersionStrength = 0.03;
-      ssr.reflectivityThreshold = 0.04;
+      ssr.roughnessFactor = 0.4;
+      ssr.blurDispersionStrength = 0.1;
+      ssr.reflectivityThreshold = 0.08;
       ssr.environmentTexture = (scene.environmentTexture as any) ?? null;
       ssrPipelineRef.current = ssr;
     } else if (!enableSSR && ssrPipelineRef.current) {
