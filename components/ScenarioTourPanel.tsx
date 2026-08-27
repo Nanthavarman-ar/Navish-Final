@@ -50,6 +50,7 @@ const ScenarioTourPanel: React.FC<ScenarioTourPanelProps> = ({ scenarioManager, 
     }
     // Restore the workspace's normal lighting instead of leaving it stuck on
     // whichever scenario the tour happened to be on when it stopped.
+    // resetToOriginal also stops the auto-rotate started below.
     scenarioManager?.resetToOriginal();
     setCurrentId(null);
   };
@@ -57,6 +58,11 @@ const ScenarioTourPanel: React.FC<ScenarioTourPanelProps> = ({ scenarioManager, 
   const startTour = () => {
     if (scenarios.length === 0) return;
     setIsTouring(true);
+    // The tour previously only jumped between a handful of fixed lighting/camera
+    // scenarios every 5s - that reads as static snapshots, not the continuously
+    // orbiting showcase view "Presentation Mode" is expected to be. Auto-rotate runs
+    // independently of the scenario cycle for the whole duration of the tour.
+    scenarioManager?.startAutoRotate();
     let index = 0;
     const step = async () => {
       await applyScenario(scenarios[index].id);

@@ -1,4 +1,4 @@
-import { Engine, Scene, Light, DirectionalLight, HemisphericLight, SpotLight, PointLight, Animation, AnimationGroup, CubeTexture, Mesh, StandardMaterial, Color3, Vector3 } from '@babylonjs/core';
+import { Engine, Scene, Light, DirectionalLight, HemisphericLight, SpotLight, PointLight, Animation, AnimationGroup, CubeTexture, Mesh, StandardMaterial, Color3, Vector3, ArcRotateCamera, Observer } from '@babylonjs/core';
 import { logger } from '../utils/Logger';
 
 export interface PresentationScenario {
@@ -42,6 +42,7 @@ export class ScenarioManager {
   private originalLighting: LightingState | null = null;
   private scenarioLights: Light[] = [];
   private transitionAnimations: AnimationGroup[] = [];
+  private autoRotateObserver: Observer<Scene> | null = null;
 
   constructor(engine: Engine, scene: Scene) {
     this.engine = engine;
@@ -584,9 +585,45 @@ export class ScenarioManager {
   }
 
   /**
+   * Continuously orbits the active camera around whatever is actually in the scene -
+   * "Presentation Mode" previously only cycled between a handful of fixed lighting/
+   * camera-angle scenarios every few seconds (see applyScenario/transitionCamera above),
+   * which reads as the camera jumping between static snapshots rather than the
+   * continuous auto-rotating showcase view a "presentation mode" is expected to be.
+   * Only meaningful for ArcRotateCamera (the default workspace camera) since its
+   * position is derived from alpha/beta/radius - other camera types have no orbit
+   * angle to advance.
+   * @param degreesPerSecond Rotation speed; default is a slow, presentation-friendly pace.
+   */
+  startAutoRotate(degreesPerSecond: number = 6): void {
+    this.stopAutoRotate();
+    const camera = this.scene.activeCamera;
+    if (!(camera instanceof ArcRotateCamera)) {
+      logger.warn('Auto-rotate skipped: active camera is not an ArcRotateCamera, so it has no orbit angle to advance.');
+      return;
+    }
+    const radiansPerSecond = (degreesPerSecond * Math.PI) / 180;
+    this.autoRotateObserver = this.scene.onBeforeRenderObservable.add(() => {
+      camera.alpha += radiansPerSecond * (this.engine.getDeltaTime() / 1000);
+    });
+  }
+
+  /**
+   * Stops the continuous orbit started by startAutoRotate. Safe to call even if it
+   * was never started.
+   */
+  stopAutoRotate(): void {
+    if (this.autoRotateObserver) {
+      this.scene.onBeforeRenderObservable.remove(this.autoRotateObserver);
+      this.autoRotateObserver = null;
+    }
+  }
+
+  /**
    * Reset to original state
    */
   resetToOriginal(): void {
+    this.stopAutoRotate();
     this.clearScenarioLights();
     if (this.originalLighting) {
       this.applyLightingState(this.originalLighting);
@@ -620,6 +657,7 @@ export class ScenarioManager {
    * Dispose resources
    */
   dispose(): void {
+    this.stopAutoRotate();
     this.clearScenarioLights();
     this.transitionAnimations.forEach(anim => anim.dispose());
     this.scenarios.clear();
