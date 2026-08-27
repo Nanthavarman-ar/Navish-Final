@@ -121,18 +121,27 @@ const FEMALE_VOICE_NAME_PATTERNS = [
   /google .* female/i, /google us english/i, /google uk english female/i,
 ];
 
+// The difference between "sounds robotic" and "sounds natural" on the SAME OS is
+// almost entirely which underlying voice gets picked - legacy SAPI voices (e.g.
+// Windows' "Microsoft Zira Desktop") are flat/monotone, while the modern neural
+// voices most browsers now also ship (Edge's "Microsoft ... Online (Natural)",
+// Chrome's Google voices) sound dramatically more natural. Without this, name-based
+// matching alone could land on whichever female-sounding voice happened to come
+// first, which was very often the worse-sounding legacy one.
+const PREMIUM_VOICE_HINTS = [/online/i, /natural/i, /neural/i, /premium/i, /enhanced/i, /^google/i];
+
 function pickFemaleVoice(voices: SpeechSynthesisVoice[], preferredLang: string): SpeechSynthesisVoice | null {
   if (!voices.length) return null;
   const matchesLang = (v: SpeechSynthesisVoice) => v.lang?.toLowerCase().startsWith(preferredLang.slice(0, 2).toLowerCase());
   const isFemaleByName = (v: SpeechSynthesisVoice) => FEMALE_VOICE_NAME_PATTERNS.some((re) => re.test(v.name));
+  const isPremium = (v: SpeechSynthesisVoice) => PREMIUM_VOICE_HINTS.some((re) => re.test(v.name));
 
-  // Best: female-sounding voice in the preferred language.
-  const langAndFemale = voices.find((v) => matchesLang(v) && isFemaleByName(v));
-  if (langAndFemale) return langAndFemale;
-
-  // Next best: any female-sounding voice, regardless of language.
-  const anyFemale = voices.find(isFemaleByName);
-  if (anyFemale) return anyFemale;
+  const femaleVoices = voices.filter(isFemaleByName);
+  const langFemaleVoices = femaleVoices.filter(matchesLang);
+  const pool = langFemaleVoices.length ? langFemaleVoices : femaleVoices;
+  if (pool.length) {
+    return pool.find(isPremium) || pool[0];
+  }
 
   // Fallback: at least keep the preferred language so it doesn't sound out of place.
   const langOnly = voices.find(matchesLang);
@@ -235,6 +244,14 @@ const AIVoiceAssistant: React.FC<AIVoiceAssistantProps> = ({
       setIsProcessing(false);
       // Do NOT auto-restart if user stopped, muted, or had network error
       if (userStoppedRef.current || isMutedRef.current || networkErrorRef.current) return;
+      // Chrome/Edge's continuous mode still ends the recognizer on its own every so
+      // often (silence timeout, ~60s cap, etc), so this restart isn't rare - it's a
+      // normal part of "continuous" listening. The 500ms gap here was long enough
+      // that a word spoken right as it restarted was routinely missed entirely,
+      // which is a real part of what made this feel like it wasn't listening in
+      // real time. 150ms is still enough for the browser to fully release the
+      // previous session (an immediate restart can throw InvalidStateError) without
+      // leaving a gap big enough to matter.
       setTimeout(() => {
         if (!recognitionRef.current || userStoppedRef.current || isMutedRef.current || networkErrorRef.current) return;
         try {
@@ -242,7 +259,7 @@ const AIVoiceAssistant: React.FC<AIVoiceAssistantProps> = ({
         } catch (_e) {
           userStoppedRef.current = true;
         }
-      }, 500);
+      }, 150);
     };
 
     recognitionRef.current = rec;
@@ -808,12 +825,18 @@ const AIVoiceAssistant: React.FC<AIVoiceAssistantProps> = ({
     // silently did nothing. A toast makes success/failure visible regardless of audio.
     showToast.info(text.length > 120 ? text.slice(0, 117) + '...' : text);
     if (!isMuted && synthRef.current) {
+      // Without this, a second command spoken before the first reply finished
+      // playing just queued behind it instead of interrupting - the spoken
+      // response fell further and further behind what was actually happening in
+      // the scene, which is a big part of what made this feel laggy rather than
+      // real-time. Newest reply always wins and plays immediately.
+      synthRef.current.cancel();
       const utterance = new SpeechSynthesisUtterance(text);
       if (femaleVoiceRef.current) {
         utterance.voice = femaleVoiceRef.current;
       }
       utterance.lang = settings.language;
-      utterance.rate = 0.9;
+      utterance.rate = 1;
       utterance.pitch = 1;
       utterance.volume = 0.8;
       synthRef.current.speak(utterance);
