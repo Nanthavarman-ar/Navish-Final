@@ -1912,12 +1912,21 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
       // wall read as a hard mirror instead of a subtle reflective hint, because the
       // roughness-based blur wasn't strong enough to scatter the reflection and
       // low-reflectivity dielectric materials weren't being filtered out.
-      ssr.strength = 0.5;
+      ssr.strength = 0.35;
       ssr.thickness = 0.5;
       ssr.roughnessFactor = 0.4;
-      ssr.blurDispersionStrength = 0.1;
-      ssr.reflectivityThreshold = 0.08;
-      ssr.environmentTexture = (scene.environmentTexture as any) ?? null;
+      ssr.blurDispersionStrength = 0.08;
+      // Raised further still - walls facing open sky were still exceeding the previous
+      // 0.08 threshold and picking up reflections.
+      ssr.reflectivityThreshold = 0.18;
+      // Left null rather than the environment/IBL cubemap: on a building against open sky,
+      // most rays from walls and roof edges never hit any geometry and immediately fall
+      // back to this texture - that's what was washing the whole building in a
+      // sky-colored haze with a bright halo along silhouette edges. With no fallback, a
+      // missed ray just leaves that pixel's original material color untouched instead of
+      // painting sky over it - actual reflections (e.g. the floor catching the building)
+      // still work fine since those rays DO hit geometry.
+      ssr.environmentTexture = null;
       ssrPipelineRef.current = ssr;
     } else if (!enableSSR && ssrPipelineRef.current) {
       ssrPipelineRef.current.dispose();
