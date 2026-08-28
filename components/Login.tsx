@@ -186,7 +186,8 @@ export function Login() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-4">
+    <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-4 relative">
+      <div className="ambient-glow" aria-hidden><span className="ambient-glow-blob" /></div>
       <Link
         to="/"
         className="fixed top-6 left-6 flex items-center gap-2 text-gray-400 hover:text-white transition-colors z-10"
@@ -194,7 +195,7 @@ export function Login() {
         <ChevronLeft className="w-5 h-5" />
         Back to Home
       </Link>
-      <Card className="w-full max-w-md bg-slate-800/50 border-slate-700">
+      <Card className="relative z-10 w-full max-w-md bg-slate-800/50 border-slate-700">
         <CardHeader>
           <CardTitle className="text-white text-center">Login to NAVIZ</CardTitle>
           <CardDescription className="text-gray-400 text-center">

@@ -228,9 +228,15 @@ export function ClientDashboard() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-900">
-      {/* Header */}
-      <header className="bg-slate-800/50 backdrop-blur-sm border-b border-slate-700 px-6 py-4">
+    <div className="min-h-screen bg-slate-900 relative">
+      {/* fixed (not absolute) so the blobs track the viewport instead of the full
+          scrollable page height - this page's content can grow well past 100vh
+          (many models), and an absolute inset-0 box anchored to that full height
+          pushed most of the glow off past the fold, leaving only a sliver visible
+          in a corner regardless of scroll position. */}
+      <div className="ambient-glow" style={{ position: 'fixed' }} aria-hidden><span className="ambient-glow-blob" /></div>
+      {/* Header - relative z-10 so it stacks above the ambient-glow layer */}
+      <header className="relative z-10 bg-slate-800/50 backdrop-blur-sm border-b border-slate-700 px-6 py-4">
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold text-white">My Models</h1>
@@ -266,8 +272,8 @@ export function ClientDashboard() {
         </div>
       </header>
 
-      {/* Main Content */}
-      <main className="p-6">
+      {/* Main Content - relative z-10 so it stacks above the ambient-glow layer */}
+      <main className="relative z-10 p-6">
         <Card className="mb-6 bg-slate-800/50 border-slate-700">
           <CardContent className="pt-6">
             <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">

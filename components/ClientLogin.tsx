@@ -125,8 +125,9 @@ export function ClientLogin() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4">
-      <Card className="w-full max-w-md bg-slate-800/50 border-slate-700">
+    <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4 relative">
+      <div className="ambient-glow" aria-hidden><span className="ambient-glow-blob" /></div>
+      <Card className="relative z-10 w-full max-w-md bg-slate-800/50 border-slate-700">
         <CardHeader>
           <div className="flex items-center gap-3 mb-4">
             <Button

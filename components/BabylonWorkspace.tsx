@@ -16,7 +16,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 import { Separator } from './ui/separator';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from './ui/dropdown-menu';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
-import { Maximize, MapPin, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Move, RotateCw, Maximize2, X, FlipHorizontal } from 'lucide-react';
+import { Maximize, MapPin, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Move, RotateCw, Maximize2, X, FlipHorizontal, Trash2 } from 'lucide-react';
 
 // Import proper hooks from hooks directory
 import { useFeatureStates, UseFeatureStatesReturn } from '../hooks/useFeatureStates';
@@ -803,7 +803,8 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
   type UndoEntry =
     | { kind: 'transform'; mesh: Mesh; position: Vector3; rotationQuaternion: Quaternion | null; rotation: Vector3; scaling: Vector3 }
     | { kind: 'material'; material: Material; snapshot: Record<string, any> }
-    | { kind: 'materialSwap'; mesh: AbstractMesh; previousMaterial: Material };
+    | { kind: 'materialSwap'; mesh: AbstractMesh; previousMaterial: Material }
+    | { kind: 'delete'; mesh: AbstractMesh };
   const undoHistoryRef = useRef<UndoEntry[]>([]);
   const [sustainabilityReport, setSustainabilityReport] = React.useState<SustainabilityReport | null>(null);
   const sustainabilityManagerRef = useRef<SustainabilityManager | null>(null);
@@ -931,6 +932,25 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
     if (undoHistoryRef.current.length > 50) undoHistoryRef.current.shift();
     mesh.scaling.x *= -1;
     showToast.success('Mirrored');
+  }, [workspaceState.selectedMesh]);
+
+  // "Delete" the selected mesh - a soft delete (setEnabled(false), not dispose()) so
+  // Ctrl+Z can bring it back. A real dispose() frees the mesh's GPU buffers permanently;
+  // recreating a disposed mesh would mean re-loading its geometry from the original
+  // model file, which isn't something undo can do. Hiding it is indistinguishable to the
+  // user (it disappears from the view and stops being pickable) and trivially reversible.
+  const handleDeleteSelected = React.useCallback(() => {
+    const mesh = workspaceState.selectedMesh;
+    if (!mesh) return;
+    undoHistoryRef.current.push({ kind: 'delete', mesh });
+    if (undoHistoryRef.current.length > 50) undoHistoryRef.current.shift();
+    if (highlightLayerRef.current) {
+      highlightLayerRef.current.removeMesh(mesh as Mesh);
+    }
+    mesh.setEnabled(false);
+    setTransformMode('none');
+    setSelectedMesh(null);
+    showToast.success('Deleted');
   }, [workspaceState.selectedMesh]);
 
   // handle files selected via workspace import dialog
@@ -3307,6 +3327,10 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
           } else if (last.kind === 'materialSwap') {
             last.mesh.material = last.previousMaterial;
             showToast.success('Undone material type change');
+          } else if (last.kind === 'delete') {
+            last.mesh.setEnabled(true);
+            setSelectedMesh(last.mesh as Mesh);
+            showToast.success('Restored');
           }
           return;
         }
@@ -3353,6 +3377,7 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
       if (key === 'r' && !e.ctrlKey && !e.metaKey) { e.preventDefault(); setTransformMode((m) => m === 'rotation' ? 'none' : 'rotation'); }
       if (key === 's' && !e.ctrlKey && !e.metaKey) { e.preventDefault(); setTransformMode((m) => m === 'scale' ? 'none' : 'scale'); }
       if (key === 'h' && !e.ctrlKey && !e.metaKey) { e.preventDefault(); handleMirrorSelected(); }
+      if ((e.key === 'Delete' || e.key === 'Backspace') && !e.ctrlKey && !e.metaKey) { e.preventDefault(); handleDeleteSelected(); }
       if (e.key === 'Escape') { setTransformMode('none'); setSelectedMesh(null); }
       // 'z' toggles AR mode, but only when NOT combined with Ctrl/Cmd (Ctrl/Cmd+Z is
       // undo, handled above in the ctrl-key branch).
@@ -3360,7 +3385,7 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
     };
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
-  }, [topBarVisible, leftPanelVisible, rightPanelVisible, bottomPanelVisible, updateState, setLayoutMode, handleFeatureToggle, featureStates, handleMirrorSelected]);
+  }, [topBarVisible, leftPanelVisible, rightPanelVisible, bottomPanelVisible, updateState, setLayoutMode, handleFeatureToggle, featureStates, handleMirrorSelected, handleDeleteSelected]);
 
   // Voice command listener - toggle features from AI Voice Assistant
   React.useEffect(() => {
@@ -3736,6 +3761,13 @@ const getCategoryDescription = (categoryName: string): string => {
                   onClick={handleMirrorSelected}
                 >
                   <FlipHorizontal className="w-4 h-4" />
+                </Button>
+                <Button
+                  size="sm" variant="ghost"
+                  className="h-8 px-2 text-red-400 hover:text-red-300" title="Delete (Del)"
+                  onClick={handleDeleteSelected}
+                >
+                  <Trash2 className="w-4 h-4" />
                 </Button>
                 <div className="w-px h-5 bg-gray-700 mx-1" />
                 <Button

@@ -76,9 +76,10 @@ export function AdminDashboard() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-900 flex">
-      {/* Sidebar */}
-      <div className={`bg-slate-800 border-r border-slate-700 transition-all duration-300 ${sidebarCollapsed ? 'w-16' : 'w-64'}`}>
+    <div className="h-screen bg-slate-900 flex relative overflow-hidden">
+      <div className="ambient-glow" aria-hidden><span className="ambient-glow-blob" /></div>
+      {/* Sidebar - relative z-10 so it stacks above the ambient-glow layer */}
+      <div className={`relative z-10 bg-slate-800 border-r border-slate-700 transition-all duration-300 ${sidebarCollapsed ? 'w-16' : 'w-64'}`}>
         <div className="p-4 border-b border-slate-700">
           <div className="flex items-center justify-between">
             {!sidebarCollapsed && (
@@ -134,8 +135,8 @@ export function AdminDashboard() {
         </div>
       </div>
 
-      {/* Main Content */}
-      <div className="flex-1 flex flex-col">
+      {/* Main Content - relative z-10 so it stacks above the ambient-glow layer */}
+      <div className="relative z-10 flex-1 flex flex-col">
         {/* Header */}
         <div className="bg-slate-800 border-b border-slate-700/80 p-4">
           <div className="flex items-center justify-between">
