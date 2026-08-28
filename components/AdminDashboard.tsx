@@ -5,6 +5,7 @@ import { Button } from './ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
 import { Badge } from './ui/badge';
 import {
+  LayoutDashboard,
   Users,
   Box,
   FileText,
@@ -17,27 +18,31 @@ import {
 } from 'lucide-react';
 
 // Lazy load heavy components for better performance
+const OverviewPage = lazy(() => import('./admin/OverviewPage').then(module => ({ default: module.OverviewPage })));
 const ClientsPage = lazy(() => import('./admin/ClientsPage').then(module => ({ default: module.ClientsPage })));
 const ModelsPage = lazy(() => import('./admin/ModelsPage').then(module => ({ default: module.ModelsPage })));
 const AuditLogsPage = lazy(() => import('./admin/AuditLogsPage').then(module => ({ default: module.AuditLogsPage })));
 const SettingsPage = lazy(() => import('./admin/SettingsPage').then(module => ({ default: module.SettingsPage })));
 const UploadPage = lazy(() => import('./admin/UploadPage').then(module => ({ default: module.UploadPage })));
 
-type AdminView = 'clients' | 'models' | 'audit' | 'settings' | 'upload';
+type AdminView = 'overview' | 'clients' | 'models' | 'audit' | 'settings' | 'upload';
+const KNOWN_VIEWS: AdminView[] = ['overview', 'clients', 'models', 'audit', 'settings', 'upload'];
 
 export function AdminDashboard() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
-  const [currentView, setCurrentView] = useState<AdminView>('clients');
+  const [currentView, setCurrentView] = useState<AdminView>('overview');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
-  // Determine current view from URL
+  // Determine current view from URL. Any admin sub-path that isn't one of the specific
+  // views below (e.g. the bare /admin or /admin/dashboard AppLayout's page-state router
+  // can land on) falls through to the Overview - previously that silently left
+  // currentView at whatever it last was instead of showing a real landing page, which is
+  // why admin login used to drop straight into the Clients list with no overview at all.
   React.useEffect(() => {
     const path = location.pathname.split('/admin/')[1];
-    if (path && ['clients', 'models', 'audit', 'settings', 'upload'].includes(path)) {
-      setCurrentView(path as AdminView);
-    }
+    setCurrentView(path && KNOWN_VIEWS.includes(path as AdminView) ? (path as AdminView) : 'overview');
   }, [location.pathname]);
 
   const handleViewChange = (view: AdminView) => {
@@ -51,6 +56,7 @@ export function AdminDashboard() {
   };
 
   const menuItems = [
+    { id: 'overview' as AdminView, label: 'Overview', icon: LayoutDashboard, description: 'Platform stats at a glance' },
     { id: 'clients' as AdminView, label: 'User Management', icon: Users, description: 'Manage user accounts' },
     { id: 'models' as AdminView, label: 'Models Library', icon: Box, description: 'Manage 3D models' },
     { id: 'upload' as AdminView, label: 'Upload Models', icon: Upload, description: 'Upload new models' },
@@ -60,6 +66,8 @@ export function AdminDashboard() {
 
   const renderCurrentView = () => {
     switch (currentView) {
+      case 'overview':
+        return <OverviewPage />;
       case 'clients':
         return <ClientsPage />;
       case 'models':
@@ -71,7 +79,7 @@ export function AdminDashboard() {
       case 'settings':
         return <SettingsPage />;
       default:
-        return <ClientsPage />;
+        return <OverviewPage />;
     }
   };
 

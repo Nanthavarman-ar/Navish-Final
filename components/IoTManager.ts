@@ -23,6 +23,19 @@ export interface IoTSensorData {
   [key: string]: any;
 }
 
+// Shape returned by GET /api/iot/sensors (server/iot_service.tsx's getAllSensors()) - a
+// current reading, not the historical time-series IoTSensorData above represents.
+export interface IoTSensorSummary {
+  id: string;
+  name: string;
+  type: string;
+  value: number;
+  unit: string;
+  status: string;
+  lastUpdate: number;
+  threshold?: { min: number; max: number; warning: number };
+}
+
 export interface IoTManagerOptions {
   serverUrl?: string;
   apiKey?: string;
@@ -34,6 +47,7 @@ export interface IoTManagerOptions {
 export class IoTManager {
   private scene: Scene;
   private devices: Map<string, IoTDevice> = new Map();
+  private sensors: Map<string, IoTSensorSummary> = new Map();
   private options: Required<IoTManagerOptions>;
   private eventListeners: Array<(event: IoTEvent) => void> = [];
   private isConnected: boolean = false;
@@ -89,6 +103,7 @@ export class IoTManager {
       }
       this.isConnected = true;
       await this.loadDevices();
+      await this.loadSensors();
       return true;
     } catch (error) {
       console.error('Failed to connect to IoT server:', error);
@@ -351,6 +366,33 @@ export class IoTManager {
         return 0.15;
       default:
         return 0.1;
+    }
+  }
+
+  /**
+   * Get all current sensor readings (from the last loadSensors() call).
+   */
+  getSensors(): IoTSensorSummary[] {
+    return Array.from(this.sensors.values());
+  }
+
+  private async loadSensors(): Promise<void> {
+    if (!this.hasRealEndpoint) {
+      console.log('loadSensors: no real IoT server configured, skipping remote load.');
+      return;
+    }
+    try {
+      const headers = await this.getAuthHeaders();
+      const response = await fetch(`${this.options.serverUrl}/api/iot/sensors`, { headers });
+      if (!response.ok) {
+        throw new Error(`Failed to load sensors: ${response.status}`);
+      }
+      const data = await response.json();
+      const remoteSensors: IoTSensorSummary[] = data.sensors || [];
+      this.sensors = new Map(remoteSensors.map((s) => [s.id, s]));
+      console.log(`Loaded ${remoteSensors.length} sensors from IoT server.`);
+    } catch (error) {
+      console.error('Failed to load sensors:', error);
     }
   }
 

@@ -10,6 +10,7 @@ import { Label } from '../ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
 import { Globe, Maximize, Map, Hand } from 'lucide-react';
 import { showToast } from '../utils/toast';
+import type { CollabUser } from '../CollabManager';
 
 // Lazy load components
 const LeftPanel = React.lazy(() => import('../LeftPanel'));
@@ -532,6 +533,9 @@ const ApprovalPanel = React.lazy(() => import('../ApprovalPanel'));
 const WalkthroughRecorderPanel = React.lazy(() => import('../WalkthroughRecorderPanel'));
 const BudgetTierPanel = React.lazy(() => import('../BudgetTierPanel'));
 const BeforeAfterPanel = React.lazy(() => import('../BeforeAfterPanel'));
+const SessionInsightsPanel = React.lazy(() => import('../SessionInsightsPanel'));
+const MoodLightingPanel = React.lazy(() => import('../MoodLightingPanel'));
+const IoTSensorsPanel = React.lazy(() => import('../IoTSensorsPanel'));
 const ScenarioTourPanel = React.lazy(() => import('../ScenarioTourPanel'));
 const ARScalePanel = React.lazy(() => import('../ARScalePanel'));
 const SpatialAudioPanel = React.lazy(() => import('../SpatialAudioPanel'));
@@ -549,6 +553,9 @@ interface CustomPanelsSegmentProps {
   engineRef: React.RefObject<any>;
   cameraRef: React.RefObject<any>;
   bimManagerRef: React.RefObject<any>;
+  analyticsManagerRef: React.RefObject<any>;
+  presentationManagerRef: React.RefObject<any>;
+  iotManagerRef: React.RefObject<any>;
   simulationManagerRef: React.RefObject<any>;
   aiManagerRef: React.RefObject<any>;
   collabManagerRef: React.RefObject<any>;
@@ -1440,8 +1447,8 @@ const AIFeaturesSegment: React.FC<Pick<CustomPanelsSegmentProps, 'featureStates'
   </>
 );
 
-const AnalysisFeaturesSegment: React.FC<Pick<CustomPanelsSegmentProps, 'featureStates' | 'sceneRef' | 'engineRef' | 'bimManagerRef' | 'simulationManagerRef' | 'currentModelId' | 'disableFeature' | 'workspaceState' | 'costEstimatorRef' | 'scenarioManagerRef' | 'sustainabilityManagerRef' | 'selectedWorkspaceId'>> = ({
-  featureStates, sceneRef, engineRef, bimManagerRef, simulationManagerRef, currentModelId, disableFeature, workspaceState, costEstimatorRef, scenarioManagerRef, sustainabilityManagerRef, selectedWorkspaceId
+const AnalysisFeaturesSegment: React.FC<Pick<CustomPanelsSegmentProps, 'featureStates' | 'sceneRef' | 'engineRef' | 'bimManagerRef' | 'simulationManagerRef' | 'currentModelId' | 'disableFeature' | 'workspaceState' | 'costEstimatorRef' | 'scenarioManagerRef' | 'sustainabilityManagerRef' | 'selectedWorkspaceId' | 'analyticsManagerRef' | 'iotManagerRef'>> = ({
+  featureStates, sceneRef, engineRef, bimManagerRef, simulationManagerRef, currentModelId, disableFeature, workspaceState, costEstimatorRef, scenarioManagerRef, sustainabilityManagerRef, selectedWorkspaceId, analyticsManagerRef, iotManagerRef
 }) => (
   <>
     {featureStates.showCost && sceneRef.current && (
@@ -1523,6 +1530,22 @@ const AnalysisFeaturesSegment: React.FC<Pick<CustomPanelsSegmentProps, 'featureS
         />
       </Suspense>
     )}
+    {featureStates.showSessionInsights && (
+      <Suspense fallback={null}>
+        <SessionInsightsPanel
+          analyticsManager={analyticsManagerRef?.current || null}
+          onClose={() => disableFeature('showSessionInsights')}
+        />
+      </Suspense>
+    )}
+    {featureStates.showIoTPanel && (
+      <Suspense fallback={null}>
+        <IoTSensorsPanel
+          iotManager={iotManagerRef?.current || null}
+          onClose={() => disableFeature('showIoTPanel')}
+        />
+      </Suspense>
+    )}
   </>
 );
 
@@ -1596,6 +1619,55 @@ const MultiUserStatus: React.FC<{ collabManagerRef?: React.RefObject<any> }> = (
   return <>Connected · {participantCount} participant{participantCount !== 1 ? 's' : ''}</>;
 };
 
+// "Who's here" roster - CollabManager already tracks every joined user (name, color,
+// online state) via getUsers()/getCurrentUser(), fed by the real 'presence'/'people'
+// socket events (see CollabManager.ts's registerServerEventHandlers) - this panel used to
+// only show a bare participant COUNT with no names, even though the roster data behind it
+// was already real and complete. Same polling pattern as MultiUserStatus above, since
+// CollabManager's user map is a plain mutated field, not React state.
+const PresenceRoster: React.FC<{ collabManagerRef?: React.RefObject<any> }> = ({ collabManagerRef }) => {
+  const [users, setUsers] = useState<CollabUser[]>([]);
+  const [currentUser, setCurrentUser] = useState<CollabUser | null>(null);
+
+  useEffect(() => {
+    const poll = () => {
+      const mgr = collabManagerRef?.current;
+      setUsers(mgr ? mgr.getUsers() : []);
+      setCurrentUser(mgr ? mgr.getCurrentUser() : null);
+    };
+    poll();
+    const pollId = setInterval(poll, 1500);
+    return () => clearInterval(pollId);
+  }, [collabManagerRef]);
+
+  const entries = [
+    ...(currentUser ? [{ user: currentUser, isYou: true }] : []),
+    ...users.map((user) => ({ user, isYou: false })),
+  ];
+
+  if (entries.length === 0) {
+    return <p className="text-slate-500 text-xs mt-2">No one here yet.</p>;
+  }
+
+  return (
+    <ul className="mt-2 space-y-1.5 max-h-40 overflow-y-auto">
+      {entries.map(({ user, isYou }) => (
+        <li key={user.id} className="flex items-center gap-2 text-sm min-w-0">
+          <span
+            className="w-2.5 h-2.5 rounded-full shrink-0"
+            style={{ backgroundColor: user.color?.toHexString?.() ?? '#22d3ee' }}
+            aria-hidden
+          />
+          <span className="text-slate-200 truncate">{user.name}{isYou ? ' (you)' : ''}</span>
+          {!isYou && (
+            <span className={`ml-auto w-1.5 h-1.5 rounded-full shrink-0 ${user.isOnline ? 'bg-green-400' : 'bg-slate-600'}`} title={user.isOnline ? 'Online' : 'Offline'} />
+          )}
+        </li>
+      ))}
+    </ul>
+  );
+};
+
 // Voice chat itself (enableVoiceChat/getUserMedia/WebRTC) was always real - the gap was that
 // once enabled there was no ongoing indicator that the mic was live, and no way to mute
 // without disabling the whole feature. This panel gives it both.
@@ -1630,12 +1702,13 @@ const CollaborationFeaturesSegment: React.FC<Pick<CustomPanelsSegmentProps, 'fea
 }) => (
   <>
     {featureStates.showMultiUser && sceneRef.current && (
-      <div className="fixed top-4 left-4 z-50 bg-slate-800 p-4 rounded-lg border border-slate-600 w-56">
+      <div className="fixed top-4 left-4 z-50 bg-slate-800 p-4 rounded-lg border border-slate-600 w-64">
         <h3 className="text-white mb-2">Multi-User Collaboration</h3>
         <p className="text-slate-300 text-sm">
           <MultiUserStatus collabManagerRef={collabManagerRef} />
         </p>
-        <p className="text-slate-500 text-xs mt-1">Open Chat or Sharing from the feature list to interact.</p>
+        <PresenceRoster collabManagerRef={collabManagerRef} />
+        <p className="text-slate-500 text-xs mt-2">Open Chat or Sharing from the feature list to interact.</p>
         <Button size="sm" variant="outline" onClick={() => disableFeature('showMultiUser')} className="mt-2">Close</Button>
       </div>
     )}
@@ -1711,8 +1784,8 @@ const GeoFeaturesSegment: React.FC<Pick<CustomPanelsSegmentProps, 'featureStates
   </>
 );
 
-const SpecializedComponentsSegment: React.FC<Pick<CustomPanelsSegmentProps, 'featureStates' | 'sceneRef' | 'cameraRef' | 'engineRef' | 'simulationManagerRef' | 'disableFeature' | 'enableFeature' | 'gestureHistory' | 'onDomainChange'>> = ({
-  featureStates, sceneRef, cameraRef, engineRef, simulationManagerRef, disableFeature, enableFeature, gestureHistory, onDomainChange
+const SpecializedComponentsSegment: React.FC<Pick<CustomPanelsSegmentProps, 'featureStates' | 'sceneRef' | 'cameraRef' | 'engineRef' | 'simulationManagerRef' | 'presentationManagerRef' | 'disableFeature' | 'enableFeature' | 'gestureHistory' | 'onDomainChange'>> = ({
+  featureStates, sceneRef, cameraRef, engineRef, simulationManagerRef, presentationManagerRef, disableFeature, enableFeature, gestureHistory, onDomainChange
 }) => (
   <>
     {featureStates.showCollabManager && sceneRef.current && (
@@ -1742,6 +1815,14 @@ const SpecializedComponentsSegment: React.FC<Pick<CustomPanelsSegmentProps, 'fea
         visible
         onClose={() => disableFeature('showKeyboardShortcuts')}
       />
+    )}
+    {featureStates.showPresentationManager && sceneRef.current && (
+      <Suspense fallback={null}>
+        <MoodLightingPanel
+          presentationManager={presentationManagerRef?.current || null}
+          onClose={() => disableFeature('showPresentationManager')}
+        />
+      </Suspense>
     )}
   </>
 );
@@ -1803,6 +1884,10 @@ interface RenderBottomPanelProps {
   setPerformanceMode: (mode: 'low' | 'medium' | 'high') => void;
   handleTourSequenceCreate: (sequence: any) => void;
   handleTourSequencePlay: (sequenceId: string) => void;
+  // The real AnimationManager instance (BabylonWorkspace.tsx's animationManagerRef) - the
+  // Timeline tab used to always get a hardcoded null here regardless of this being
+  // available, leaving its play/sequence controls permanently non-functional.
+  animationManagerRef?: React.RefObject<import('../AnimationManager').AnimationManager | null>;
 }
 
 interface RenderFloatingToolbarProps {
@@ -1818,6 +1903,9 @@ interface RenderCustomPanelsProps {
   engineRef: React.RefObject<any>;
   cameraRef: React.RefObject<any>;
   bimManagerRef: React.RefObject<any>;
+  analyticsManagerRef: React.RefObject<any>;
+  presentationManagerRef: React.RefObject<any>;
+  iotManagerRef: React.RefObject<any>;
   simulationManagerRef: React.RefObject<any>;
   aiManagerRef: React.RefObject<any>;
   collabManagerRef: React.RefObject<any>;
@@ -1982,6 +2070,7 @@ export const renderBottomPanel = (props: RenderBottomPanelProps) => {
         suggestions={[]}
         onSequenceCreate={props.handleTourSequenceCreate}
         onSequencePlay={props.handleTourSequencePlay}
+        animationManager={props.animationManagerRef?.current ?? null}
       />
     </React.Suspense>
   );

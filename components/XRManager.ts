@@ -63,8 +63,14 @@ export class XRManager {
   private lastHitPose: { position: Vector3; rotationQuaternion: Quaternion } | null = null;
   private arOverlayElement: HTMLDivElement | null = null;
   private arScaleReadoutElement: HTMLDivElement | null = null;
+  private arHintElement: HTMLDivElement | null = null;
+  private arHintTimeout: ReturnType<typeof setTimeout> | null = null;
   private arSelectListener: (() => void) | null = null;
   private placementScale: number = 1;
+  // Independent of placementScale - applying scale via .setAll() would overwrite a
+  // negative (mirrored) x back to positive, silently undoing the mirror. Kept separate so
+  // scale and mirror compose instead of one clobbering the other - see applyPlacementScale().
+  private placementMirrored: boolean = false;
 
   // Two-finger pinch-to-zoom for the placed model - the only scaling controls that
   // existed before this were the on-screen +/- buttons (a fixed ~4% step per tap/hold
@@ -696,6 +702,14 @@ export class XRManager {
     exitBtn.addEventListener('mousedown', onExit);
     container.appendChild(exitBtn);
 
+    // One-shot guidance text (e.g. "Placed near you...") - see showAROverlayHint(). Starts
+    // empty/invisible; only takes up visible space once there's something to say, so it
+    // doesn't otherwise sit as empty chrome above the scale readout.
+    const hint = document.createElement('div');
+    hint.id = 'naviz-ar-hint';
+    hint.style.cssText = 'pointer-events:none;padding:6px 14px;border-radius:9999px;background:rgba(15,23,42,0.85);color:#fff;font-size:13px;font-weight:500;text-align:center;max-width:80vw;opacity:0;transition:opacity 0.2s ease;';
+    this.arHintElement = hint;
+
     const readout = document.createElement('div');
     readout.id = 'naviz-ar-scale-readout';
     readout.textContent = `${Math.round(this.placementScale * 100)}%`;
@@ -755,6 +769,24 @@ export class XRManager {
       return btn;
     };
 
+    // Single-tap action (not hold-to-repeat like the buttons above) - mirroring is a
+    // one-time flip, not something anyone wants to hold down and have fire repeatedly.
+    const tapButton = (label: string, title: string, onTap: () => void) => {
+      const btn = document.createElement('button');
+      btn.textContent = label;
+      btn.title = title;
+      btn.setAttribute('aria-label', title);
+      btn.style.cssText = 'pointer-events:auto;width:56px;height:56px;border-radius:9999px;border:2px solid rgba(255,255,255,0.85);background:rgba(15,23,42,0.75);color:#fff;font-size:20px;font-weight:600;display:flex;align-items:center;justify-content:center;touch-action:manipulation;user-select:none;';
+      const onPress = (e: Event) => {
+        e.preventDefault();
+        e.stopPropagation();
+        onTap();
+      };
+      btn.addEventListener('touchstart', onPress, { passive: false });
+      btn.addEventListener('mousedown', onPress);
+      return btn;
+    };
+
     const moveRow = document.createElement('div');
     moveRow.style.cssText = 'display:flex;align-items:center;gap:10px;';
     const MOVE_STEP = 0.03; // meters per repeat tick
@@ -767,8 +799,10 @@ export class XRManager {
     rotateRow.style.cssText = 'display:flex;align-items:center;gap:10px;';
     const ROTATE_STEP = (3 * Math.PI) / 180; // 3 degrees per repeat tick
     rotateRow.appendChild(smallButton('⟲', 'Rotate left (hold)', () => this.rotatePlacedModel(-ROTATE_STEP)));
+    rotateRow.appendChild(tapButton('⇋', 'Mirror', () => this.mirrorPlacedModel()));
     rotateRow.appendChild(smallButton('⟳', 'Rotate right (hold)', () => this.rotatePlacedModel(ROTATE_STEP)));
 
+    container.appendChild(hint);
     container.appendChild(readout);
     container.appendChild(moveRow);
     container.appendChild(rotateRow);
@@ -777,12 +811,33 @@ export class XRManager {
     return container;
   }
 
+  // Briefly shows a one-line message in the AR overlay (e.g. when a control button
+  // auto-places the model - see ensurePlacementRoot()) - console.warn is invisible on a
+  // real phone during an immersive session, which is exactly what made the previous
+  // "tap the screen first" guidance read as "the buttons just don't work".
+  private showAROverlayHint(text: string, durationMs = 2500): void {
+    const el = this.arHintElement;
+    if (!el) return;
+    if (this.arHintTimeout !== null) clearTimeout(this.arHintTimeout);
+    el.textContent = text;
+    el.style.opacity = '1';
+    this.arHintTimeout = setTimeout(() => {
+      el.style.opacity = '0';
+      this.arHintTimeout = null;
+    }, durationMs);
+  }
+
   private teardownAROverlayUI(): void {
     if (this.arOverlayElement?.parentNode) {
       this.arOverlayElement.parentNode.removeChild(this.arOverlayElement);
     }
     this.arOverlayElement = null;
     this.arScaleReadoutElement = null;
+    this.arHintElement = null;
+    if (this.arHintTimeout !== null) {
+      clearTimeout(this.arHintTimeout);
+      this.arHintTimeout = null;
+    }
   }
 
   // Wires the hit-test reticle and tap-to-place. A tap anywhere on screen that isn't
@@ -986,26 +1041,81 @@ export class XRManager {
     // rather than snapping back to the model's original authored position.
   }
 
+  // Every manual control (scale/nudge/rotate/mirror) used to require a successful
+  // hit-test tap FIRST, since placementRoot only got created inside the WebXR 'select'
+  // listener - and hit-test reliability on real phones varies a lot (lighting, a few
+  // seconds of plane-scanning, device support), so until that landed, every single
+  // button silently did nothing beyond a console.warn no one on a phone ever sees. That
+  // read as "the buttons just don't work". This creates the root on first use instead,
+  // positioned a couple meters in front of wherever the user is currently facing, roughly
+  // at floor height (probed the same way setupGrounding() finds the floor under the
+  // player, falling back to an approximate eye-height offset if no floor mesh is under
+  // that spot) - so there's always something reasonable on screen to see the very first
+  // button press affect. A later successful hit-test tap still works exactly as before,
+  // repositioning this same root exactly onto the real surface via the 'select' listener.
+  private ensurePlacementRoot(): TransformNode {
+    const isNew = !this.placementRoot || this.placementRoot.isDisposed();
+    const root = this.getOrCreatePlacementRoot();
+    if (isNew && this.xrCamera) {
+      const camera = this.xrCamera;
+      const forward = camera.getDirection(Vector3.Forward());
+      forward.y = 0;
+      if (forward.lengthSquared() < 1e-6) forward.set(0, 0, 1); else forward.normalize();
+      const targetX = camera.position.x + forward.x * 2;
+      const targetZ = camera.position.z + forward.z * 2;
+
+      let floorY = camera.position.y - camera.realWorldHeight;
+      if (this.groundFloorMeshes.length > 0) {
+        const probeRay = new Ray(
+          new Vector3(targetX, floorY + XRManager.GROUND_PROBE_ABOVE_M, targetZ),
+          Vector3.Down(),
+          XRManager.GROUND_PROBE_ABOVE_M + XRManager.GROUND_PROBE_BELOW_M
+        );
+        const pick = this.scene.pickWithRay(probeRay, (m) => this.groundFloorMeshes.indexOf(m) !== -1);
+        if (pick?.hit && pick.pickedPoint) floorY = pick.pickedPoint.y;
+      }
+
+      root.position.set(targetX, floorY, targetZ);
+      this.showAROverlayHint('Placed near you - tap the ground to fine-tune, or keep using the buttons');
+    }
+    return root;
+  }
+
+  // Applies placementScale AND placementMirrored together via signed x-scale, instead of
+  // root.scaling.setAll(placementScale) - setAll writes the SAME value to all three axes,
+  // which would silently overwrite a mirrored (negative) x back to positive the next time
+  // scale changed, undoing the mirror. Keeping them composed here is what makes "mirror
+  // then scale" (or vice versa) actually stick together instead of one clobbering the other.
+  private applyPlacementScale(root: TransformNode): void {
+    root.scaling.set(
+      this.placementMirrored ? -this.placementScale : this.placementScale,
+      this.placementScale,
+      this.placementScale
+    );
+  }
+
   // Scales the placed model (clamped to a sane range so it can't be pinched/tapped down
   // to invisible or up to absurdly oversized). factor is relative, e.g. 1.04 = +4%.
   scalePlacedModel(factor: number): void {
-    const root = this.placementRoot;
-    if (!root) {
-      // Scaling before the model has been placed (tapped) at least once - nothing to
-      // resize yet. Silently doing nothing here was itself a source of "the buttons
-      // don't work" confusion, so tell the user what to do instead.
-      console.warn('Tap the screen to place the model before scaling it');
-      return;
-    }
+    const root = this.ensurePlacementRoot();
     this.placementScale = Math.min(5, Math.max(0.1, this.placementScale * factor));
-    root.scaling.setAll(this.placementScale);
+    this.applyPlacementScale(root);
     this.updateScaleReadout();
   }
 
   resetPlacedModelScale(): void {
     this.placementScale = 1;
-    this.placementRoot?.scaling.setAll(1);
+    if (this.placementRoot) this.applyPlacementScale(this.placementRoot);
     this.updateScaleReadout();
+  }
+
+  // Flips the placed model left-right (mirror), same button-driven single-tap action as
+  // the AR overlay's other controls. Composes with scale via applyPlacementScale() above
+  // instead of clobbering it - see that method's comment.
+  mirrorPlacedModel(): void {
+    const root = this.ensurePlacementRoot();
+    this.placementMirrored = !this.placementMirrored;
+    this.applyPlacementScale(root);
   }
 
   // Fine manual position adjustment after the initial tap-to-place - a hit-test-driven
@@ -1019,12 +1129,8 @@ export class XRManager {
   // button repeatedly calling this reads as smooth, controllable creep rather than a
   // jump.
   nudgePlacedModel(forwardDelta: number, rightDelta: number): void {
-    const root = this.placementRoot;
+    const root = this.ensurePlacementRoot();
     const camera = this.xrCamera;
-    if (!root) {
-      console.warn('Tap the screen to place the model before adjusting its position');
-      return;
-    }
     if (!camera) return;
     const forward = camera.getDirection(Vector3.Forward());
     forward.y = 0;
@@ -1043,11 +1149,7 @@ export class XRManager {
   // before, since each tap fully replaced rotation from whatever the hit-test surface's
   // detected orientation happened to be at that exact point.
   rotatePlacedModel(deltaRadians: number): void {
-    const root = this.placementRoot;
-    if (!root) {
-      console.warn('Tap the screen to place the model before rotating it');
-      return;
-    }
+    const root = this.ensurePlacementRoot();
     if (!root.rotationQuaternion) {
       root.rotationQuaternion = Quaternion.FromEulerVector(root.rotation);
     }
@@ -1071,10 +1173,9 @@ export class XRManager {
   // what a slider/preset-button UI naturally wants ("set it to exactly 50%"), not a
   // repeated relative nudge.
   setPlacedModelScale(scale: number): void {
-    const root = this.placementRoot;
-    if (!root) return;
+    const root = this.ensurePlacementRoot();
     this.placementScale = Math.min(5, Math.max(0.1, scale));
-    root.scaling.setAll(this.placementScale);
+    this.applyPlacementScale(root);
     this.updateScaleReadout();
   }
 

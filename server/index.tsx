@@ -1808,7 +1808,7 @@ app.onError((err, c) => {
 // IoT API Endpoints
 
 // Get all sensors
-app.get('/api/iot/sensors', async (c) => {
+app.get('/make-server-cf230d31/api/iot/sensors', async (c) => {
   const { error, user } = await verifyUser(c.req.raw);
 
   if (error) {
@@ -1972,7 +1972,7 @@ app.put('/make-server-cf230d31/api/admin/settings', async (c) => {
   }
 });
 
-app.get('/api/iot/devices', async (c) => {
+app.get('/make-server-cf230d31/api/iot/devices', async (c) => {
   const { error, user } = await verifyUser(c.req.raw);
 
   if (error) {
@@ -1992,7 +1992,7 @@ app.get('/api/iot/devices', async (c) => {
 });
 
 // Get sensor value
-app.get('/api/iot/sensors/:sensorId', async (c) => {
+app.get('/make-server-cf230d31/api/iot/sensors/:sensorId', async (c) => {
   const { error, user } = await verifyUser(c.req.raw);
 
   if (error) {
@@ -2017,7 +2017,7 @@ app.get('/api/iot/sensors/:sensorId', async (c) => {
 });
 
 // Control device
-app.post('/api/iot/devices/:deviceId/control', async (c) => {
+app.post('/make-server-cf230d31/api/iot/devices/:deviceId/control', async (c) => {
   const { error, user } = await verifyUser(c.req.raw);
 
   if (error) {
@@ -2048,7 +2048,7 @@ app.post('/api/iot/devices/:deviceId/control', async (c) => {
 });
 
 // Get energy history
-app.get('/api/iot/energy-history', async (c) => {
+app.get('/make-server-cf230d31/api/iot/energy-history', async (c) => {
   const { error, user } = await verifyUser(c.req.raw);
 
   if (error) {
@@ -2069,7 +2069,7 @@ app.get('/api/iot/energy-history', async (c) => {
 });
 
 // Get sensor alerts
-app.get('/api/iot/alerts', async (c) => {
+app.get('/make-server-cf230d31/api/iot/alerts', async (c) => {
   const { error, user } = await verifyUser(c.req.raw);
 
   if (error) {
@@ -2089,7 +2089,7 @@ app.get('/api/iot/alerts', async (c) => {
 });
 
 // Get simulation status
-app.get('/api/iot/simulation/status', async (c) => {
+app.get('/make-server-cf230d31/api/iot/simulation/status', async (c) => {
   const { error, user } = await verifyUser(c.req.raw);
 
   if (error) {
@@ -2109,7 +2109,7 @@ app.get('/api/iot/simulation/status', async (c) => {
 });
 
 // Start simulation
-app.post('/api/iot/simulation/start', async (c) => {
+app.post('/make-server-cf230d31/api/iot/simulation/start', async (c) => {
   const { error, user } = await verifyUser(c.req.raw);
 
   if (error) {
@@ -2129,7 +2129,7 @@ app.post('/api/iot/simulation/start', async (c) => {
 });
 
 // Stop simulation
-app.post('/api/iot/simulation/stop', async (c) => {
+app.post('/make-server-cf230d31/api/iot/simulation/stop', async (c) => {
   const { error, user } = await verifyUser(c.req.raw);
 
   if (error) {
@@ -2149,7 +2149,7 @@ app.post('/api/iot/simulation/stop', async (c) => {
 });
 
 // Update simulation config
-app.put('/api/iot/simulation/config', async (c) => {
+app.put('/make-server-cf230d31/api/iot/simulation/config', async (c) => {
   const { error, user } = await verifyUser(c.req.raw);
 
   if (error) {
@@ -2170,7 +2170,7 @@ app.put('/api/iot/simulation/config', async (c) => {
 });
 
 // Export IoT data
-app.get('/api/iot/export', async (c) => {
+app.get('/make-server-cf230d31/api/iot/export', async (c) => {
   const { error, user } = await verifyUser(c.req.raw);
 
   if (error) {
@@ -2190,7 +2190,7 @@ app.get('/api/iot/export', async (c) => {
 });
 
 // Simulate environmental conditions
-app.post('/api/iot/environment/simulate', async (c) => {
+app.post('/make-server-cf230d31/api/iot/environment/simulate', async (c) => {
   const { error, user } = await verifyUser(c.req.raw);
 
   if (error) {
@@ -2210,7 +2210,7 @@ app.post('/api/iot/environment/simulate', async (c) => {
 });
 
 // Create automation rule
-app.post('/api/iot/automation/rules', async (c) => {
+app.post('/make-server-cf230d31/api/iot/automation/rules', async (c) => {
   const { error, user } = await verifyUser(c.req.raw);
 
   if (error) {
@@ -2231,7 +2231,7 @@ app.post('/api/iot/automation/rules', async (c) => {
 });
 
 // Execute automation rule
-app.post('/api/iot/automation/rules/:ruleId/execute', async (c) => {
+app.post('/make-server-cf230d31/api/iot/automation/rules/:ruleId/execute', async (c) => {
   const { error, user } = await verifyUser(c.req.raw);
 
   if (error) {
@@ -2256,7 +2256,7 @@ app.post('/api/iot/automation/rules/:ruleId/execute', async (c) => {
 });
 
 // Energy optimization
-app.get('/api/iot/energy/optimize', async (c) => {
+app.get('/make-server-cf230d31/api/iot/energy/optimize', async (c) => {
   const { error, user } = await verifyUser(c.req.raw);
 
   if (error) {
@@ -2276,7 +2276,7 @@ app.get('/api/iot/energy/optimize', async (c) => {
 });
 
 // Predictive maintenance
-app.get('/api/iot/maintenance/predict', async (c) => {
+app.get('/make-server-cf230d31/api/iot/maintenance/predict', async (c) => {
   const { error, user } = await verifyUser(c.req.raw);
 
   if (error) {
@@ -2296,7 +2296,7 @@ app.get('/api/iot/maintenance/predict', async (c) => {
 });
 
 // Create smart schedule
-app.post('/api/iot/schedules', async (c) => {
+app.post('/make-server-cf230d31/api/iot/schedules', async (c) => {
   const { error, user } = await verifyUser(c.req.raw);
 
   if (error) {
@@ -2321,7 +2321,7 @@ app.post('/api/iot/schedules', async (c) => {
 });
 
 // Environmental impact analysis
-app.get('/api/iot/environment/impact', async (c) => {
+app.get('/make-server-cf230d31/api/iot/environment/impact', async (c) => {
   const { error, user } = await verifyUser(c.req.raw);
 
   if (error) {
@@ -2341,7 +2341,7 @@ app.get('/api/iot/environment/impact', async (c) => {
 });
 
 // Add custom sensor
-app.post('/api/iot/sensors', async (c) => {
+app.post('/make-server-cf230d31/api/iot/sensors', async (c) => {
   const { error, user } = await verifyUser(c.req.raw);
 
   if (error) {
@@ -2362,7 +2362,7 @@ app.post('/api/iot/sensors', async (c) => {
 });
 
 // Add custom device
-app.post('/api/iot/devices', async (c) => {
+app.post('/make-server-cf230d31/api/iot/devices', async (c) => {
   const { error, user } = await verifyUser(c.req.raw);
 
   if (error) {
@@ -2383,7 +2383,7 @@ app.post('/api/iot/devices', async (c) => {
 });
 
 // Remove sensor
-app.delete('/api/iot/sensors/:sensorId', async (c) => {
+app.delete('/make-server-cf230d31/api/iot/sensors/:sensorId', async (c) => {
   const { error, user } = await verifyUser(c.req.raw);
 
   if (error) {
@@ -2408,7 +2408,7 @@ app.delete('/api/iot/sensors/:sensorId', async (c) => {
 });
 
 // Remove device
-app.delete('/api/iot/devices/:deviceId', async (c) => {
+app.delete('/make-server-cf230d31/api/iot/devices/:deviceId', async (c) => {
   const { error, user } = await verifyUser(c.req.raw);
 
   if (error) {

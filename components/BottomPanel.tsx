@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { AbstractMesh } from '@babylonjs/core';
 import { AnimationTimeline } from './AnimationTimeline';
+import type { AnimationManager } from './AnimationManager';
 
 interface BottomPanelProps {
   activeFeatures: string[];
@@ -34,6 +35,9 @@ interface BottomPanelProps {
   suggestions: string[];
   onSequenceCreate: (sequence: any) => void;
   onSequencePlay: (sequenceId: string) => void;
+  // Optional - the Timeline tab falls back to AnimationTimeline's own "no manager" empty
+  // state when this is omitted, same as it did with the hardcoded null it used to get.
+  animationManager?: AnimationManager | null;
 }
 
 const BottomPanel: React.FC<BottomPanelProps> = ({
@@ -46,7 +50,8 @@ const BottomPanel: React.FC<BottomPanelProps> = ({
   warnings,
   suggestions,
   onSequenceCreate,
-  onSequencePlay
+  onSequencePlay,
+  animationManager = null
 }) => {
   const getStatusIcon = (status: string) => {
     switch (status) {
@@ -204,7 +209,7 @@ const BottomPanel: React.FC<BottomPanelProps> = ({
 
         <TabsContent value="timeline" className="p-4 h-full">
         <AnimationTimeline
-          animationManager={null} // TODO: pass actual animationManager instance
+          animationManager={animationManager}
           selectedObject={selectedMesh}
           onSequenceCreate={onSequenceCreate}
           onSequencePlay={onSequencePlay}

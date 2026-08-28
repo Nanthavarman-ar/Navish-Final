@@ -61,6 +61,8 @@ import { GPSTransformUtils } from './GPSTransformUtils';
 import { CollabManager } from './CollabManager';
 import { SimulationManager } from './SimulationManager';
 import { SustainabilityManager, SustainabilityReport } from './SustainabilityManager';
+import { PresentationManager } from './PresentationManager';
+import { IoTManager } from './IoTManager';
 
 // UI Component imports
 import FeatureButton from './FeatureButton';
@@ -411,6 +413,8 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
     showShadowImpactAnalysis: false,
     showCirculationFlowSimulation: false,
     showEnergyDashboard: false,
+    showSessionInsights: false,
+    showIoTPanel: false,
     showMiscellaneous: false,
     // false so these don't render as "pressed" on load while transformMode is still 'none' -
     // they used to default true while the state actually driving the tool defaulted false, so
@@ -808,6 +812,8 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
   const undoHistoryRef = useRef<UndoEntry[]>([]);
   const [sustainabilityReport, setSustainabilityReport] = React.useState<SustainabilityReport | null>(null);
   const sustainabilityManagerRef = useRef<SustainabilityManager | null>(null);
+  const presentationManagerRef = useRef<PresentationManager | null>(null);
+  const iotManagerRef = useRef<IoTManager | null>(null);
   const simulationManagerRef = useRef<SimulationManager | null>(null);
   const [rainOn, setRainOn] = React.useState(false);
   const [rainIntensity, setRainIntensity] = React.useState(1); // 0.2 (light) - 2 (heavy) - shared speed/quantity for rain AND snow
@@ -919,6 +925,18 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
   // determinant. Pushes the same 'transform' undo entry shape the gizmo-drag snapshot
   // uses (BabylonWorkspace.tsx's transformMode effect) so Ctrl+Z un-mirrors it too.
   const handleMirrorSelected = React.useCallback(() => {
+    // A model placed/adjusted via AR (components/XRManager.ts) has its meshes reparented
+    // under one shared placementRoot, which XRManager keeps alive even after exiting the
+    // AR session (see the comment on teardownARPlacement) - mirroring an individual mesh
+    // directly here instead would only flip part of the placed group and desync it from
+    // whatever the AR overlay's own mirror button did. Same routing ARScalePanel.tsx
+    // already uses for scale, for the same reason. Not undo-tracked on this path, matching
+    // that existing precedent - the AR placement isn't part of the desktop undo stack.
+    if (xrManagerRef.current?.hasActivePlacement()) {
+      xrManagerRef.current.mirrorPlacedModel();
+      showToast.success('Mirrored');
+      return;
+    }
     const mesh = workspaceState.selectedMesh;
     if (!mesh) return;
     undoHistoryRef.current.push({
@@ -1178,6 +1196,8 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
     let animationManager: AnimationManager | null = null;
     let audioManager: AudioManager | null = null;
     let bimManager: BIMManager | null = null;
+    let presentationManager: PresentationManager | null = null;
+    let iotManager: IoTManager | null = null;
     let aiManager: AIManager | null = null;
     let xrManager: XRManager | null = null;
     let collabManager: CollabManager | null = null;
@@ -1653,6 +1673,36 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
           console.error("Failed to initialize SustainabilityManager:", error);
         }
 
+        // Initialize PresentationManager (mood lighting scenes) - existed as a fully
+        // working class but was never instantiated or wired to any UI (see MoodLightingPanel).
+        try {
+          if (bimManagerRef.current && featureManagerRef.current) {
+            presentationManager = new PresentationManager(engine, scene, bimManagerRef.current, featureManagerRef.current);
+            presentationManagerRef.current = presentationManager;
+            console.log("PresentationManager initialized successfully");
+          }
+        } catch (error) {
+          console.error("Failed to initialize PresentationManager:", error);
+        }
+
+        // Initialize IoTManager - existed as a complete client wrapper (device/sensor
+        // registry, auth headers, dispose) for a real, fully-deployed backend
+        // (server/index.tsx's /api/iot/* routes), but was only ever instantiated as an
+        // unused ref in SceneRenderer.tsx (never with a real serverUrl, so it always
+        // stayed in local-only mode) - see IoTSensorsPanel. Only constructed here, not
+        // connected - connect() happens on demand when the panel is opened, same as
+        // GeoSyncManager/CloudAnchorManager above, so a session that never opens it
+        // never pays for the network round-trip.
+        try {
+          iotManager = new IoTManager(scene, {
+            serverUrl: `https://${projectId}.supabase.co/functions/v1/make-server-cf230d31`,
+          });
+          iotManagerRef.current = iotManager;
+          console.log("IoTManager initialized successfully");
+        } catch (error) {
+          console.error("Failed to initialize IoTManager:", error);
+        }
+
         // Initialize AIManager
         try {
           aiManager = new AIManager(scene, canvasRef.current!, handleFeatureToggle);
@@ -1855,6 +1905,12 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
         }
         if (cloudAnchorManager && typeof cloudAnchorManager.dispose === 'function') {
           cloudAnchorManager.dispose();
+        }
+        if (presentationManager && typeof presentationManager.dispose === 'function') {
+          presentationManager.dispose();
+        }
+        if (iotManager && typeof iotManager.dispose === 'function') {
+          iotManager.dispose();
         }
         if (collabManager && typeof collabManager.dispose === 'function') {
           collabManager.dispose();
@@ -2736,6 +2792,12 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
     startTransition(() => {
     if (enabled) {
       enableFeature(id);
+      // Feeds the Session Insights panel (config/featureCategories.tsx's
+      // 'showSessionInsights') via AnalyticsManager.generateWorkspaceReport() - this is
+      // the ONE place every feature toggle already passes through, so it's the natural
+      // spot to record real usage instead of AnalyticsManager sitting instantiated but
+      // never actually fed any events.
+      analyticsManagerRef.current?.trackFeatureUsage(id);
       // Call manager methods for specific features
       try {
         // BIM Features
@@ -2752,21 +2814,24 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
             console.error('Error toggling hidden details:', error);
             showToast.error('Failed to toggle hidden details');
           }
-          try {
-            bimManagerRef.current.enableClashDetection();
-            showToast.success('Clash detection enabled');
-          } catch (error) {
-            console.error('Error enabling clash detection:', error);
-            showToast.error('Failed to enable clash detection');
-          }
-          try {
-            if (typeof bimManagerRef.current.loadDemoModel === 'function') {
-              bimManagerRef.current.loadDemoModel();
-              showToast.success('Demo model loaded');
-            }
-          } catch (error) {
-            console.error('Error loading demo model:', error);
-            showToast.error('Failed to load demo model');
+          // Both calls below return Promise<...> (BIMManager.ts:992,1338) - they were
+          // previously fired without await/.then, so the success toast showed the instant
+          // the call was MADE rather than once it actually finished, regardless of whether
+          // it went on to succeed or reject. A rejection became a silent unhandled promise
+          // rejection while the user had already been told it worked.
+          bimManagerRef.current.enableClashDetection()
+            .then(() => showToast.success('Clash detection enabled'))
+            .catch((error: unknown) => {
+              console.error('Error enabling clash detection:', error);
+              showToast.error('Failed to enable clash detection');
+            });
+          if (typeof bimManagerRef.current.loadDemoModel === 'function') {
+            bimManagerRef.current.loadDemoModel()
+              .then(() => showToast.success('Demo model loaded'))
+              .catch((error: unknown) => {
+                console.error('Error loading demo model:', error);
+                showToast.error('Failed to load demo model');
+              });
           }
         }
 
@@ -2796,10 +2861,10 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
         if (id === 'showSceneBrowser') showToast.success('Scene browser opened');
         if (id === 'showLighting') showToast.success('Lighting controls enabled');
         if (id === 'showClashDetection' && bimManagerRef.current) {
-          try {
-            const bimManager = bimManagerRef.current;
-            const toastId = showToast.loading('Scanning for clashes...');
-            bimManager.enableClashDetection().then(() => {
+          const bimManager = bimManagerRef.current;
+          const toastId = showToast.loading('Scanning for clashes...');
+          bimManager.enableClashDetection()
+            .then(() => {
               const count = bimManager.getClashes().length;
               showToast.dismiss(toastId);
               if (count > 0) {
@@ -2807,11 +2872,17 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
               } else {
                 showToast.success('No clashes found');
               }
+            })
+            // The enclosing try/catch this replaced only ever caught a SYNCHRONOUS throw
+            // from initiating the call, never a rejection of the returned promise - so a
+            // rejection here previously left the "Scanning for clashes..." loading toast
+            // on screen forever, with no error shown and no way for the user to tell
+            // anything had gone wrong.
+            .catch((error: unknown) => {
+              console.error('Error running clash detection:', error);
+              showToast.dismiss(toastId);
+              showToast.error('Failed to run clash detection');
             });
-          } catch (error) {
-            console.error('Error running clash detection:', error);
-            showToast.error('Failed to run clash detection');
-          }
         }
 
         // AI Features
@@ -2841,29 +2912,51 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
           }
         }
         if (id === 'showGestureDetection' && gestureManagerRef.current) {
-          gestureManagerRef.current.startGestureRecognition().then((started) => {
-            if (started) {
-              showToast.success('Gesture detection enabled', 'Watching the camera for thumbs up/down, open hand, and swipes');
-            } else {
-              showToast.error('Camera access denied or unavailable', 'Gesture detection needs camera permission');
+          gestureManagerRef.current.startGestureRecognition()
+            .then((started) => {
+              if (started) {
+                showToast.success('Gesture detection enabled', 'Watching the camera for thumbs up/down, open hand, and swipes');
+              } else {
+                showToast.error('Camera access denied or unavailable', 'Gesture detection needs camera permission');
+                disableFeature('showGestureDetection');
+              }
+            })
+            // A rejection (vs. a clean `false` resolve) previously had no .catch at all -
+            // an unhandled promise rejection with no error toast and the flag left stuck
+            // "on" with no real gesture recognition running behind it.
+            .catch((error: unknown) => {
+              console.error('Error starting gesture recognition:', error);
+              showToast.error('Failed to start gesture detection');
               disableFeature('showGestureDetection');
-            }
-          });
+            });
         }
         if (id === 'showGestureInspector') {
           showToast.info('Gesture inspector active');
         }
         if (id === 'showVoiceChat') {
           if (collabManagerRef.current) {
-            collabManagerRef.current.enableVoiceChat().then((ok: boolean) => {
-              if (ok) {
-                showToast.success('Voice chat connected', 'Microphone is live');
-              } else {
-                showToast.error('Voice chat unavailable', 'Microphone access was denied or is unavailable');
-              }
-            });
+            collabManagerRef.current.enableVoiceChat()
+              .then((ok: boolean) => {
+                if (ok) {
+                  showToast.success('Voice chat connected', 'Microphone is live');
+                } else {
+                  // Without this, featureStates.showVoiceChat stayed true even though the
+                  // mic never actually connected - uiSegments.tsx's VoiceChatPanel is
+                  // gated purely on that flag and unconditionally renders "Microphone
+                  // live" with a pulsing red dot regardless of real connection state, so
+                  // the panel kept lying to the user. Same bug class as the AR/VR fix.
+                  showToast.error('Voice chat unavailable', 'Microphone access was denied or is unavailable');
+                  disableFeature('showVoiceChat');
+                }
+              })
+              .catch((error: unknown) => {
+                console.error('Error enabling voice chat:', error);
+                showToast.error('Voice chat unavailable');
+                disableFeature('showVoiceChat');
+              });
           } else {
             showToast.error('Voice chat unavailable', 'Collaboration is not ready yet');
+            disableFeature('showVoiceChat');
           }
         }
 
@@ -2884,11 +2977,17 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
                 setEnableSSR(false);
                 showToast.success('VR mode enabled');
               } else {
+                // Without this, featureStates.showVR stayed true (handleFeatureToggle
+                // already flipped it on before this async call started) even though the
+                // real WebXR session never came up - the sidebar button and any UI keyed
+                // off showVR kept claiming VR was active with nothing actually running.
+                disableFeature('showVR');
                 showToast.error('Failed to enter VR mode', 'This device/browser may not support VR');
               }
             })
             .catch((error) => {
               console.error('Error entering VR:', error);
+              disableFeature('showVR');
               showToast.error('Failed to enter VR mode');
             });
         }
@@ -2903,11 +3002,17 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
                 setEnableSSR(false);
                 showToast.success('AR mode enabled');
               } else {
+                // Same fix as the VR branch above - a false success here previously left
+                // the "AR Mode active" badge (uiSegments.tsx) and the sidebar button
+                // showing AR as on over the normal desktop view, with no real session and
+                // none of XRManager's on-screen controls actually present.
+                disableFeature('showAR');
                 showToast.error('Failed to enter AR mode', 'This device/browser may not support AR');
               }
             })
             .catch((error) => {
               console.error('Error entering AR:', error);
+              disableFeature('showAR');
               showToast.error('Failed to enter AR mode');
             });
         }
@@ -3006,12 +3111,34 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
               if (success) {
                 showToast.success('Geo sync connected', 'Tracking real-world location');
               } else {
+                // Without this, featureStates.showGeoSync stayed true even on a failed
+                // connect - the panel it gates (uiSegments.tsx:1704-1710) has a hardcoded
+                // "Geo sync active" line with no real status check, so it kept claiming
+                // to be active with nothing actually connected behind it.
                 showToast.error('Geo sync unavailable', 'Location services may be disabled');
+                disableFeature('showGeoSync');
               }
             })
             .catch((error: unknown) => {
               console.error('Error connecting geo sync:', error);
               showToast.error('Failed to enable geo sync');
+              disableFeature('showGeoSync');
+            });
+        }
+        if (id === 'showIoTPanel' && iotManagerRef.current) {
+          iotManagerRef.current.connect()
+            .then((success: boolean) => {
+              if (success) {
+                showToast.success('IoT sensors connected');
+              } else {
+                showToast.error('IoT sensors unavailable', 'Could not reach the IoT service');
+                disableFeature('showIoTPanel');
+              }
+            })
+            .catch((error: unknown) => {
+              console.error('Error connecting IoT service:', error);
+              showToast.error('Failed to connect IoT sensors');
+              disableFeature('showIoTPanel');
             });
         }
 
@@ -3081,12 +3208,27 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
 
         // Collaboration Features
         if (id === 'showMultiUser' && collabManagerRef.current) {
-          try {
-            collabManagerRef.current.connect();
-          } catch (error) {
-            console.error('Error connecting to multi-user:', error);
-            showToast.error('Failed to connect to multi-user session');
-          }
+          // connect() returns Promise<boolean> (CollabManager.ts:135) - the enclosing
+          // try/catch here only ever caught a synchronous throw from INITIATING the
+          // call, never a rejection of the returned promise, so a rejection was
+          // previously a silent unhandled promise rejection with no error toast at all.
+          // The panel this gates (MultiUserStatus in uiSegments.tsx) polls the manager's
+          // own getIsConnected() every second rather than trusting this toggle, so a
+          // failed connect already reads as "Connecting..." rather than a false
+          // "Connected" - lower severity than the other fixes here, but still worth a
+          // real error toast instead of failing silently.
+          collabManagerRef.current.connect()
+            .then((success: boolean) => {
+              if (!success) {
+                showToast.error('Failed to connect to multi-user session');
+                disableFeature('showMultiUser');
+              }
+            })
+            .catch((error: unknown) => {
+              console.error('Error connecting to multi-user:', error);
+              showToast.error('Failed to connect to multi-user session');
+              disableFeature('showMultiUser');
+            });
         }
         if (id === 'showCollabManager' && collabManagerRef.current) {
           try {
@@ -3108,12 +3250,17 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
                   showToast.info('Cloud anchors active (local only)', 'No cloud anchor backend is configured, so anchors are saved for this session only and won\'t sync to other devices.');
                 }
               } else {
+                // Same fix as showGeoSync above - without reverting the flag here, the
+                // sidebar kept showing Cloud Anchors as "on" with nothing actually
+                // connected behind it.
                 showToast.error('Failed to connect cloud anchors');
+                disableFeature('showCloudAnchorManager');
               }
             })
             .catch((error: unknown) => {
               console.error('Error connecting cloud anchor manager:', error);
               showToast.error('Failed to connect cloud anchor manager');
+              disableFeature('showCloudAnchorManager');
             });
         }
 
@@ -3784,6 +3931,9 @@ const getCategoryDescription = (categoryName: string): string => {
               engineRef,
               cameraRef,
               bimManagerRef,
+              analyticsManagerRef,
+              presentationManagerRef,
+              iotManagerRef,
               simulationManagerRef,
               aiManagerRef,
               collabManagerRef,
@@ -3903,7 +4053,8 @@ const getCategoryDescription = (categoryName: string): string => {
             handleFeatureToggle,
             setPerformanceMode,
             handleTourSequenceCreate,
-            handleTourSequencePlay
+            handleTourSequencePlay,
+            animationManagerRef
           })}
         </div>
         {renderRightPanel({

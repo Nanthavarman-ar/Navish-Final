@@ -84,6 +84,12 @@ export class PresentationManager {
 
     this.initializeFurnitureCatalog();
     this.setupEventListeners();
+    // saveOriginalLighting() was defined but never called anywhere in this class, so
+    // resetToOriginal()'s lighting-restore branch (`if (this.originalLighting)`) was
+    // always a no-op - once any scenario/mood scene changed the lighting, there was no
+    // way back to the scene's real starting state. Capturing it here, before anything
+    // else in this class can touch scene.ambientColor/lights, is what makes Reset work.
+    this.saveOriginalLighting();
   }
 
 
@@ -873,6 +879,13 @@ export class PresentationManager {
 
   // Reset to original state
   resetToOriginal(): void {
+    // applyLightingState() below only restores intensity/diffuse/specular on lights that
+    // still exist at each ORIGINAL index - it never disposes lights a mood scene/scenario
+    // added on top (tracked separately in scenarioLights), so without this they'd survive
+    // a reset and the scene would still look lit by whatever preset was last active.
+    this.stopMoodSceneAutoSwitch();
+    this.clearScenarioLights();
+
     if (this.originalLighting) {
       this.applyLightingState(this.originalLighting);
     }
