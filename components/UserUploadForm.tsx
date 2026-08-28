@@ -32,6 +32,7 @@ export function UserUploadForm({ subscription }: { subscription: UserSubscriptio
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [isUploading, setIsUploading] = useState(false);
+  const [rejectedFiles, setRejectedFiles] = useState<{ name: string; reason: string }[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const remaining = subscription.uploadLimit === -1 ? '∞' : Math.max(0, subscription.uploadLimit - subscription.uploadsUsed);
@@ -39,12 +40,21 @@ export function UserUploadForm({ subscription }: { subscription: UserSubscriptio
   const handleFileSelect = (fileList: FileList | null) => {
     if (!fileList) return;
     const valid: UploadFile[] = [];
+    // Previously dropped any file that failed the format/size check with zero
+    // indication why - it just never appeared in the list. Now the rejection and its
+    // reason are shown so a user isn't left guessing why their file "did nothing".
+    const rejected: { name: string; reason: string }[] = [];
     Array.from(fileList).forEach(file => {
       const ext = '.' + file.name.split('.').pop()?.toLowerCase();
-      if (SUPPORTED_FORMATS.includes(ext) && file.size <= 500 * 1024 * 1024) {
+      if (!SUPPORTED_FORMATS.includes(ext)) {
+        rejected.push({ name: file.name, reason: `Unsupported format (${ext})` });
+      } else if (file.size > 500 * 1024 * 1024) {
+        rejected.push({ name: file.name, reason: 'File exceeds 500MB limit' });
+      } else {
         valid.push({ file, id: Math.random().toString(36).slice(2), progress: 0, status: 'pending' });
       }
     });
+    setRejectedFiles(rejected);
     setFiles(prev => [...prev, ...valid]);
   };
 
@@ -158,6 +168,13 @@ export function UserUploadForm({ subscription }: { subscription: UserSubscriptio
               <input ref={fileInputRef} type="file" multiple accept={SUPPORTED_FORMATS.join(',')} className="hidden" onChange={e => handleFileSelect(e.target.files)} />
             </div>
           </div>
+          {rejectedFiles.length > 0 && (
+            <div className="space-y-1">
+              {rejectedFiles.map((r, i) => (
+                <p key={i} className="text-xs text-red-400">{r.name}: {r.reason}</p>
+              ))}
+            </div>
+          )}
           {files.length > 0 && (
             <div className="space-y-2">
               {files.map(f => (
@@ -166,6 +183,7 @@ export function UserUploadForm({ subscription }: { subscription: UserSubscriptio
                   <div className="flex items-center gap-2">
                     {f.status === 'uploading' && <Progress value={f.progress} className="w-20" />}
                     {f.status === 'complete' && <Badge className="bg-green-600">Done</Badge>}
+                    {f.status === 'error' && <Badge className="bg-red-600">Failed</Badge>}
                     <Button variant="ghost" size="sm" onClick={() => removeFile(f.id)} className="text-red-400">Remove</Button>
                   </div>
                 </div>

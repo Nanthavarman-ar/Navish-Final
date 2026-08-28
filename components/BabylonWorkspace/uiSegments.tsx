@@ -435,7 +435,7 @@ const GestureInspectorOverlay: React.FC<{ visible: boolean; onClose: () => void;
   ].slice(0, 8);
 
   return (
-    <div className="fixed bottom-4 left-4 z-50 w-72 rounded-lg border border-slate-800 bg-slate-900/95 p-4 text-slate-100 shadow-xl">
+    <div className="fixed bottom-4 left-4 z-50 w-72 max-w-[90vw] rounded-lg border border-slate-800 bg-slate-900/95 p-4 text-slate-100 shadow-xl">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2 text-sm font-semibold">
           <Hand className="h-4 w-4 text-pink-400" />
@@ -514,6 +514,14 @@ const FloodSimulation = React.lazy(() => import('../FloodSimulation'));
 const WindTunnelSimulation = React.lazy(() => import('../WindTunnelSimulation'));
 const LightingPresets = React.lazy(() => import('../LightingPresets'));
 const GraphicsQualityPanel = React.lazy(() => import('../GraphicsQualityPanel'));
+const SunStudyPanel = React.lazy(() => import('../SunStudyPanel'));
+const ErgonomicTesting = React.lazy(() => import('../ErgonomicTesting'));
+const AIStructuralAdvisor = React.lazy(() => import('../AIStructuralAdvisor'));
+const TopographyGenerator = React.lazy(() => import('../TopographyGenerator'));
+const ConstructionOverlay = React.lazy(() => import('../ConstructionOverlay'));
+const ShadowImpactAnalysis = React.lazy(() => import('../ShadowImpactAnalysis'));
+const CirculationFlowSimulation = React.lazy(() => import('../CirculationFlowSimulation'));
+const AICoDesigner = React.lazy(() => import('../AICoDesigner'));
 const VersionHistoryPanel = React.lazy(() => import('../VersionHistoryPanel'));
 const AnnotationTool = React.lazy(() => import('../AnnotationTool'));
 const SiteContextPanel = React.lazy(() => import('../SiteContextPanel'));
@@ -621,8 +629,8 @@ export const CustomPanelsSegment: React.FC<CustomPanelsSegmentProps> = (props) =
 );
 
 // Sub-segment components for CustomPanels
-const CoreFeaturesSegment: React.FC<Pick<CustomPanelsSegmentProps, 'featureStates' | 'sceneRef' | 'engineRef' | 'cameraRef' | 'bimManagerRef' | 'aiManagerRef' | 'workspaces' | 'selectedWorkspaceId' | 'handleWorkspaceSelect' | 'handleMaterialApplied' | 'handleAnimationCreate' | 'handleSequencePlay' | 'disableFeature' | 'workspaceState' | 'scenarioManagerRef' | 'moodSceneManagerRef' | 'animationManagerRef' | 'cloudAnchorManagerRef' | 'arCloudAnchorsRef' | 'gpsTransformUtilsRef' | 'xrManagerRef' | 'graphicsQuality' | 'setGraphicsQuality' | 'recommendedQuality' | 'gpuName' | 'deviceCapabilities'>> = ({
-  featureStates, sceneRef, engineRef, cameraRef, bimManagerRef, aiManagerRef, workspaces, selectedWorkspaceId, handleWorkspaceSelect, handleMaterialApplied, handleAnimationCreate, handleSequencePlay, disableFeature, workspaceState, scenarioManagerRef, moodSceneManagerRef, animationManagerRef, cloudAnchorManagerRef, arCloudAnchorsRef, gpsTransformUtilsRef, xrManagerRef, graphicsQuality, setGraphicsQuality, recommendedQuality, gpuName, deviceCapabilities
+const CoreFeaturesSegment: React.FC<Pick<CustomPanelsSegmentProps, 'featureStates' | 'sceneRef' | 'engineRef' | 'cameraRef' | 'bimManagerRef' | 'aiManagerRef' | 'workspaces' | 'selectedWorkspaceId' | 'handleWorkspaceSelect' | 'handleMaterialApplied' | 'handleAnimationCreate' | 'handleSequencePlay' | 'disableFeature' | 'workspaceState' | 'scenarioManagerRef' | 'moodSceneManagerRef' | 'animationManagerRef' | 'cloudAnchorManagerRef' | 'arCloudAnchorsRef' | 'gpsTransformUtilsRef' | 'xrManagerRef' | 'graphicsQuality' | 'setGraphicsQuality' | 'recommendedQuality' | 'gpuName' | 'deviceCapabilities' | 'simulationManagerRef' | 'currentModelId'>> = ({
+  featureStates, sceneRef, engineRef, cameraRef, bimManagerRef, aiManagerRef, workspaces, selectedWorkspaceId, handleWorkspaceSelect, handleMaterialApplied, handleAnimationCreate, handleSequencePlay, disableFeature, workspaceState, scenarioManagerRef, moodSceneManagerRef, animationManagerRef, cloudAnchorManagerRef, arCloudAnchorsRef, gpsTransformUtilsRef, xrManagerRef, graphicsQuality, setGraphicsQuality, recommendedQuality, gpuName, deviceCapabilities, simulationManagerRef, currentModelId
 }) => (
   <>
     {featureStates.showMaterialEditor && sceneRef.current && (
@@ -698,6 +706,112 @@ const CoreFeaturesSegment: React.FC<Pick<CustomPanelsSegmentProps, 'featureState
             gpuName={gpuName}
             capabilities={deviceCapabilities}
           />
+        </div>
+      </div>
+      </Suspense>
+    )}
+    {/* Previously-orphaned tools revived from the site audit - each already existed as a
+        real component but had no featureStates flag or UI path to reach it. Reachable now
+        via Tools & Features' "Open in Workspace" button (toolPageDefinitions.ts's
+        workspaceFeature mapping) same as every other feature. SunStudyPanel,
+        AIStructuralAdvisor, and AICoDesigner already render their own fixed-position
+        panel chrome (header + close button) - wrapping them again here would double them
+        up, so they're rendered directly. The rest render bare content meant to sit inside
+        a container, so they get the same floating-panel shell used elsewhere in this file. */}
+    {featureStates.showSunStudy && sceneRef.current && (
+      <Suspense fallback={null}>
+        <SunStudyPanel scene={sceneRef.current} onClose={() => disableFeature('showSunStudy')} />
+      </Suspense>
+    )}
+    {featureStates.showAIStructuralAdvisor && sceneRef.current && (
+      <Suspense fallback={null}>
+        <AIStructuralAdvisor scene={sceneRef.current} isActive onClose={() => disableFeature('showAIStructuralAdvisor')} />
+      </Suspense>
+    )}
+    {featureStates.showAICoDesigner && sceneRef.current && (
+      <Suspense fallback={null}>
+        <AICoDesigner
+          scene={sceneRef.current}
+          isActive
+          onClose={() => disableFeature('showAICoDesigner')}
+          selectedMesh={workspaceState?.selectedMesh ?? null}
+        />
+      </Suspense>
+    )}
+    {featureStates.showErgonomicTesting && sceneRef.current && (
+      <Suspense fallback={<div className="fixed top-4 right-4 z-50 w-80 h-40 bg-slate-900/95 rounded-lg animate-pulse border border-slate-600" />}>
+      <div className="fixed top-4 right-4 z-50 w-80 max-w-[90vw] max-h-[85vh] flex flex-col bg-slate-900/95 backdrop-blur-sm border border-slate-600 rounded-xl shadow-2xl pointer-events-auto overflow-hidden">
+        <div className="flex justify-between items-center px-4 py-3 border-b border-slate-600 bg-slate-800/80 shrink-0">
+          <span className="text-sm font-semibold text-slate-200">Ergonomic Testing</span>
+          <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-400 hover:text-white" onClick={() => disableFeature('showErgonomicTesting')} aria-label="Close Ergonomic Testing">✕</Button>
+        </div>
+        <div className="flex-1 min-h-0 overflow-y-auto p-2">
+          <ErgonomicTesting scene={sceneRef.current} />
+        </div>
+      </div>
+      </Suspense>
+    )}
+    {featureStates.showTopographyGenerator && sceneRef.current && (
+      <Suspense fallback={<div className="fixed top-4 right-4 z-50 w-80 h-40 bg-slate-900/95 rounded-lg animate-pulse border border-slate-600" />}>
+      <div className="fixed top-4 right-4 z-50 w-80 max-w-[90vw] max-h-[85vh] flex flex-col bg-slate-900/95 backdrop-blur-sm border border-slate-600 rounded-xl shadow-2xl pointer-events-auto overflow-hidden">
+        <div className="flex justify-between items-center px-4 py-3 border-b border-slate-600 bg-slate-800/80 shrink-0">
+          <span className="text-sm font-semibold text-slate-200">Topography Generator</span>
+          <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-400 hover:text-white" onClick={() => disableFeature('showTopographyGenerator')} aria-label="Close Topography Generator">✕</Button>
+        </div>
+        <div className="flex-1 min-h-0 overflow-y-auto p-2">
+          <TopographyGenerator scene={sceneRef.current} />
+        </div>
+      </div>
+      </Suspense>
+    )}
+    {featureStates.showConstructionOverlay && sceneRef.current && (
+      <Suspense fallback={<div className="fixed top-4 right-4 z-50 w-80 h-40 bg-slate-900/95 rounded-lg animate-pulse border border-slate-600" />}>
+      <div className="fixed top-4 right-4 z-50 w-80 max-w-[90vw] max-h-[85vh] flex flex-col bg-slate-900/95 backdrop-blur-sm border border-slate-600 rounded-xl shadow-2xl pointer-events-auto overflow-hidden">
+        <div className="flex justify-between items-center px-4 py-3 border-b border-slate-600 bg-slate-800/80 shrink-0">
+          <span className="text-sm font-semibold text-slate-200">Construction Overlay</span>
+          <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-400 hover:text-white" onClick={() => disableFeature('showConstructionOverlay')} aria-label="Close Construction Overlay">✕</Button>
+        </div>
+        <div className="flex-1 min-h-0 overflow-y-auto p-2">
+          <ConstructionOverlay scene={sceneRef.current} />
+        </div>
+      </div>
+      </Suspense>
+    )}
+    {featureStates.showShadowImpactAnalysis && sceneRef.current && engineRef.current && (
+      <Suspense fallback={<div className="fixed top-4 right-4 z-50 w-96 h-40 bg-slate-900/95 rounded-lg animate-pulse border border-slate-600" />}>
+      <div className="fixed top-4 right-4 z-50 w-96 max-w-[90vw] max-h-[85vh] flex flex-col bg-slate-900/95 backdrop-blur-sm border border-slate-600 rounded-xl shadow-2xl pointer-events-auto overflow-hidden">
+        <div className="flex justify-between items-center px-4 py-3 border-b border-slate-600 bg-slate-800/80 shrink-0">
+          <span className="text-sm font-semibold text-slate-200">Shadow Impact Analysis</span>
+          <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-400 hover:text-white" onClick={() => disableFeature('showShadowImpactAnalysis')} aria-label="Close Shadow Impact Analysis">✕</Button>
+        </div>
+        <div className="flex-1 min-h-0 overflow-y-auto p-2">
+          <ShadowImpactAnalysis scene={sceneRef.current} engine={engineRef.current} />
+        </div>
+      </div>
+      </Suspense>
+    )}
+    {featureStates.showCirculationFlowSimulation && sceneRef.current && engineRef.current && (
+      <Suspense fallback={<div className="fixed top-4 right-4 z-50 w-96 h-40 bg-slate-900/95 rounded-lg animate-pulse border border-slate-600" />}>
+      <div className="fixed top-4 right-4 z-50 w-96 max-w-[90vw] max-h-[85vh] flex flex-col bg-slate-900/95 backdrop-blur-sm border border-slate-600 rounded-xl shadow-2xl pointer-events-auto overflow-hidden">
+        <div className="flex justify-between items-center px-4 py-3 border-b border-slate-600 bg-slate-800/80 shrink-0">
+          <span className="text-sm font-semibold text-slate-200">Circulation Flow Simulation</span>
+          <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-400 hover:text-white" onClick={() => disableFeature('showCirculationFlowSimulation')} aria-label="Close Circulation Flow Simulation">✕</Button>
+        </div>
+        <div className="flex-1 min-h-0 overflow-y-auto p-2">
+          <CirculationFlowSimulation scene={sceneRef.current} engine={engineRef.current} isActive />
+        </div>
+      </div>
+      </Suspense>
+    )}
+    {featureStates.showEnergyDashboard && (
+      <Suspense fallback={<div className="fixed top-4 right-4 z-50 w-96 h-40 bg-slate-900/95 rounded-lg animate-pulse border border-slate-600" />}>
+      <div className="fixed top-4 right-4 z-50 w-96 max-w-[90vw] max-h-[85vh] flex flex-col bg-slate-900/95 backdrop-blur-sm border border-slate-600 rounded-xl shadow-2xl pointer-events-auto overflow-hidden">
+        <div className="flex justify-between items-center px-4 py-3 border-b border-slate-600 bg-slate-800/80 shrink-0">
+          <span className="text-sm font-semibold text-slate-200">Energy Analysis</span>
+          <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-400 hover:text-white" onClick={() => disableFeature('showEnergyDashboard')} aria-label="Close Energy Analysis">✕</Button>
+        </div>
+        <div className="flex-1 min-h-0 overflow-y-auto p-2">
+          <EnergyDashboard bimManager={bimManagerRef.current ?? undefined} simulationManager={simulationManagerRef?.current ?? undefined} modelId={currentModelId} />
         </div>
       </div>
       </Suspense>
@@ -909,7 +1023,7 @@ const PropertyInspectorPanel: React.FC<{ mesh: any; meshCount: number; lightCoun
   );
 
   return (
-    <Card className="fixed top-4 left-4 z-50 w-72 bg-slate-800 border-slate-600 text-white">
+    <Card className="fixed top-4 left-4 z-50 w-72 max-w-[90vw] bg-slate-800 border-slate-600 text-white">
       <CardHeader className="pb-2">
         <div className="flex justify-between items-center">
           <CardTitle className="text-base">Property Inspector</CardTitle>
@@ -1020,7 +1134,7 @@ const SceneBrowserPanel: React.FC<{ scene: any; selectedMesh: any; onSelect: (me
   };
 
   return (
-    <Card className="fixed top-4 right-4 z-50 w-72 max-h-80 overflow-y-auto bg-slate-800 border-slate-600 text-white">
+    <Card className="fixed top-4 right-4 z-50 w-72 max-w-[90vw] max-h-80 overflow-y-auto bg-slate-800 border-slate-600 text-white">
       <CardHeader className="pb-2">
         <div className="flex justify-between items-center">
           <CardTitle className="text-base">Scene Browser</CardTitle>
@@ -1222,7 +1336,7 @@ const AdditionalSimulationSegment: React.FC<Pick<CustomPanelsSegmentProps, 'feat
 }) => (
   <>
     {featureStates.showWeather && sceneRef.current && (
-      <Card className="fixed bottom-4 right-4 z-50 w-72 bg-slate-800 border-slate-600 text-white pointer-events-auto">
+      <Card className="fixed bottom-4 right-4 z-50 w-72 max-w-[90vw] bg-slate-800 border-slate-600 text-white pointer-events-auto">
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle>Weather</CardTitle>
           <Button type="button" size="sm" variant="outline" onClick={() => { onRainToggle?.(false); onSnowToggle?.(false); disableFeature('showWeather'); }}>Close</Button>

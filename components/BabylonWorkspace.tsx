@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef, Suspense, lazy, startTransition } from "react";
 import { createPortal } from "react-dom";
+import { useSearchParams } from 'react-router-dom';
 import './BabylonWorkspace.css';
 
 // Core Babylon.js imports only (minimal for initial load)
@@ -15,7 +16,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 import { Separator } from './ui/separator';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from './ui/dropdown-menu';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
-import { Maximize, MapPin, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Move, RotateCw, Maximize2, X } from 'lucide-react';
+import { Maximize, MapPin, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Move, RotateCw, Maximize2, X, FlipHorizontal } from 'lucide-react';
 
 // Import proper hooks from hooks directory
 import { useFeatureStates, UseFeatureStatesReturn } from '../hooks/useFeatureStates';
@@ -398,6 +399,18 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
     showDomainSelector: false,
     showLighting: true,
     showGraphicsQuality: false,
+    // Real components that existed in the codebase but had no way to reach them from
+    // the UI (see the site audit) - now reachable via the Tools & Features catalog's
+    // "Open in Workspace" button (toolPageDefinitions.ts's workspaceFeature mapping),
+    // same as every other feature flag.
+    showSunStudy: false,
+    showErgonomicTesting: false,
+    showAIStructuralAdvisor: false,
+    showTopographyGenerator: false,
+    showConstructionOverlay: false,
+    showShadowImpactAnalysis: false,
+    showCirculationFlowSimulation: false,
+    showEnergyDashboard: false,
     showMiscellaneous: false,
     // false so these don't render as "pressed" on load while transformMode is still 'none' -
     // they used to default true while the state actually driving the tool defaulted false, so
@@ -420,6 +433,19 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
     activeFeatures,
     featuresByCategory: rawFeaturesByCategory
   } = useFeatureStates(initialFeatureStates);
+
+  // "Open in Workspace" from a Tools & Features page (ToolPage.tsx) navigates here as
+  // /workspace?feature=showXxx - this is what actually turns that flag on. Only enables
+  // a flag that's a real key in initialFeatureStates, so an arbitrary/malformed query
+  // string can't toggle on something unexpected.
+  const [searchParams] = useSearchParams();
+  useEffect(() => {
+    const requestedFeature = searchParams.get('feature');
+    if (requestedFeature && Object.prototype.hasOwnProperty.call(initialFeatureStates, requestedFeature)) {
+      enableFeature(requestedFeature);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
 
   // Workspace state hook
   const {
@@ -884,6 +910,28 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
     arcCam.upperRadiusLimit = prevUpper;
     showToast.success('Zoomed to fit model');
   }, []);
+
+  // One-shot flip of the selected mesh across its local X axis (left-right mirror) -
+  // negating a scaling component is the standard way to mirror a mesh in Babylon;
+  // rendering stays correct (no inside-out faces) because Babylon flips the culling
+  // winding order automatically whenever a mesh's world matrix has a negative
+  // determinant. Pushes the same 'transform' undo entry shape the gizmo-drag snapshot
+  // uses (BabylonWorkspace.tsx's transformMode effect) so Ctrl+Z un-mirrors it too.
+  const handleMirrorSelected = React.useCallback(() => {
+    const mesh = workspaceState.selectedMesh;
+    if (!mesh) return;
+    undoHistoryRef.current.push({
+      kind: 'transform',
+      mesh,
+      position: mesh.position.clone(),
+      rotationQuaternion: mesh.rotationQuaternion ? mesh.rotationQuaternion.clone() : null,
+      rotation: mesh.rotation.clone(),
+      scaling: mesh.scaling.clone(),
+    });
+    if (undoHistoryRef.current.length > 50) undoHistoryRef.current.shift();
+    mesh.scaling.x *= -1;
+    showToast.success('Mirrored');
+  }, [workspaceState.selectedMesh]);
 
   // handle files selected via workspace import dialog
   const handleWorkspaceFileUpload = React.useCallback((files: FileList | null) => {
@@ -3304,6 +3352,7 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
       if (key === 'g' && !e.ctrlKey && !e.metaKey) { e.preventDefault(); setTransformMode((m) => m === 'position' ? 'none' : 'position'); }
       if (key === 'r' && !e.ctrlKey && !e.metaKey) { e.preventDefault(); setTransformMode((m) => m === 'rotation' ? 'none' : 'rotation'); }
       if (key === 's' && !e.ctrlKey && !e.metaKey) { e.preventDefault(); setTransformMode((m) => m === 'scale' ? 'none' : 'scale'); }
+      if (key === 'h' && !e.ctrlKey && !e.metaKey) { e.preventDefault(); handleMirrorSelected(); }
       if (e.key === 'Escape') { setTransformMode('none'); setSelectedMesh(null); }
       // 'z' toggles AR mode, but only when NOT combined with Ctrl/Cmd (Ctrl/Cmd+Z is
       // undo, handled above in the ctrl-key branch).
@@ -3311,7 +3360,7 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
     };
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
-  }, [topBarVisible, leftPanelVisible, rightPanelVisible, bottomPanelVisible, updateState, setLayoutMode, handleFeatureToggle, featureStates]);
+  }, [topBarVisible, leftPanelVisible, rightPanelVisible, bottomPanelVisible, updateState, setLayoutMode, handleFeatureToggle, featureStates, handleMirrorSelected]);
 
   // Voice command listener - toggle features from AI Voice Assistant
   React.useEffect(() => {
@@ -3680,6 +3729,13 @@ const getCategoryDescription = (categoryName: string): string => {
                   onClick={() => setTransformMode((m) => m === 'scale' ? 'none' : 'scale')}
                 >
                   <Maximize2 className="w-4 h-4" />
+                </Button>
+                <Button
+                  size="sm" variant="ghost"
+                  className="h-8 px-2" title="Mirror (H)"
+                  onClick={handleMirrorSelected}
+                >
+                  <FlipHorizontal className="w-4 h-4" />
                 </Button>
                 <div className="w-px h-5 bg-gray-700 mx-1" />
                 <Button

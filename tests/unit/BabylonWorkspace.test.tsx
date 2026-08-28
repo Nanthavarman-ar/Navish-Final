@@ -360,11 +360,6 @@ jest.mock('../../components/LeftPanel', () => ({
   default: ({ children }: { children: React.ReactNode }) => <div data-testid="left-panel">{children}</div>,
 }));
 
-jest.mock('../../components/RightPanel', () => ({
-  __esModule: true,
-  default: ({ children }: { children: React.ReactNode }) => <div data-testid="right-panel">{children}</div>,
-}));
-
 jest.mock('../../components/TopBar', () => ({
   __esModule: true,
   default: ({ children }: { children: React.ReactNode }) => <div data-testid="top-bar">{children}</div>,
@@ -426,16 +421,6 @@ jest.mock('../../components/AutoFurnish', () => ({
 jest.mock('../../components/AICoDesigner', () => ({
   __esModule: true,
   default: ({ children }: { children: React.ReactNode }) => <div data-testid="ai-co-designer">{children}</div>,
-}));
-
-jest.mock('../../components/MoodScenePanel', () => ({
-  __esModule: true,
-  default: ({ children }: { children: React.ReactNode }) => <div data-testid="mood-scene-panel">{children}</div>,
-}));
-
-jest.mock('../../components/SeasonalDecorPanel', () => ({
-  __esModule: true,
-  default: ({ children }: { children: React.ReactNode }) => <div data-testid="seasonal-decor-panel">{children}</div>,
 }));
 
 jest.mock('../../components/ARScalePanel', () => ({

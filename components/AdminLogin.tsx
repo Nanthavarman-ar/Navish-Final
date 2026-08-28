@@ -1,17 +1,33 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { supabase } from '../supabase/client';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { PasswordInput } from './ui/password-input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
 import { Label } from './ui/label';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from './ui/dialog';
 import { ArrowLeft, Shield } from 'lucide-react';
 
 export function AdminLogin() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
+  // Unlike Login.tsx/ClientLogin.tsx, this screen previously had no self-serve recovery
+  // path at all - since there's only ever one admin account (provisioned offline via
+  // scripts/create-admin.mjs, which refuses to create a second one), losing that
+  // password meant a real lockout with no in-app way back in.
+  const [forgotOpen, setForgotOpen] = useState(false);
+  const [forgotEmail, setForgotEmail] = useState('');
+  const [forgotSent, setForgotSent] = useState(false);
   const { login, loading } = useAuth();
   const navigate = useNavigate();
 
@@ -24,6 +40,12 @@ export function AdminLogin() {
     } else {
       setError('Unable to sign in. Verify your email and password, or this account is not an administrator.');
     }
+  };
+
+  const handleForgotSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    await supabase.auth.resetPasswordForEmail(forgotEmail);
+    setForgotSent(true);
   };
 
   return (
@@ -61,7 +83,16 @@ export function AdminLogin() {
               />
             </div>
             <div>
-              <Label htmlFor="password" className="text-white">Password</Label>
+              <div className="flex justify-between items-center">
+                <Label htmlFor="password" className="text-white">Password</Label>
+                <button
+                  type="button"
+                  onClick={() => setForgotOpen(true)}
+                  className="text-xs text-cyan-400 hover:text-cyan-300"
+                >
+                  Forgot password?
+                </button>
+              </div>
               <PasswordInput
                 id="password"
                 value={password}
@@ -94,6 +125,46 @@ export function AdminLogin() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Forgot Password Dialog */}
+      <Dialog open={forgotOpen} onOpenChange={setForgotOpen}>
+        <DialogContent className="bg-slate-800 border-slate-700 text-white">
+          <DialogHeader>
+            <DialogTitle>Forgot Password</DialogTitle>
+            <DialogDescription className="text-gray-400">
+              Enter your admin email and we&apos;ll send you a link to reset your password.
+            </DialogDescription>
+          </DialogHeader>
+          {forgotSent ? (
+            <p className="text-green-400 py-4">
+              If an account exists for {forgotEmail || 'that email'}, a password reset link has been sent.
+            </p>
+          ) : (
+            <form onSubmit={handleForgotSubmit} className="space-y-4">
+              <div>
+                <Label htmlFor="forgot-email" className="text-white">Email</Label>
+                <Input
+                  id="forgot-email"
+                  type="email"
+                  value={forgotEmail}
+                  onChange={(e) => setForgotEmail(e.target.value)}
+                  required
+                  className="bg-slate-700 border-slate-600 text-white"
+                  placeholder="admin@example.com"
+                />
+              </div>
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => setForgotOpen(false)}>
+                  Cancel
+                </Button>
+                <Button type="submit" className="bg-cyan-600 hover:bg-cyan-700">
+                  Send reset link
+                </Button>
+              </DialogFooter>
+            </form>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

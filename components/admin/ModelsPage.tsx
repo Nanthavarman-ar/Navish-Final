@@ -97,13 +97,16 @@ export function ModelsPage() {
       return;
     }
     try {
-      // Try API call first
       await apiCall(`/models/${modelId}`, { method: 'DELETE' });
       refetch();
+      showToast.success(`"${model?.name}" deleted`);
     } catch (error) {
-      // Fallback to local state update
-      setModels(prev => prev.filter(m => m.id.toString() !== modelId.toString()));
-      console.log('Model deleted from local state');
+      // Previously fell back to removing the row from local state only, which showed
+      // the delete as "successful" in the UI while the model still existed on the
+      // server - it would silently reappear on the next refetch with no indication
+      // anything had gone wrong. Report the real failure instead.
+      console.error('Failed to delete model:', error);
+      showToast.error(`Failed to delete "${model?.name}"`, 'The model still exists on the server - please try again');
     }
   };
 
@@ -176,11 +179,18 @@ export function ModelsPage() {
 
   const handleDownloadModel = (modelId: string | number) => {
     const model = models.find(m => m.id.toString() === modelId.toString());
-    // Simulate download
-    const link = document.createElement('a');
-    link.href = '#';
-    link.download = `${model?.name || 'model'}.glb`;
-    console.log(`Downloading ${model?.name}`);
+    if (model?.modelUrl) {
+      const link = document.createElement('a');
+      link.href = model.modelUrl;
+      link.download = `${model.name || 'model'}.glb`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    } else {
+      // Previously built an <a> with href="#" and never clicked it - a no-op that
+      // looked like a working download button. Say so instead of doing nothing.
+      showToast.error('Download unavailable', `"${model?.name || 'This model'}" has no file URL on record`);
+    }
   };
 
   const handleBulkAssign = () => {
@@ -212,8 +222,9 @@ export function ModelsPage() {
   };
 
   const handleBulkExport = () => {
-    console.log(`Exporting ${selectedModels.length} models`);
-    setSelectedModels([]);
+    // Bulk export has no real implementation yet (previously just a console.log) -
+    // say so rather than clearing the selection as if it had done something.
+    showToast.error('Bulk export not available yet', 'Download models individually for now');
   };
 
   const bulkActions = [

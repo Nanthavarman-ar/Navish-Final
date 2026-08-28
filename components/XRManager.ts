@@ -66,6 +66,21 @@ export class XRManager {
   private arSelectListener: (() => void) | null = null;
   private placementScale: number = 1;
 
+  // Two-finger pinch-to-zoom for the placed model - the only scaling controls that
+  // existed before this were the on-screen +/- buttons (a fixed ~4% step per tap/hold
+  // tick) and a desktop-only slider (ARScalePanel), neither of which is the direct
+  // "spread fingers to grow, pinch to shrink" gesture every mobile AR app trains users
+  // to expect. Listens at the document level rather than on the (pointer-events:none)
+  // AR overlay container, so it sees every touch on the page without having to change
+  // that container's hit-testing - and critically, without swallowing single-finger
+  // taps, which still need to reach the WebXR session untouched so the existing
+  // tap-to-place 'select' listener keeps working exactly as before.
+  private arPinchTouchStart: ((e: TouchEvent) => void) | null = null;
+  private arPinchTouchMove: ((e: TouchEvent) => void) | null = null;
+  private arPinchTouchEnd: ((e: TouchEvent) => void) | null = null;
+  private pinchStartDistance: number = 0;
+  private pinchStartScale: number = 1;
+
   // Raw native hit-test bound to the right controller's own pointer direction, instead
   // of hitTestFeature above (Babylon's WebXRHitTest, which is always head/gaze-locked)
   // - see setupControllerAnchoredHitTest for why this exists.
@@ -816,6 +831,59 @@ export class XRManager {
       root.rotationQuaternion = this.lastHitPose.rotationQuaternion.clone();
     };
     session?.addEventListener('select', this.arSelectListener);
+
+    this.setupPinchToZoom();
+  }
+
+  // See the field comments above for why this listens at the document level instead of
+  // the AR overlay container.
+  private setupPinchToZoom(): void {
+    const distanceBetween = (touches: TouchList): number => {
+      const dx = touches[0].clientX - touches[1].clientX;
+      const dy = touches[0].clientY - touches[1].clientY;
+      return Math.sqrt(dx * dx + dy * dy);
+    };
+
+    this.arPinchTouchStart = (e: TouchEvent) => {
+      if (e.touches.length !== 2) return;
+      // Only claim two-finger touches - a single finger is left completely alone so it
+      // still reaches the WebXR session as a normal tap-to-place 'select'.
+      e.preventDefault();
+      this.pinchStartDistance = distanceBetween(e.touches);
+      this.pinchStartScale = this.placementScale;
+    };
+
+    this.arPinchTouchMove = (e: TouchEvent) => {
+      if (e.touches.length !== 2 || this.pinchStartDistance <= 0) return;
+      e.preventDefault();
+      const currentDistance = distanceBetween(e.touches);
+      const ratio = currentDistance / this.pinchStartDistance;
+      this.setPlacedModelScale(this.pinchStartScale * ratio);
+    };
+
+    this.arPinchTouchEnd = (e: TouchEvent) => {
+      if (e.touches.length < 2) {
+        this.pinchStartDistance = 0;
+      }
+    };
+
+    document.addEventListener('touchstart', this.arPinchTouchStart, { passive: false });
+    document.addEventListener('touchmove', this.arPinchTouchMove, { passive: false });
+    document.addEventListener('touchend', this.arPinchTouchEnd, { passive: false });
+    document.addEventListener('touchcancel', this.arPinchTouchEnd, { passive: false });
+  }
+
+  private teardownPinchToZoom(): void {
+    if (this.arPinchTouchStart) document.removeEventListener('touchstart', this.arPinchTouchStart);
+    if (this.arPinchTouchMove) document.removeEventListener('touchmove', this.arPinchTouchMove);
+    if (this.arPinchTouchEnd) {
+      document.removeEventListener('touchend', this.arPinchTouchEnd);
+      document.removeEventListener('touchcancel', this.arPinchTouchEnd);
+    }
+    this.arPinchTouchStart = null;
+    this.arPinchTouchMove = null;
+    this.arPinchTouchEnd = null;
+    this.pinchStartDistance = 0;
   }
 
   // Babylon's own WebXRHitTest feature (this.hitTestFeature, used above) only ever
@@ -912,6 +980,7 @@ export class XRManager {
     }
     this.reticle = null;
     this.teardownAROverlayUI();
+    this.teardownPinchToZoom();
     // Deliberately NOT disposing placementRoot or resetting placementScale here - if
     // the user re-enters AR in the same session, their last placement/scale is kept
     // rather than snapping back to the model's original authored position.

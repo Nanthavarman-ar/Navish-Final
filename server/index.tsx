@@ -1523,12 +1523,112 @@ app.get('/make-server-cf230d31/clients', async (c) => {
   try {
     const allUsers = await kv.getByPrefix('user:');
     const clients = allUsers.filter(userData => userData.role === 'client');
-    
+
     return c.json({ clients });
-    
+
   } catch (error) {
     console.error('Clients fetch error:', error);
     return c.json({ error: 'Failed to fetch clients' }, 500);
+  }
+});
+
+// Delete client (Admin only) - previously the frontend only removed the row from
+// local React state with no server route backing it at all, so a "deleted" user
+// silently reappeared on the next refetch. Refuses to delete a client that still has
+// models assigned (mirrors the guard already in ClientsPage.tsx), and removes both
+// the Supabase Auth account and the KV profile record.
+app.delete('/make-server-cf230d31/clients/:id', async (c) => {
+  const { error, user } = await verifyAdmin(c.req.raw);
+
+  if (error) {
+    return c.json({ error }, 401);
+  }
+
+  try {
+    const clientId = c.req.param('id');
+    const client = await kv.get(`user:${clientId}`);
+
+    if (!client || client.role !== 'client') {
+      return c.json({ error: 'Client not found' }, 404);
+    }
+
+    if (client.assignedModels && client.assignedModels.length > 0) {
+      return c.json({ error: 'Cannot delete a user with assigned models' }, 400);
+    }
+
+    const { error: deleteError } = await supabase.auth.admin.deleteUser(clientId);
+    if (deleteError) {
+      console.error('Auth user delete error:', deleteError);
+      return c.json({ error: 'Failed to delete account' }, 500);
+    }
+
+    await kv.del(`user:${clientId}`);
+
+    await logAuditEvent(
+      user.id,
+      user.user_metadata?.username || 'admin',
+      'USER_DELETED',
+      client.username || client.name || clientId,
+      `Deleted client account: ${client.username || client.email}`,
+      c.req.header('cf-connecting-ip') || 'unknown',
+      c.req.header('user-agent') || 'unknown'
+    );
+
+    return c.json({ message: 'Client deleted successfully' });
+
+  } catch (error) {
+    console.error('Delete client error:', error);
+    return c.json({ error: 'Internal server error' }, 500);
+  }
+});
+
+// Activate/deactivate client (Admin only) - previously toggled a local-only React
+// state flag with no server route, so it reverted on refetch. This actually blocks
+// sign-in when deactivated (via Supabase Auth's own ban mechanism) rather than being
+// a cosmetic-only flag - lifting the ban (ban_duration: 'none') on reactivation.
+app.patch('/make-server-cf230d31/clients/:id/status', async (c) => {
+  const { error, user } = await verifyAdmin(c.req.raw);
+
+  if (error) {
+    return c.json({ error }, 401);
+  }
+
+  try {
+    const clientId = c.req.param('id');
+    const body = await c.req.json();
+    const nextStatus: 'active' | 'inactive' = body?.status === 'inactive' ? 'inactive' : 'active';
+
+    const client = await kv.get(`user:${clientId}`);
+    if (!client || client.role !== 'client') {
+      return c.json({ error: 'Client not found' }, 404);
+    }
+
+    const { error: banError } = await supabase.auth.admin.updateUserById(clientId, {
+      ban_duration: nextStatus === 'inactive' ? '876000h' : 'none'
+    });
+    if (banError) {
+      console.error('Status update auth error:', banError);
+      return c.json({ error: 'Failed to update account status' }, 500);
+    }
+
+    client.status = nextStatus;
+    await kv.set(`user:${clientId}`, client);
+
+    await logAuditEvent(
+      user.id,
+      user.user_metadata?.username || 'admin',
+      nextStatus === 'active' ? 'USER_ACTIVATED' : 'USER_DEACTIVATED',
+      client.username || client.name || clientId,
+      `${nextStatus === 'active' ? 'Activated' : 'Deactivated'} client account: ${client.username || client.email}`,
+      c.req.header('cf-connecting-ip') || 'unknown',
+      c.req.header('user-agent') || 'unknown'
+    );
+
+    return c.json({ message: 'Status updated', status: nextStatus });
+
+  } catch (error) {
+    console.error('Update client status error:', error);
+    return c.json({ error: 'Internal server error' }, 500);
   }
 });
 

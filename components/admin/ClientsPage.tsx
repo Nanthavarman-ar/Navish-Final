@@ -245,27 +245,43 @@ export function ClientsPage() {
     setErrors({});
   };
 
-  const handleDeleteClient = (clientId: string) => {
+  const handleDeleteClient = async (clientId: string) => {
     const client = clients.find(c => c.id === clientId);
     if (client?.assignedModels && client.assignedModels > 0) {
       showToast.error('Cannot delete user with assigned models');
       return;
     }
-    if (confirm(`Delete user ${client?.name}? This cannot be undone.`)) {
+    if (!confirm(`Delete user ${client?.name}? This cannot be undone.`)) {
+      return;
+    }
+    try {
+      await apiCall(`/clients/${clientId}`, { method: 'DELETE' });
       setClients(prev => prev.filter(c => c.id !== clientId));
       showToast.success('User deleted successfully');
+    } catch (error) {
+      console.error('Failed to delete client:', error);
+      showToast.error('Failed to delete user', error instanceof Error ? error.message : undefined);
     }
   };
 
-  const handleToggleStatus = (clientId: string) => {
-    setClients(prev => prev.map(c => 
-      c.id === clientId 
-        ? { ...c, status: c.status === 'active' ? 'inactive' : 'active' }
-        : c
-    ));
+  const handleToggleStatus = async (clientId: string) => {
     const client = clients.find(c => c.id === clientId);
-    const newStatus = client?.status === 'active' ? 'inactive' : 'active';
-    showToast.success(`User ${newStatus === 'active' ? 'activated' : 'deactivated'}`);
+    if (!client) return;
+    const nextStatus = client.status === 'active' ? 'inactive' : 'active';
+    try {
+      // Deactivating actually bans the account at the Supabase Auth level server-side
+      // (see /clients/:id/status), not just a cosmetic flag - a deactivated user can no
+      // longer sign in at all.
+      await apiCall(`/clients/${clientId}/status`, {
+        method: 'PATCH',
+        body: JSON.stringify({ status: nextStatus }),
+      });
+      setClients(prev => prev.map(c => c.id === clientId ? { ...c, status: nextStatus } : c));
+      showToast.success(`User ${nextStatus === 'active' ? 'activated' : 'deactivated'}`);
+    } catch (error) {
+      console.error('Failed to update client status:', error);
+      showToast.error('Failed to update status', error instanceof Error ? error.message : undefined);
+    }
   };
 
   // Was entirely fake: picked a random 1-3 count, bumped the client's local

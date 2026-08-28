@@ -248,6 +248,8 @@ export function ClientDashboard() {
             <Button
               variant="outline"
               className="border-gray-600 text-gray-400 hover:text-white"
+              disabled
+              title="Coming soon"
             >
               <User className="w-4 h-4 mr-2" />
               Profile
@@ -311,6 +313,8 @@ export function ClientDashboard() {
                 variant="outline"
                 size="sm"
                 className="border-slate-600"
+                disabled
+                title="Coming soon"
               >
                 <Filter className="w-4 h-4 mr-2" />
                 Filter

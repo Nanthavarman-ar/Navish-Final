@@ -33,6 +33,7 @@ export function ClientLogin() {
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [changeLoading, setChangeLoading] = useState(false);
   const [changeError, setChangeError] = useState<string | null>(null);
   const [changeSuccess, setChangeSuccess] = useState(false);
   const { login, loading } = useAuth();
@@ -84,9 +85,43 @@ export function ClientLogin() {
     setForgotSent(true);
   };
 
-  const handleChangeSubmit = (e: React.FormEvent) => {
+  // Re-authenticates with the current password first (the only client-side way to
+  // confirm it's actually correct before changing it) and only then calls
+  // updateUser - previously this dialog collected all four fields and then always
+  // rejected the submission with a fixed error telling you to use Forgot Password
+  // instead, so nothing here ever worked.
+  const handleChangeSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setChangeError('For security, use "Forgot password?" to reset your password by email.');
+    setChangeError(null);
+    if (newPassword !== confirmPassword) {
+      setChangeError('New password and confirmation do not match.');
+      return;
+    }
+    if (newPassword.length < 6) {
+      setChangeError('New password must be at least 6 characters.');
+      return;
+    }
+    setChangeLoading(true);
+    try {
+      const { error: signInError } = await supabase.auth.signInWithPassword({
+        email: changeEmail,
+        password: currentPassword,
+      });
+      if (signInError) {
+        setChangeError('Current email or password is incorrect.');
+        return;
+      }
+      const { error: updateError } = await supabase.auth.updateUser({ password: newPassword });
+      if (updateError) {
+        setChangeError(updateError.message || 'Failed to change password.');
+        return;
+      }
+      setChangeSuccess(true);
+    } catch {
+      setChangeError('Something went wrong. Please try again.');
+    } finally {
+      setChangeLoading(false);
+    }
   };
 
   return (
@@ -238,7 +273,20 @@ export function ClientLogin() {
       </Dialog>
 
       {/* Change Password Dialog */}
-      <Dialog open={changeOpen} onOpenChange={(open) => { setChangeOpen(open); if (!open) setChangeError(null); setChangeSuccess(false); }}>
+      <Dialog
+        open={changeOpen}
+        onOpenChange={(open) => {
+          setChangeOpen(open);
+          if (!open) {
+            setChangeError(null);
+            setChangeSuccess(false);
+            setChangeEmail('');
+            setCurrentPassword('');
+            setNewPassword('');
+            setConfirmPassword('');
+          }
+        }}
+      >
         <DialogContent className="bg-slate-800 border-slate-700 text-white">
           <DialogHeader>
             <DialogTitle>Change Password</DialogTitle>
@@ -297,8 +345,8 @@ export function ClientLogin() {
                 <Button type="button" variant="outline" onClick={() => setChangeOpen(false)}>
                   Cancel
                 </Button>
-                <Button type="submit" className="bg-purple-600 hover:bg-purple-700">
-                  Change Password
+                <Button type="submit" className="bg-purple-600 hover:bg-purple-700" disabled={changeLoading}>
+                  {changeLoading ? 'Changing...' : 'Change Password'}
                 </Button>
               </DialogFooter>
             </form>

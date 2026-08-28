@@ -237,7 +237,7 @@ export function SettingsPage() {
                     <span className="text-black font-bold text-2xl">A</span>
                   </div>
                   <div className="space-y-2">
-                    <Button variant="outline" size="sm" className="border-slate-600">
+                    <Button variant="outline" size="sm" className="border-slate-600" disabled title="Coming soon">
                       <Upload className="w-4 h-4 mr-2" />
                       Upload New
                     </Button>
@@ -295,11 +295,11 @@ export function SettingsPage() {
                 </div>
                 
                 <div className="space-y-3">
-                  <Button variant="outline" className="border-yellow-400 text-yellow-400 hover:bg-yellow-400 hover:text-black">
+                  <Button variant="outline" className="border-yellow-400 text-yellow-400 hover:bg-yellow-400 hover:text-black" disabled title="Coming soon">
                     <Lock className="w-4 h-4 mr-2" />
                     Change Password
                   </Button>
-                  <Button variant="outline" className="border-red-400 text-red-400 hover:bg-red-400 hover:text-white">
+                  <Button variant="outline" className="border-red-400 text-red-400 hover:bg-red-400 hover:text-white" disabled title="Coming soon">
                     <Eye className="w-4 h-4 mr-2" />
                     View Active Sessions
                   </Button>
@@ -563,11 +563,11 @@ export function SettingsPage() {
                 </div>
                 
                 <div className="flex gap-3">
-                  <Button variant="outline" className="border-blue-400 text-blue-400 hover:bg-blue-400 hover:text-white">
+                  <Button variant="outline" className="border-blue-400 text-blue-400 hover:bg-blue-400 hover:text-white" disabled title="Coming soon">
                     <Download className="w-4 h-4 mr-2" />
                     Export Data
                   </Button>
-                  <Button variant="outline" className="border-red-400 text-red-400 hover:bg-red-400 hover:text-white">
+                  <Button variant="outline" className="border-red-400 text-red-400 hover:bg-red-400 hover:text-white" disabled title="Coming soon">
                     <Zap className="w-4 h-4 mr-2" />
                     Clean Now
                   </Button>
