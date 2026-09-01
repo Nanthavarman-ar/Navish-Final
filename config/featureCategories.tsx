@@ -105,7 +105,8 @@ export const featureCategories: FeaturesByCategory = {
     { id: 'showClashDetection', name: 'Clash Detection', description: 'Detect model clashes', icon: AlertTriangle, category: 'Simulations and Analysis', enabledByDefault: false },
     { id: 'showSustainabilityCompliancePanel', name: 'Sustainability Analysis', description: 'Analyze sustainability compliance', icon: Leaf, category: 'Simulations and Analysis', enabledByDefault: false },
     { id: 'showSessionInsights', name: 'Session Insights', description: 'See which tools you\'ve used most this session', icon: Activity, category: 'Simulations and Analysis', enabledByDefault: false },
-    { id: 'showIoTPanel', name: 'IoT Sensors', description: 'View live sensor readings and control connected devices', icon: Zap, category: 'Simulations and Analysis', enabledByDefault: false }
+    { id: 'showIoTPanel', name: 'IoT Sensors', description: 'View live sensor readings and control connected devices', icon: Zap, category: 'Simulations and Analysis', enabledByDefault: false },
+    { id: 'showMoodLighting', name: 'Mood Lighting', description: 'Preview Romantic, Energetic, Calm, and Dramatic lighting presets', icon: Sun, category: 'Simulations and Analysis', enabledByDefault: false }
   ],
   "Tools and Editors": [
     { id: 'showExport', name: 'Export', description: 'Export scene data', hotkey: 'E', icon: Download, category: 'Tools and Editors', enabledByDefault: true },

@@ -9,6 +9,7 @@ import { showToast } from './utils/toast';
 import type { CostEstimator } from './CostEstimator';
 import type { SustainabilityManager } from './SustainabilityManager';
 import type { BIMManager } from './BIMManager';
+import { usePanelStack } from '../hooks/usePanelStack';
 
 interface DesignReportPanelProps {
   scene: Scene;
@@ -24,6 +25,7 @@ interface DesignReportPanelProps {
 const DesignReportPanel: React.FC<DesignReportPanelProps> = ({
   scene, engine, costEstimator, sustainabilityManager, bimManager, modelId, projectName = 'Untitled Project', onClose
 }) => {
+  const { ref: panelRef, style: panelStyle } = usePanelStack('top-right');
   const [isGenerating, setIsGenerating] = useState(false);
   const [includeCost, setIncludeCost] = useState(true);
   const [includeSustainability, setIncludeSustainability] = useState(true);
@@ -161,7 +163,7 @@ const DesignReportPanel: React.FC<DesignReportPanelProps> = ({
   };
 
   return (
-    <div className="fixed top-20 right-4 z-40 w-80 max-w-[90vw] bg-gray-900/95 border border-cyan-500/20 rounded-lg shadow-2xl text-white">
+    <div ref={panelRef} style={panelStyle} className="fixed right-4 z-40 w-80 max-w-[90vw] bg-gray-900/95 border border-cyan-500/20 rounded-lg shadow-2xl text-white">
       <div className="flex items-center justify-between p-4 border-b border-gray-700">
         <div className="flex items-center gap-2">
           <FileDown className="w-4 h-4 text-cyan-400" />

@@ -130,7 +130,15 @@ const LightingPresets: React.FC<LightingPresetsProps> = ({ scene, onPresetChange
 
   // Sky: flat color (original behavior), a real procedural sky dome (like
   // Enscape's built-in sun/sky), or an imported real-world HDRI.
-  const [skyMode, setSkyMode] = useState<'flat' | 'procedural' | 'hdri'>(persistedLighting.skyMode ?? 'flat');
+  //
+  // Defaults to 'procedural' rather than 'flat' - a scene with no skybox at all (the old
+  // default) rendered every new session with nothing but a flat clear-color void behind
+  // the model, no matter how good the PBR materials/shadows/post-processing were. The
+  // procedural sky costs nothing extra to ship (no HDRI asset file needed - SkyMaterial
+  // is a real-time atmospheric-scattering shader already built into this component,
+  // synced to the actual sun direction) and gives every session a real, dynamic outdoor
+  // sky by default instead of requiring the user to find and click "Sky Dome" first.
+  const [skyMode, setSkyMode] = useState<'flat' | 'procedural' | 'hdri'>(persistedLighting.skyMode ?? 'procedural');
   const [hdriFileName, setHdriFileName] = useState<string | null>(null);
   // "Sky Brightness" is purely visual (how bright the background dome looks);
   // "Environment Lighting" is how much the HDRI actually lights/reflects onto other

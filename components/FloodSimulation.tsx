@@ -3,6 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Button } from './ui/button';
 import { Slider } from './ui/slider';
 import { Label } from './ui/label';
+import { usePanelStack } from '../hooks/usePanelStack';
 
 interface FloodSimulationProps {
   scene: any;
@@ -23,6 +24,7 @@ export default function FloodSimulation({
   onWaterLevelChange,
   onWaveSpeedChange,
 }: FloodSimulationProps): React.ReactElement | null {
+  const { ref: panelRef, style: panelStyle } = usePanelStack('bottom-left');
   const [waterLevel, setWaterLevel] = useState(0.5);
   const [waveSpeed, setWaveSpeed] = useState(1.0);
 

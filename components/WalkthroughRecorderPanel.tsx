@@ -3,6 +3,7 @@ import { Engine } from '@babylonjs/core';
 import { X, Circle, Square, Download, Video } from 'lucide-react';
 import { Button } from './ui/button';
 import { showToast } from './utils/toast';
+import { usePanelStack } from '../hooks/usePanelStack';
 
 interface WalkthroughRecorderPanelProps {
   engine: Engine;
@@ -13,6 +14,7 @@ interface WalkthroughRecorderPanelProps {
 // (canvas.captureStream + MediaRecorder) - no extra video-encoding library needed,
 // and it captures exactly what's on screen, camera moves, effects, lighting and all.
 const WalkthroughRecorderPanel: React.FC<WalkthroughRecorderPanelProps> = ({ engine, onClose }) => {
+  const { ref: panelRef, style: panelStyle } = usePanelStack('bottom-left');
   const [isRecording, setIsRecording] = useState(false);
   const [elapsedSec, setElapsedSec] = useState(0);
   const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
@@ -94,7 +96,7 @@ const WalkthroughRecorderPanel: React.FC<WalkthroughRecorderPanelProps> = ({ eng
   const formatTime = (sec: number) => `${Math.floor(sec / 60)}:${(sec % 60).toString().padStart(2, '0')}`;
 
   return (
-    <div className="fixed bottom-4 left-4 z-40 w-72 max-w-[90vw] bg-gray-900/95 border border-cyan-500/20 rounded-lg shadow-2xl text-white">
+    <div ref={panelRef} style={panelStyle} className="fixed left-4 z-40 w-72 max-w-[90vw] bg-gray-900/95 border border-cyan-500/20 rounded-lg shadow-2xl text-white">
       <div className="flex items-center justify-between p-4 border-b border-gray-700">
         <div className="flex items-center gap-2">
           <Video className="w-4 h-4 text-red-400" />

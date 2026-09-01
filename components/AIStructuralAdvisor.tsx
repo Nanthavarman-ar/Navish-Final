@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
+import { usePanelStack } from '../hooks/usePanelStack';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
 import { Progress } from './ui/progress';
@@ -64,6 +65,7 @@ const AIStructuralAdvisor: React.FC<AIStructuralAdvisorProps> = ({
   onAnalysisComplete,
   onRecommendationApply
 }) => {
+  const { ref: panelRef, style: panelStyle } = usePanelStack('top-right');
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysisProgress, setAnalysisProgress] = useState(0);
   const [analyses, setAnalyses] = useState<StructuralAnalysis[]>([]);
@@ -362,7 +364,7 @@ const AIStructuralAdvisor: React.FC<AIStructuralAdvisorProps> = ({
   if (!isActive) return null;
 
   return (
-    <div className="fixed top-4 right-4 w-96 bg-slate-900 border border-slate-700 rounded-lg shadow-xl z-50">
+    <div ref={panelRef} style={panelStyle} className="fixed right-4 w-96 bg-slate-900 border border-slate-700 rounded-lg shadow-xl z-50">
       <Card className="bg-slate-900 border-slate-700 text-white">
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between">

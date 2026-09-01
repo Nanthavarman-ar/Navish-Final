@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Suspense } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { Badge } from '../ui/badge';
@@ -11,6 +11,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
 import { Globe, Maximize, Map, Hand } from 'lucide-react';
 import { showToast } from '../utils/toast';
 import type { CollabUser } from '../CollabManager';
+import { usePanelStack } from '../../hooks/usePanelStack';
 
 // Lazy load components
 const LeftPanel = React.lazy(() => import('../LeftPanel'));
@@ -186,9 +187,11 @@ export const FloatingToolbarSegment: React.FC<FloatingToolbarSegmentProps> = ({
   isScaleActive,
   isCameraActive,
   isPerspectiveActive
-}) => (
+}) => {
+  const { ref: panelRef, style: panelStyle } = usePanelStack('top-left');
+  return (
   <Suspense fallback={<div className="p-2">Loading Toolbar...</div>}>
-    <div className="fixed top-24 left-6 z-50 bg-gray-900 border border-gray-700 rounded-lg shadow-xl p-3">
+    <div ref={panelRef} style={panelStyle} className="fixed left-6 z-50 bg-gray-900 border border-gray-700 rounded-lg shadow-xl p-3">
       <FloatingToolbar
         onMoveToggle={onMoveToggle}
         onRotateToggle={onRotateToggle}
@@ -203,7 +206,8 @@ export const FloatingToolbarSegment: React.FC<FloatingToolbarSegmentProps> = ({
       />
     </div>
   </Suspense>
-);
+  );
+};
 
 // Immersive mode controls component
 export const ImmersiveControls: React.FC<{
@@ -285,6 +289,7 @@ export const KeyboardShortcutsHelp: React.FC<KeyboardShortcutsHelpProps> = ({
   visible = true,
   onClose,
 }) => {
+  const { ref: panelRef, style: panelStyle } = usePanelStack('bottom-right');
   useEffect(() => {
     if (!visible || !onClose) return;
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -302,7 +307,7 @@ export const KeyboardShortcutsHelp: React.FC<KeyboardShortcutsHelpProps> = ({
   }
 
   return (
-    <div className="fixed bottom-4 right-4 z-50 flex flex-col items-end gap-2 text-xs">
+    <div ref={panelRef} style={panelStyle} className="fixed right-4 z-50 flex flex-col items-end gap-2 text-xs">
       <div className="w-64 bg-slate-900/90 text-white p-3 rounded-lg border border-slate-800 shadow-xl space-y-2">
         <div className="text-[11px] font-semibold tracking-[0.2em] uppercase text-slate-400">Keyboard shortcuts</div>
         <div className="space-y-1 text-[12px]">
@@ -342,6 +347,7 @@ const gestureSamples = [
 ];
 
 const DomainSelectorOverlay: React.FC<{ visible: boolean; onClose: () => void; onDomainChange?: (domainId: string) => void }> = ({ visible, onClose, onDomainChange }) => {
+  const { ref: panelRef, style: panelStyle } = usePanelStack('top-right');
   const [selectedDomain, setSelectedDomain] = useState(domainOptions[0].id);
 
   if (!visible) {
@@ -364,7 +370,7 @@ const DomainSelectorOverlay: React.FC<{ visible: boolean; onClose: () => void; o
   };
 
   return (
-    <div className="fixed top-4 right-4 z-50 w-64 rounded-lg border border-slate-800 bg-slate-900/95 p-4 shadow-xl text-slate-100">
+    <div ref={panelRef} style={panelStyle} className="fixed right-4 z-50 w-64 rounded-lg border border-slate-800 bg-slate-900/95 p-4 shadow-xl text-slate-100">
       <div className="flex items-center gap-2 text-sm font-semibold">
         <Map className="h-4 w-4 text-sky-400" />
         <span>Domain Selector</span>
@@ -404,6 +410,7 @@ const DomainSelectorOverlay: React.FC<{ visible: boolean; onClose: () => void; o
 // and only showed fake events from "Log Test Gesture", which is kept below as a manual
 // way to preview the UI without needing camera access/a hand in frame.
 const GestureInspectorOverlay: React.FC<{ visible: boolean; onClose: () => void; realHistory?: { gesture: string; confidence: number; timestamp: number }[]; isDetectionActive?: boolean }> = ({ visible, onClose, realHistory = [], isDetectionActive = false }) => {
+  const { ref: panelRef, style: panelStyle } = usePanelStack('bottom-left');
   const [testHistory, setTestHistory] = useState<{ id: string; gesture: string; timestamp: string }[]>([]);
 
   if (!visible) {
@@ -436,7 +443,7 @@ const GestureInspectorOverlay: React.FC<{ visible: boolean; onClose: () => void;
   ].slice(0, 8);
 
   return (
-    <div className="fixed bottom-4 left-4 z-50 w-72 max-w-[90vw] rounded-lg border border-slate-800 bg-slate-900/95 p-4 text-slate-100 shadow-xl">
+    <div ref={panelRef} style={panelStyle} className="fixed left-4 z-50 w-72 max-w-[90vw] rounded-lg border border-slate-800 bg-slate-900/95 p-4 text-slate-100 shadow-xl">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2 text-sm font-semibold">
           <Hand className="h-4 w-4 text-pink-400" />
@@ -638,7 +645,21 @@ export const CustomPanelsSegment: React.FC<CustomPanelsSegmentProps> = (props) =
 // Sub-segment components for CustomPanels
 const CoreFeaturesSegment: React.FC<Pick<CustomPanelsSegmentProps, 'featureStates' | 'sceneRef' | 'engineRef' | 'cameraRef' | 'bimManagerRef' | 'aiManagerRef' | 'workspaces' | 'selectedWorkspaceId' | 'handleWorkspaceSelect' | 'handleMaterialApplied' | 'handleAnimationCreate' | 'handleSequencePlay' | 'disableFeature' | 'workspaceState' | 'scenarioManagerRef' | 'moodSceneManagerRef' | 'animationManagerRef' | 'cloudAnchorManagerRef' | 'arCloudAnchorsRef' | 'gpsTransformUtilsRef' | 'xrManagerRef' | 'graphicsQuality' | 'setGraphicsQuality' | 'recommendedQuality' | 'gpuName' | 'deviceCapabilities' | 'simulationManagerRef' | 'currentModelId'>> = ({
   featureStates, sceneRef, engineRef, cameraRef, bimManagerRef, aiManagerRef, workspaces, selectedWorkspaceId, handleWorkspaceSelect, handleMaterialApplied, handleAnimationCreate, handleSequencePlay, disableFeature, workspaceState, scenarioManagerRef, moodSceneManagerRef, animationManagerRef, cloudAnchorManagerRef, arCloudAnchorsRef, gpsTransformUtilsRef, xrManagerRef, graphicsQuality, setGraphicsQuality, recommendedQuality, gpuName, deviceCapabilities, simulationManagerRef, currentModelId
-}) => (
+}) => {
+  const lightingPanel = usePanelStack('top-left', !!featureStates.showLighting);
+  const graphicsQualityPanel = usePanelStack('top-right');
+  const ergonomicPanel = usePanelStack('top-right');
+  const topographyPanel = usePanelStack('top-right');
+  const constructionPanel = usePanelStack('top-right');
+  const shadowImpactPanel = usePanelStack('top-right');
+  const circulationPanel = usePanelStack('top-right');
+  const energyPanel = usePanelStack('top-right');
+  const measurementPanel = usePanelStack('top-right');
+  const autoFurnishPanel = usePanelStack('top-right');
+  const cloudAnchorPanel = usePanelStack('top-right');
+  const versionHistoryFallbackPanel = usePanelStack('top-right');
+  const bimFallbackPanel = usePanelStack('top-right');
+  return (
   <>
     {featureStates.showMaterialEditor && sceneRef.current && (
       <Suspense fallback={<div className="absolute top-4 right-4 z-40 w-48 p-4 bg-slate-900/95 rounded-lg animate-pulse">Loading Material Editor...</div>}>
@@ -682,8 +703,8 @@ const CoreFeaturesSegment: React.FC<Pick<CustomPanelsSegmentProps, 'featureState
       // this panel didn't just hide the UI, it destroyed whichever sky/lighting effect
       // was currently active in the 3D scene - reopening the panel could never show it
       // as still selected because it had actually been torn down.
-      <Suspense fallback={<div className="fixed bottom-4 left-4 z-50 w-96 max-w-[90vw] h-48 bg-slate-900/95 rounded-xl animate-pulse border border-slate-600" />}>
-      <div className={`fixed top-20 bottom-4 left-4 z-50 w-96 max-w-[90vw] flex-col bg-slate-900/95 backdrop-blur-sm border border-slate-600 rounded-xl shadow-2xl pointer-events-auto overflow-hidden ${featureStates.showLighting ? 'flex' : 'hidden'}`}>
+      <Suspense fallback={<div ref={lightingPanel.ref} style={lightingPanel.style} className="fixed bottom-4 left-4 z-50 w-96 max-w-[90vw] h-48 bg-slate-900/95 rounded-xl animate-pulse border border-slate-600" />}>
+      <div ref={lightingPanel.ref} style={{ ...lightingPanel.style, bottom: 16 }} className={`fixed left-4 z-50 w-96 max-w-[90vw] flex-col bg-slate-900/95 backdrop-blur-sm border border-slate-600 rounded-xl shadow-2xl pointer-events-auto overflow-hidden ${featureStates.showLighting ? 'flex' : 'hidden'}`}>
         <div className="flex justify-between items-center px-4 py-3 border-b border-slate-600 bg-slate-800/80 shrink-0">
           <span className="text-sm font-semibold text-slate-200 flex items-center gap-2">
             <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" /> Lighting
@@ -697,8 +718,8 @@ const CoreFeaturesSegment: React.FC<Pick<CustomPanelsSegmentProps, 'featureState
       </Suspense>
     )}
     {featureStates.showGraphicsQuality && (
-      <Suspense fallback={<div className="fixed top-20 right-4 z-50 w-80 max-w-[90vw] h-48 bg-slate-900/95 rounded-xl animate-pulse border border-slate-600" />}>
-      <div className="fixed top-20 right-4 z-50 w-80 max-w-[90vw] flex flex-col bg-slate-900/95 backdrop-blur-sm border border-slate-600 rounded-xl shadow-2xl pointer-events-auto overflow-hidden">
+      <Suspense fallback={<div ref={graphicsQualityPanel.ref} style={graphicsQualityPanel.style} className="fixed right-4 z-50 w-80 max-w-[90vw] h-48 bg-slate-900/95 rounded-xl animate-pulse border border-slate-600" />}>
+      <div ref={graphicsQualityPanel.ref} style={graphicsQualityPanel.style} className="fixed right-4 z-50 w-80 max-w-[90vw] flex flex-col bg-slate-900/95 backdrop-blur-sm border border-slate-600 rounded-xl shadow-2xl pointer-events-auto overflow-hidden">
         <div className="flex justify-between items-center px-4 py-3 border-b border-slate-600 bg-slate-800/80 shrink-0">
           <span className="text-sm font-semibold text-slate-200 flex items-center gap-2">
             <span className="w-2 h-2 rounded-full bg-sky-400" /> Graphics Quality
@@ -746,8 +767,8 @@ const CoreFeaturesSegment: React.FC<Pick<CustomPanelsSegmentProps, 'featureState
       </Suspense>
     )}
     {featureStates.showErgonomicTesting && sceneRef.current && (
-      <Suspense fallback={<div className="fixed top-4 right-4 z-50 w-80 h-40 bg-slate-900/95 rounded-lg animate-pulse border border-slate-600" />}>
-      <div className="fixed top-4 right-4 z-50 w-80 max-w-[90vw] max-h-[85vh] flex flex-col bg-slate-900/95 backdrop-blur-sm border border-slate-600 rounded-xl shadow-2xl pointer-events-auto overflow-hidden">
+      <Suspense fallback={<div ref={ergonomicPanel.ref} style={ergonomicPanel.style} className="fixed right-4 z-50 w-80 h-40 bg-slate-900/95 rounded-lg animate-pulse border border-slate-600" />}>
+      <div ref={ergonomicPanel.ref} style={ergonomicPanel.style} className="fixed right-4 z-50 w-80 max-w-[90vw] max-h-[85vh] flex flex-col bg-slate-900/95 backdrop-blur-sm border border-slate-600 rounded-xl shadow-2xl pointer-events-auto overflow-hidden">
         <div className="flex justify-between items-center px-4 py-3 border-b border-slate-600 bg-slate-800/80 shrink-0">
           <span className="text-sm font-semibold text-slate-200">Ergonomic Testing</span>
           <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-400 hover:text-white" onClick={() => disableFeature('showErgonomicTesting')} aria-label="Close Ergonomic Testing">✕</Button>
@@ -759,8 +780,8 @@ const CoreFeaturesSegment: React.FC<Pick<CustomPanelsSegmentProps, 'featureState
       </Suspense>
     )}
     {featureStates.showTopographyGenerator && sceneRef.current && (
-      <Suspense fallback={<div className="fixed top-4 right-4 z-50 w-80 h-40 bg-slate-900/95 rounded-lg animate-pulse border border-slate-600" />}>
-      <div className="fixed top-4 right-4 z-50 w-80 max-w-[90vw] max-h-[85vh] flex flex-col bg-slate-900/95 backdrop-blur-sm border border-slate-600 rounded-xl shadow-2xl pointer-events-auto overflow-hidden">
+      <Suspense fallback={<div ref={topographyPanel.ref} style={topographyPanel.style} className="fixed right-4 z-50 w-80 h-40 bg-slate-900/95 rounded-lg animate-pulse border border-slate-600" />}>
+      <div ref={topographyPanel.ref} style={topographyPanel.style} className="fixed right-4 z-50 w-80 max-w-[90vw] max-h-[85vh] flex flex-col bg-slate-900/95 backdrop-blur-sm border border-slate-600 rounded-xl shadow-2xl pointer-events-auto overflow-hidden">
         <div className="flex justify-between items-center px-4 py-3 border-b border-slate-600 bg-slate-800/80 shrink-0">
           <span className="text-sm font-semibold text-slate-200">Topography Generator</span>
           <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-400 hover:text-white" onClick={() => disableFeature('showTopographyGenerator')} aria-label="Close Topography Generator">✕</Button>
@@ -772,8 +793,8 @@ const CoreFeaturesSegment: React.FC<Pick<CustomPanelsSegmentProps, 'featureState
       </Suspense>
     )}
     {featureStates.showConstructionOverlay && sceneRef.current && (
-      <Suspense fallback={<div className="fixed top-4 right-4 z-50 w-80 h-40 bg-slate-900/95 rounded-lg animate-pulse border border-slate-600" />}>
-      <div className="fixed top-4 right-4 z-50 w-80 max-w-[90vw] max-h-[85vh] flex flex-col bg-slate-900/95 backdrop-blur-sm border border-slate-600 rounded-xl shadow-2xl pointer-events-auto overflow-hidden">
+      <Suspense fallback={<div ref={constructionPanel.ref} style={constructionPanel.style} className="fixed right-4 z-50 w-80 h-40 bg-slate-900/95 rounded-lg animate-pulse border border-slate-600" />}>
+      <div ref={constructionPanel.ref} style={constructionPanel.style} className="fixed right-4 z-50 w-80 max-w-[90vw] max-h-[85vh] flex flex-col bg-slate-900/95 backdrop-blur-sm border border-slate-600 rounded-xl shadow-2xl pointer-events-auto overflow-hidden">
         <div className="flex justify-between items-center px-4 py-3 border-b border-slate-600 bg-slate-800/80 shrink-0">
           <span className="text-sm font-semibold text-slate-200">Construction Overlay</span>
           <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-400 hover:text-white" onClick={() => disableFeature('showConstructionOverlay')} aria-label="Close Construction Overlay">✕</Button>
@@ -785,8 +806,8 @@ const CoreFeaturesSegment: React.FC<Pick<CustomPanelsSegmentProps, 'featureState
       </Suspense>
     )}
     {featureStates.showShadowImpactAnalysis && sceneRef.current && engineRef.current && (
-      <Suspense fallback={<div className="fixed top-4 right-4 z-50 w-96 h-40 bg-slate-900/95 rounded-lg animate-pulse border border-slate-600" />}>
-      <div className="fixed top-4 right-4 z-50 w-96 max-w-[90vw] max-h-[85vh] flex flex-col bg-slate-900/95 backdrop-blur-sm border border-slate-600 rounded-xl shadow-2xl pointer-events-auto overflow-hidden">
+      <Suspense fallback={<div ref={shadowImpactPanel.ref} style={shadowImpactPanel.style} className="fixed right-4 z-50 w-96 h-40 bg-slate-900/95 rounded-lg animate-pulse border border-slate-600" />}>
+      <div ref={shadowImpactPanel.ref} style={shadowImpactPanel.style} className="fixed right-4 z-50 w-96 max-w-[90vw] max-h-[85vh] flex flex-col bg-slate-900/95 backdrop-blur-sm border border-slate-600 rounded-xl shadow-2xl pointer-events-auto overflow-hidden">
         <div className="flex justify-between items-center px-4 py-3 border-b border-slate-600 bg-slate-800/80 shrink-0">
           <span className="text-sm font-semibold text-slate-200">Shadow Impact Analysis</span>
           <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-400 hover:text-white" onClick={() => disableFeature('showShadowImpactAnalysis')} aria-label="Close Shadow Impact Analysis">✕</Button>
@@ -798,8 +819,8 @@ const CoreFeaturesSegment: React.FC<Pick<CustomPanelsSegmentProps, 'featureState
       </Suspense>
     )}
     {featureStates.showCirculationFlowSimulation && sceneRef.current && engineRef.current && (
-      <Suspense fallback={<div className="fixed top-4 right-4 z-50 w-96 h-40 bg-slate-900/95 rounded-lg animate-pulse border border-slate-600" />}>
-      <div className="fixed top-4 right-4 z-50 w-96 max-w-[90vw] max-h-[85vh] flex flex-col bg-slate-900/95 backdrop-blur-sm border border-slate-600 rounded-xl shadow-2xl pointer-events-auto overflow-hidden">
+      <Suspense fallback={<div ref={circulationPanel.ref} style={circulationPanel.style} className="fixed right-4 z-50 w-96 h-40 bg-slate-900/95 rounded-lg animate-pulse border border-slate-600" />}>
+      <div ref={circulationPanel.ref} style={circulationPanel.style} className="fixed right-4 z-50 w-96 max-w-[90vw] max-h-[85vh] flex flex-col bg-slate-900/95 backdrop-blur-sm border border-slate-600 rounded-xl shadow-2xl pointer-events-auto overflow-hidden">
         <div className="flex justify-between items-center px-4 py-3 border-b border-slate-600 bg-slate-800/80 shrink-0">
           <span className="text-sm font-semibold text-slate-200">Circulation Flow Simulation</span>
           <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-400 hover:text-white" onClick={() => disableFeature('showCirculationFlowSimulation')} aria-label="Close Circulation Flow Simulation">✕</Button>
@@ -811,8 +832,8 @@ const CoreFeaturesSegment: React.FC<Pick<CustomPanelsSegmentProps, 'featureState
       </Suspense>
     )}
     {featureStates.showEnergyDashboard && (
-      <Suspense fallback={<div className="fixed top-4 right-4 z-50 w-96 h-40 bg-slate-900/95 rounded-lg animate-pulse border border-slate-600" />}>
-      <div className="fixed top-4 right-4 z-50 w-96 max-w-[90vw] max-h-[85vh] flex flex-col bg-slate-900/95 backdrop-blur-sm border border-slate-600 rounded-xl shadow-2xl pointer-events-auto overflow-hidden">
+      <Suspense fallback={<div ref={energyPanel.ref} style={energyPanel.style} className="fixed right-4 z-50 w-96 h-40 bg-slate-900/95 rounded-lg animate-pulse border border-slate-600" />}>
+      <div ref={energyPanel.ref} style={energyPanel.style} className="fixed right-4 z-50 w-96 max-w-[90vw] max-h-[85vh] flex flex-col bg-slate-900/95 backdrop-blur-sm border border-slate-600 rounded-xl shadow-2xl pointer-events-auto overflow-hidden">
         <div className="flex justify-between items-center px-4 py-3 border-b border-slate-600 bg-slate-800/80 shrink-0">
           <span className="text-sm font-semibold text-slate-200">Energy Analysis</span>
           <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-400 hover:text-white" onClick={() => disableFeature('showEnergyDashboard')} aria-label="Close Energy Analysis">✕</Button>
@@ -824,7 +845,7 @@ const CoreFeaturesSegment: React.FC<Pick<CustomPanelsSegmentProps, 'featureState
       </Suspense>
     )}
     {featureStates.showVersionHistory && (
-      <Suspense fallback={<div className="fixed top-20 right-4 z-40 w-96 max-w-[90vw] h-48 bg-slate-900/95 rounded-xl animate-pulse border border-slate-600" />}>
+      <Suspense fallback={<div ref={versionHistoryFallbackPanel.ref} style={versionHistoryFallbackPanel.style} className="fixed right-4 z-40 w-96 max-w-[90vw] h-48 bg-slate-900/95 rounded-xl animate-pulse border border-slate-600" />}>
         <VersionHistoryPanel
           roomId={selectedWorkspaceId || 'default-room'}
           onClose={() => disableFeature('showVersionHistory')}
@@ -832,8 +853,8 @@ const CoreFeaturesSegment: React.FC<Pick<CustomPanelsSegmentProps, 'featureState
       </Suspense>
     )}
     {featureStates.showMeasurementTool && sceneRef.current && engineRef.current && (
-      <Suspense fallback={<div className="fixed top-4 right-4 z-50 w-96 max-w-[90vw] h-48 bg-slate-900/95 rounded-xl animate-pulse border border-slate-600" />}>
-      <div className="fixed top-4 right-4 z-50 w-96 max-w-[90vw] max-h-[85vh] flex flex-col bg-slate-900/95 backdrop-blur-sm border border-slate-600 rounded-xl shadow-2xl pointer-events-auto overflow-hidden">
+      <Suspense fallback={<div ref={measurementPanel.ref} style={measurementPanel.style} className="fixed right-4 z-50 w-96 max-w-[90vw] h-48 bg-slate-900/95 rounded-xl animate-pulse border border-slate-600" />}>
+      <div ref={measurementPanel.ref} style={measurementPanel.style} className="fixed right-4 z-50 w-96 max-w-[90vw] max-h-[85vh] flex flex-col bg-slate-900/95 backdrop-blur-sm border border-slate-600 rounded-xl shadow-2xl pointer-events-auto overflow-hidden">
         <div className="flex justify-between items-center px-4 py-3 border-b border-slate-600 bg-slate-800/80 shrink-0">
           <span className="text-sm font-semibold text-slate-200 flex items-center gap-2">
             <span className="w-2 h-2 rounded-full bg-emerald-400" /> Measure
@@ -852,7 +873,7 @@ const CoreFeaturesSegment: React.FC<Pick<CustomPanelsSegmentProps, 'featureState
       </Suspense>
     )}
     {featureStates.showAutoFurnish && sceneRef.current && (
-      <Suspense fallback={<div className="fixed top-4 right-4 z-50 w-64 p-4 bg-slate-800 rounded-lg animate-pulse">Loading Auto Furnish...</div>}>
+      <Suspense fallback={<div ref={autoFurnishPanel.ref} style={autoFurnishPanel.style} className="fixed right-4 z-50 w-64 p-4 bg-slate-800 rounded-lg animate-pulse">Loading Auto Furnish...</div>}>
         <AutoFurnish sceneManager={{ scene: sceneRef.current }} onClose={() => disableFeature('showAutoFurnish')} />
       </Suspense>
     )}
@@ -863,8 +884,8 @@ const CoreFeaturesSegment: React.FC<Pick<CustomPanelsSegmentProps, 'featureState
         (created alongside cloudAnchorManagerRef in BabylonWorkspace.tsx) and mounting
         here. */}
     {featureStates.showCloudAnchorManager && sceneRef.current && arCloudAnchorsRef?.current && cloudAnchorManagerRef?.current && gpsTransformUtilsRef?.current && (
-      <Suspense fallback={<div className="fixed top-20 right-4 z-50 w-96 max-w-[90vw] h-48 bg-slate-900/95 rounded-xl animate-pulse border border-slate-600" />}>
-        <div className="fixed top-20 right-4 bottom-4 z-50 w-96 max-w-[90vw] flex flex-col bg-slate-900/95 backdrop-blur-sm border border-slate-600 rounded-xl shadow-2xl overflow-hidden text-white">
+      <Suspense fallback={<div ref={cloudAnchorPanel.ref} style={cloudAnchorPanel.style} className="fixed right-4 z-50 w-96 max-w-[90vw] h-48 bg-slate-900/95 rounded-xl animate-pulse border border-slate-600" />}>
+        <div ref={cloudAnchorPanel.ref} style={{ ...cloudAnchorPanel.style, bottom: 16 }} className="fixed right-4 z-50 w-96 max-w-[90vw] flex flex-col bg-slate-900/95 backdrop-blur-sm border border-slate-600 rounded-xl shadow-2xl overflow-hidden text-white">
           <div className="flex justify-between items-center px-4 py-3 border-b border-slate-600 bg-slate-800/80 shrink-0">
             <span className="text-sm font-semibold text-slate-200 flex items-center gap-2">
               <span className="w-2 h-2 rounded-full bg-cyan-400" /> Cloud Anchors
@@ -900,7 +921,7 @@ const CoreFeaturesSegment: React.FC<Pick<CustomPanelsSegmentProps, 'featureState
       </Suspense>
     )}
     {featureStates.showBIMIntegration && sceneRef.current && bimManagerRef.current && (
-      <Suspense fallback={<div className="fixed top-4 right-4 z-50 w-64 p-4 bg-slate-800 rounded-lg animate-pulse">Loading BIM...</div>}>
+      <Suspense fallback={<div ref={bimFallbackPanel.ref} style={bimFallbackPanel.style} className="fixed right-4 z-50 w-64 p-4 bg-slate-800 rounded-lg animate-pulse">Loading BIM...</div>}>
         <BIMIntegration scene={sceneRef.current} isActive={featureStates.showBIMIntegration} bimManager={bimManagerRef.current} onClose={() => disableFeature('showBIMIntegration')} />
       </Suspense>
     )}
@@ -914,11 +935,15 @@ const CoreFeaturesSegment: React.FC<Pick<CustomPanelsSegmentProps, 'featureState
       </Suspense>
     )}
   </>
-);
+  );
+};
 
 const NavigationControlsSegment: React.FC<Pick<CustomPanelsSegmentProps, 'featureStates' | 'sceneRef' | 'cameraRef' | 'disableFeature'>> = ({
   featureStates, sceneRef, cameraRef, disableFeature
-}) => (
+}) => {
+  const teleportPanel = usePanelStack('top-left');
+  const swimPanel = usePanelStack('top-right');
+  return (
   <>
     {featureStates.showMovementControlChecker && sceneRef.current && cameraRef.current && (
       <Suspense fallback={null}>
@@ -930,21 +955,22 @@ const NavigationControlsSegment: React.FC<Pick<CustomPanelsSegmentProps, 'featur
       </Suspense>
     )}
     {featureStates.showTeleportManager && sceneRef.current && cameraRef.current && (
-      <div className="fixed top-4 left-4 z-50 bg-slate-800 p-4 rounded-lg border border-slate-600">
+      <div ref={teleportPanel.ref} style={teleportPanel.style} className="fixed left-4 z-50 bg-slate-800 p-4 rounded-lg border border-slate-600">
         <h3 className="text-white mb-2">Teleport Navigation</h3>
         <p className="text-slate-300 text-sm">Click anywhere on the floor to move there instantly.</p>
         <Button size="sm" variant="outline" onClick={() => disableFeature('showTeleportManager')} className="mt-2">Close</Button>
       </div>
     )}
     {featureStates.showSwimMode && sceneRef.current && cameraRef.current && (
-      <div className="fixed top-4 right-4 z-50 bg-slate-800 p-4 rounded-lg border border-slate-600">
+      <div ref={swimPanel.ref} style={swimPanel.style} className="fixed right-4 z-50 bg-slate-800 p-4 rounded-lg border border-slate-600">
         <h3 className="text-white mb-2">Underwater / Swim Mode</h3>
         <p className="text-slate-300 text-sm">Underwater fog, caustics, and bubbles are active around the camera.</p>
         <Button size="sm" variant="outline" onClick={() => disableFeature('showSwimMode')} className="mt-2">Close</Button>
       </div>
     )}
   </>
-);
+  );
+};
 
 // Position/Scale fields write straight to the live mesh (Babylon renders the change on its
 // own render loop - no React re-render needed for the 3D scene to update), while local state
@@ -953,6 +979,7 @@ const NavigationControlsSegment: React.FC<Pick<CustomPanelsSegmentProps, 'featur
 // and described as an *editor* - Material Editor already covers materials, so this adds the
 // remaining transform + visibility properties rather than duplicating that.
 const PropertyInspectorPanel: React.FC<{ mesh: any; meshCount: number; lightCount: number; onClose: () => void }> = ({ mesh, meshCount, lightCount, onClose }) => {
+  const { ref: panelRef, style: panelStyle } = usePanelStack('top-left');
   const [position, setPosition] = useState({ x: 0, y: 0, z: 0 });
   const [rotationDeg, setRotationDeg] = useState({ x: 0, y: 0, z: 0 });
   const [scale, setScale] = useState({ x: 1, y: 1, z: 1 });
@@ -963,6 +990,82 @@ const PropertyInspectorPanel: React.FC<{ mesh: any; meshCount: number; lightCoun
   const [materialColor, setMaterialColor] = useState<{ r: number; g: number; b: number } | null>(null);
   const [materialAlpha, setMaterialAlpha] = useState(1);
   const colorPropertyName = mesh?.material ? ('diffuseColor' in mesh.material ? 'diffuseColor' : 'albedoColor' in mesh.material ? 'albedoColor' : null) : null;
+
+  // Position/Rotation/Scale edits here used to write straight to the mesh with no undo
+  // tracking at all - Ctrl+Z (BabylonWorkspace.tsx's 'naviz:transformSnapshot' listener,
+  // wired to the same pushUndo() every other edit source uses) could never revert them.
+  // Snapshots the mesh's state on the FIRST change of a burst (not every keystroke/drag
+  // tick) and pushes ~600ms after the user stops, so dragging a slider or typing a number
+  // produces one undo entry, not dozens.
+  const pendingTransformSnapshotRef = useRef<{ position: any; rotationQuaternion: any; rotation: any; scaling: any } | null>(null);
+  const transformIdleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const beginTransformUndoSession = () => {
+    if (!mesh) return;
+    if (!pendingTransformSnapshotRef.current) {
+      pendingTransformSnapshotRef.current = {
+        position: mesh.position.clone(),
+        rotationQuaternion: mesh.rotationQuaternion ? mesh.rotationQuaternion.clone() : null,
+        rotation: mesh.rotation.clone(),
+        scaling: mesh.scaling.clone(),
+      };
+    }
+    if (transformIdleTimerRef.current) clearTimeout(transformIdleTimerRef.current);
+    transformIdleTimerRef.current = setTimeout(() => {
+      const snapshot = pendingTransformSnapshotRef.current;
+      pendingTransformSnapshotRef.current = null;
+      if (!snapshot) return;
+      window.dispatchEvent(new CustomEvent('naviz:transformSnapshot', { detail: { mesh, ...snapshot } }));
+    }, 600);
+  };
+
+  // Same idea for material color/alpha, reusing the exact snapshot shape (and the
+  // 'naviz:materialSnapshot' event/listener) MaterialEditor.tsx's own snapshotForUndo()
+  // already established - capturing every property the undo-apply code restores
+  // (BabylonWorkspace.tsx's Ctrl+Z handler), not just the two this panel edits, so undoing
+  // a color tweak made here can't blank out metallic/roughness/textures nobody touched.
+  const pendingMaterialSnapshotRef = useRef<Record<string, any> | null>(null);
+  const materialIdleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const beginMaterialUndoSession = () => {
+    const material = mesh?.material;
+    if (!material) return;
+    if (!pendingMaterialSnapshotRef.current) {
+      if ('diffuseColor' in material) {
+        pendingMaterialSnapshotRef.current = {
+          kind: 'standard',
+          diffuseColor: material.diffuseColor.clone(),
+          specularColor: material.specularColor.clone(),
+          emissiveColor: material.emissiveColor.clone(),
+          alpha: material.alpha,
+          specularPower: material.specularPower,
+          diffuseTexture: material.diffuseTexture,
+          bumpTexture: material.bumpTexture,
+          emissiveTexture: material.emissiveTexture,
+        };
+      } else if ('albedoColor' in material) {
+        pendingMaterialSnapshotRef.current = {
+          kind: 'pbr',
+          albedoColor: material.albedoColor.clone(),
+          emissiveColor: material.emissiveColor.clone(),
+          alpha: material.alpha,
+          metallic: material.metallic,
+          roughness: material.roughness,
+          environmentIntensity: material.environmentIntensity,
+          reflectivityColor: material.reflectivityColor?.clone(),
+          indexOfRefraction: material.indexOfRefraction,
+          albedoTexture: material.albedoTexture,
+          bumpTexture: material.bumpTexture,
+          emissiveTexture: material.emissiveTexture,
+        };
+      }
+    }
+    if (materialIdleTimerRef.current) clearTimeout(materialIdleTimerRef.current);
+    materialIdleTimerRef.current = setTimeout(() => {
+      const snapshot = pendingMaterialSnapshotRef.current;
+      pendingMaterialSnapshotRef.current = null;
+      if (!snapshot) return;
+      window.dispatchEvent(new CustomEvent('naviz:materialSnapshot', { detail: { material, snapshot } }));
+    }, 600);
+  };
 
   useEffect(() => {
     if (!mesh) return;
@@ -986,16 +1089,19 @@ const PropertyInspectorPanel: React.FC<{ mesh: any; meshCount: number; lightCoun
 
   const updatePosition = (axis: 'x' | 'y' | 'z', value: number) => {
     if (!mesh || Number.isNaN(value)) return;
+    beginTransformUndoSession();
     mesh.position[axis] = value;
     setPosition((p) => ({ ...p, [axis]: value }));
   };
   const updateRotation = (axis: 'x' | 'y' | 'z', valueDeg: number) => {
     if (!mesh || Number.isNaN(valueDeg)) return;
+    beginTransformUndoSession();
     mesh.rotation[axis] = (valueDeg * Math.PI) / 180;
     setRotationDeg((r) => ({ ...r, [axis]: valueDeg }));
   };
   const updateScale = (axis: 'x' | 'y' | 'z', value: number) => {
     if (!mesh || Number.isNaN(value) || value === 0) return;
+    beginTransformUndoSession();
     mesh.scaling[axis] = value;
     setScale((s) => ({ ...s, [axis]: value }));
   };
@@ -1007,16 +1113,49 @@ const PropertyInspectorPanel: React.FC<{ mesh: any; meshCount: number; lightCoun
   };
   const updateMaterialColor = (channel: 'r' | 'g' | 'b', value: number) => {
     if (!mesh?.material || !colorPropertyName || !materialColor) return;
+    beginMaterialUndoSession();
     mesh.material[colorPropertyName][channel] = value;
     setMaterialColor((c) => (c ? { ...c, [channel]: value } : c));
   };
   const updateMaterialAlpha = (value: number) => {
     if (!mesh?.material) return;
+    beginMaterialUndoSession();
     mesh.material.alpha = value;
     setMaterialAlpha(value);
   };
+  // "axis zero" - a quick way to zero out just one position/rotation axis instead of
+  // clearing the number field by hand.
+  const zeroPositionAxis = (axis: 'x' | 'y' | 'z') => updatePosition(axis, 0);
+  const zeroRotationAxis = (axis: 'x' | 'y' | 'z') => updateRotation(axis, 0);
+  // Resets position and rotation back to the origin (scale left alone - "reset" here means
+  // "put it back where it was placed," not "undo any intentional resizing"). Pushes one
+  // undo entry for the whole reset by flushing any pending session first, so Ctrl+Z
+  // reverts it in a single step rather than three.
+  const resetTransform = () => {
+    if (!mesh) return;
+    if (transformIdleTimerRef.current) clearTimeout(transformIdleTimerRef.current);
+    if (!pendingTransformSnapshotRef.current) {
+      pendingTransformSnapshotRef.current = {
+        position: mesh.position.clone(),
+        rotationQuaternion: mesh.rotationQuaternion ? mesh.rotationQuaternion.clone() : null,
+        rotation: mesh.rotation.clone(),
+        scaling: mesh.scaling.clone(),
+      };
+    }
+    const snapshot = pendingTransformSnapshotRef.current;
+    pendingTransformSnapshotRef.current = null;
+    window.dispatchEvent(new CustomEvent('naviz:transformSnapshot', { detail: { mesh, ...snapshot } }));
+    mesh.position.set(0, 0, 0);
+    mesh.rotation.set(0, 0, 0);
+    if (mesh.rotationQuaternion) mesh.rotationQuaternion = null;
+    setPosition({ x: 0, y: 0, z: 0 });
+    setRotationDeg({ x: 0, y: 0, z: 0 });
+  };
 
-  const numberField = (label: string, value: number, onChange: (v: number) => void) => (
+  // onZero renders a small "0" button next to the field - a one-click way to zero out just
+  // that axis, for Position/Rotation only (a zero Scale would make the mesh disappear, so
+  // Scale fields don't get one).
+  const numberField = (label: string, value: number, onChange: (v: number) => void, onZero?: () => void) => (
     <label className="flex items-center gap-1 text-slate-400">
       {label}
       <input
@@ -1026,11 +1165,22 @@ const PropertyInspectorPanel: React.FC<{ mesh: any; meshCount: number; lightCoun
         onChange={(e) => onChange(parseFloat(e.target.value))}
         className="w-14 bg-slate-900 border border-slate-600 rounded px-1 py-0.5 text-slate-200"
       />
+      {onZero && (
+        <button
+          type="button"
+          onClick={onZero}
+          title={`Zero ${label} axis`}
+          aria-label={`Zero ${label} axis`}
+          className="w-4 h-4 flex items-center justify-center rounded text-[10px] text-slate-500 hover:text-white hover:bg-slate-700 border border-slate-700"
+        >
+          0
+        </button>
+      )}
     </label>
   );
 
   return (
-    <Card className="fixed top-4 left-4 z-50 w-72 max-w-[90vw] bg-slate-800 border-slate-600 text-white">
+    <Card ref={panelRef} style={panelStyle} className="fixed left-4 z-50 w-72 max-w-[90vw] bg-slate-800 border-slate-600 text-white">
       <CardHeader className="pb-2">
         <div className="flex justify-between items-center">
           <CardTitle className="text-base">Property Inspector</CardTitle>
@@ -1047,19 +1197,29 @@ const PropertyInspectorPanel: React.FC<{ mesh: any; meshCount: number; lightCoun
               </Button>
             </div>
             <div>
-              <p className="text-slate-500 mb-1">Position</p>
+              <div className="flex items-center justify-between mb-1">
+                <p className="text-slate-500">Position</p>
+                <button
+                  type="button"
+                  onClick={resetTransform}
+                  title="Reset position and rotation to the origin"
+                  className="text-[10px] text-slate-400 hover:text-white px-1.5 py-0.5 rounded border border-slate-700 hover:bg-slate-700"
+                >
+                  Reset
+                </button>
+              </div>
               <div className="flex gap-2">
-                {numberField('X', position.x, (v) => updatePosition('x', v))}
-                {numberField('Y', position.y, (v) => updatePosition('y', v))}
-                {numberField('Z', position.z, (v) => updatePosition('z', v))}
+                {numberField('X', position.x, (v) => updatePosition('x', v), () => zeroPositionAxis('x'))}
+                {numberField('Y', position.y, (v) => updatePosition('y', v), () => zeroPositionAxis('y'))}
+                {numberField('Z', position.z, (v) => updatePosition('z', v), () => zeroPositionAxis('z'))}
               </div>
             </div>
             <div>
               <p className="text-slate-500 mb-1">Rotation (°)</p>
               <div className="flex gap-2">
-                {numberField('X', rotationDeg.x, (v) => updateRotation('x', v))}
-                {numberField('Y', rotationDeg.y, (v) => updateRotation('y', v))}
-                {numberField('Z', rotationDeg.z, (v) => updateRotation('z', v))}
+                {numberField('X', rotationDeg.x, (v) => updateRotation('x', v), () => zeroRotationAxis('x'))}
+                {numberField('Y', rotationDeg.y, (v) => updateRotation('y', v), () => zeroRotationAxis('y'))}
+                {numberField('Z', rotationDeg.z, (v) => updateRotation('z', v), () => zeroRotationAxis('z'))}
               </div>
             </div>
             <div>
@@ -1118,6 +1278,7 @@ const PropertyInspectorPanel: React.FC<{ mesh: any; meshCount: number; lightCoun
 // toggles visibility - was a plain non-interactive name list despite being named/described as
 // a scene *manager*.
 const SceneBrowserPanel: React.FC<{ scene: any; selectedMesh: any; onSelect: (mesh: any) => void; onClose: () => void }> = ({ scene, selectedMesh, onSelect, onClose }) => {
+  const { ref: panelRef, style: panelStyle } = usePanelStack('top-right');
   const [, forceUpdate] = useState(0);
   const meshes = scene.meshes.filter((m: any) => !m.name.startsWith('__'));
 
@@ -1141,7 +1302,7 @@ const SceneBrowserPanel: React.FC<{ scene: any; selectedMesh: any; onSelect: (me
   };
 
   return (
-    <Card className="fixed top-4 right-4 z-50 w-72 max-w-[90vw] max-h-80 overflow-y-auto bg-slate-800 border-slate-600 text-white">
+    <Card ref={panelRef} style={panelStyle} className="fixed right-4 z-50 w-72 max-w-[90vw] max-h-80 overflow-y-auto bg-slate-800 border-slate-600 text-white">
       <CardHeader className="pb-2">
         <div className="flex justify-between items-center">
           <CardTitle className="text-base">Scene Browser</CardTitle>
@@ -1184,6 +1345,8 @@ const SceneBrowserPanel: React.FC<{ scene: any; selectedMesh: any; onSelect: (me
 const SimulationAnalysisSegment: React.FC<Pick<CustomPanelsSegmentProps, 'featureStates' | 'sceneRef' | 'engineRef' | 'disableFeature' | 'workspaceState' | 'updateState' | 'onFloodToggle' | 'floodOn' | 'onFloodLevelChange' | 'onFloodWaveSpeedChange' | 'sustainabilityReport' | 'siteContextManagerRef' | 'geoSyncManagerRef' | 'moodSceneManagerRef' | 'audioManagerRef'>> = ({
   featureStates, sceneRef, engineRef, disableFeature, workspaceState, updateState, onFloodToggle, floodOn = false, onFloodLevelChange, onFloodWaveSpeedChange, sustainabilityReport, siteContextManagerRef, geoSyncManagerRef, moodSceneManagerRef, audioManagerRef
 }) => {
+  const floodFallbackPanel = usePanelStack('bottom-left');
+  const windTunnelPanel = usePanelStack('top-right');
   return (
     <>
       {featureStates.showMultiSensoryPreview && sceneRef.current && (
@@ -1196,7 +1359,7 @@ const SimulationAnalysisSegment: React.FC<Pick<CustomPanelsSegmentProps, 'featur
         </Suspense>
       )}
       {featureStates.showFloodSimulation && sceneRef.current && (
-        <Suspense fallback={<div className="fixed bottom-4 left-4 z-50 w-80 max-w-[90vw] bg-slate-800 p-4 rounded">Loading Flood...</div>}>
+        <Suspense fallback={<div ref={floodFallbackPanel.ref} style={floodFallbackPanel.style} className="fixed left-4 z-50 w-80 max-w-[90vw] bg-slate-800 p-4 rounded">Loading Flood...</div>}>
           <FloodSimulation
             scene={sceneRef.current}
             isActive={featureStates.showFloodSimulation}
@@ -1296,8 +1459,8 @@ const SimulationAnalysisSegment: React.FC<Pick<CustomPanelsSegmentProps, 'featur
         </div>
       )}
       {featureStates.showWindTunnelSimulation && sceneRef.current && (
-        <Suspense fallback={<div className="fixed top-4 right-4 z-50 w-80 max-w-[90vw] bg-slate-800 p-4 rounded">Loading Wind...</div>}>
-          <div className="fixed top-4 right-4 z-50 w-96 max-w-[90vw] max-h-[80vh] overflow-y-auto bg-slate-800 border border-slate-600 rounded-lg shadow-xl p-4">
+        <Suspense fallback={<div ref={windTunnelPanel.ref} style={windTunnelPanel.style} className="fixed right-4 z-50 w-80 max-w-[90vw] bg-slate-800 p-4 rounded">Loading Wind...</div>}>
+          <div ref={windTunnelPanel.ref} style={windTunnelPanel.style} className="fixed right-4 z-50 w-96 max-w-[90vw] max-h-[80vh] overflow-y-auto bg-slate-800 border border-slate-600 rounded-lg shadow-xl p-4">
             <WindTunnelSimulation scene={sceneRef.current} />
             <div className="mt-3 pt-3 border-t border-slate-600">
               <Button size="sm" variant="outline" onClick={() => disableFeature('showWindTunnelSimulation')} className="w-full">Close</Button>
@@ -1340,10 +1503,12 @@ const AdvancedFeaturesSegment: React.FC<Pick<CustomPanelsSegmentProps, 'featureS
 const AdditionalSimulationSegment: React.FC<Pick<CustomPanelsSegmentProps, 'featureStates' | 'sceneRef' | 'disableFeature' | 'onRainToggle' | 'rainOn' | 'rainIntensity' | 'onRainIntensityChange' | 'onSnowToggle' | 'snowOn' | 'particleSize' | 'onParticleSizeChange'>> = ({
   featureStates, sceneRef, disableFeature, onRainToggle, rainOn = false, rainIntensity = 1, onRainIntensityChange,
   onSnowToggle, snowOn = false, particleSize = 1, onParticleSizeChange
-}) => (
+}) => {
+  const weatherPanel = usePanelStack('bottom-right');
+  return (
   <>
     {featureStates.showWeather && sceneRef.current && (
-      <Card className="fixed bottom-4 right-4 z-50 w-72 max-w-[90vw] bg-slate-800 border-slate-600 text-white pointer-events-auto">
+      <Card ref={weatherPanel.ref} style={weatherPanel.style} className="fixed right-4 z-50 w-72 max-w-[90vw] bg-slate-800 border-slate-600 text-white pointer-events-auto">
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle>Weather</CardTitle>
           <Button type="button" size="sm" variant="outline" onClick={() => { onRainToggle?.(false); onSnowToggle?.(false); disableFeature('showWeather'); }}>Close</Button>
@@ -1427,7 +1592,8 @@ const AdditionalSimulationSegment: React.FC<Pick<CustomPanelsSegmentProps, 'feat
       </Card>
     )}
   </>
-);
+  );
+};
 
 const AIFeaturesSegment: React.FC<Pick<CustomPanelsSegmentProps, 'featureStates' | 'sceneRef' | 'aiManagerRef' | 'disableFeature' | 'sustainabilityManagerRef' | 'costEstimatorRef' | 'bimManagerRef' | 'currentModelId'>> = ({
   featureStates, sceneRef, aiManagerRef, disableFeature, sustainabilityManagerRef, costEstimatorRef, bimManagerRef, currentModelId
@@ -1550,6 +1716,7 @@ const AnalysisFeaturesSegment: React.FC<Pick<CustomPanelsSegmentProps, 'featureS
 );
 
 const SharingPanelContent: React.FC<{ onClose: () => void; currentModelId?: string }> = ({ onClose, currentModelId }) => {
+  const { ref: panelRef, style: panelStyle } = usePanelStack('bottom-left');
   const [copied, setCopied] = React.useState(false);
   const shareUrl = React.useMemo(() => {
     if (typeof window === 'undefined') return '';
@@ -1573,7 +1740,7 @@ const SharingPanelContent: React.FC<{ onClose: () => void; currentModelId?: stri
   };
 
   return (
-    <div className="fixed bottom-4 left-4 z-50 w-80 max-w-[90vw] bg-slate-800 p-4 rounded-lg border border-slate-600">
+    <div ref={panelRef} style={panelStyle} className="fixed left-4 z-50 w-80 max-w-[90vw] bg-slate-800 p-4 rounded-lg border border-slate-600">
       <h3 className="text-white mb-2">Share this workspace</h3>
       <p className="text-slate-400 text-xs mb-2">Anyone with this link (and access to this project) can open it.</p>
       <div className="flex gap-2">
@@ -1672,6 +1839,7 @@ const PresenceRoster: React.FC<{ collabManagerRef?: React.RefObject<any> }> = ({
 // once enabled there was no ongoing indicator that the mic was live, and no way to mute
 // without disabling the whole feature. This panel gives it both.
 const VoiceChatPanel: React.FC<{ collabManagerRef?: React.RefObject<any>; onClose: () => void }> = ({ collabManagerRef, onClose }) => {
+  const { ref: panelRef, style: panelStyle } = usePanelStack('bottom-left');
   const [muted, setMuted] = useState(false);
 
   const toggleMute = () => {
@@ -1681,7 +1849,7 @@ const VoiceChatPanel: React.FC<{ collabManagerRef?: React.RefObject<any>; onClos
   };
 
   return (
-    <div className="fixed bottom-4 left-4 z-50 bg-slate-800 p-4 rounded-lg border border-slate-600 w-60">
+    <div ref={panelRef} style={panelStyle} className="fixed left-4 z-50 bg-slate-800 p-4 rounded-lg border border-slate-600 w-60">
       <h3 className="text-white mb-2 flex items-center gap-2">
         <span className={`w-2 h-2 rounded-full ${muted ? 'bg-slate-500' : 'bg-red-500 animate-pulse'}`} />
         Voice Chat
@@ -1699,10 +1867,12 @@ const VoiceChatPanel: React.FC<{ collabManagerRef?: React.RefObject<any>; onClos
 
 const CollaborationFeaturesSegment: React.FC<Pick<CustomPanelsSegmentProps, 'featureStates' | 'sceneRef' | 'disableFeature' | 'collabManagerRef' | 'currentModelId'>> = ({
   featureStates, sceneRef, disableFeature, collabManagerRef, currentModelId
-}) => (
+}) => {
+  const multiUserPanel = usePanelStack('top-left');
+  return (
   <>
     {featureStates.showMultiUser && sceneRef.current && (
-      <div className="fixed top-4 left-4 z-50 bg-slate-800 p-4 rounded-lg border border-slate-600 w-64">
+      <div ref={multiUserPanel.ref} style={multiUserPanel.style} className="fixed left-4 z-50 bg-slate-800 p-4 rounded-lg border border-slate-600 w-64">
         <h3 className="text-white mb-2">Multi-User Collaboration</h3>
         <p className="text-slate-300 text-sm">
           <MultiUserStatus collabManagerRef={collabManagerRef} />
@@ -1727,21 +1897,26 @@ const CollaborationFeaturesSegment: React.FC<Pick<CustomPanelsSegmentProps, 'fea
       <VoiceChatPanel collabManagerRef={collabManagerRef} onClose={() => disableFeature('showVoiceChat')} />
     )}
   </>
-);
+  );
+};
 
 const ImmersiveFeaturesSegment: React.FC<Pick<CustomPanelsSegmentProps, 'featureStates' | 'sceneRef' | 'disableFeature' | 'audioManagerRef'>> = ({
   featureStates, sceneRef, disableFeature, audioManagerRef
-}) => (
+}) => {
+  const vrPanel = usePanelStack('top-left');
+  const arPanel = usePanelStack('top-right');
+  const hapticPanel = usePanelStack('bottom-right');
+  return (
   <>
     {featureStates.showVR && sceneRef.current && (
-      <div className="fixed top-4 left-4 z-50 bg-slate-800 p-4 rounded-lg border border-slate-600">
+      <div ref={vrPanel.ref} style={vrPanel.style} className="fixed left-4 z-50 bg-slate-800 p-4 rounded-lg border border-slate-600">
         <h3 className="text-white mb-2">VR Mode</h3>
         <p className="text-slate-300 text-sm">VR mode active</p>
         <Button size="sm" variant="outline" onClick={() => disableFeature('showVR')} className="mt-2">Close</Button>
       </div>
     )}
     {featureStates.showAR && sceneRef.current && (
-      <div className="fixed top-4 right-4 z-50 bg-slate-800 p-4 rounded-lg border border-slate-600">
+      <div ref={arPanel.ref} style={arPanel.style} className="fixed right-4 z-50 bg-slate-800 p-4 rounded-lg border border-slate-600">
         <h3 className="text-white mb-2">AR Mode</h3>
         <p className="text-slate-300 text-sm">AR mode active</p>
         <Button size="sm" variant="outline" onClick={() => disableFeature('showAR')} className="mt-2">Close</Button>
@@ -1756,18 +1931,21 @@ const ImmersiveFeaturesSegment: React.FC<Pick<CustomPanelsSegmentProps, 'feature
       </Suspense>
     )}
     {featureStates.showHaptic && sceneRef.current && (
-      <div className="fixed bottom-4 right-4 z-50 bg-slate-800 p-4 rounded-lg border border-slate-600">
+      <div ref={hapticPanel.ref} style={hapticPanel.style} className="fixed right-4 z-50 bg-slate-800 p-4 rounded-lg border border-slate-600">
         <h3 className="text-white mb-2">Haptic Feedback</h3>
         <p className="text-slate-300 text-sm">Haptic feedback active</p>
         <Button size="sm" variant="outline" onClick={() => disableFeature('showHaptic')} className="mt-2">Close</Button>
       </div>
     )}
   </>
-);
+  );
+};
 
 const GeoFeaturesSegment: React.FC<Pick<CustomPanelsSegmentProps, 'featureStates' | 'sceneRef' | 'disableFeature'>> = ({
   featureStates, sceneRef, disableFeature
-}) => (
+}) => {
+  const geoSyncPanel = usePanelStack('bottom-left');
+  return (
   <>
     {featureStates.showGeoLocation && sceneRef.current && (
       <Suspense fallback={<div>Loading Geo Location...</div>}>
@@ -1775,21 +1953,24 @@ const GeoFeaturesSegment: React.FC<Pick<CustomPanelsSegmentProps, 'featureStates
       </Suspense>
     )}
     {featureStates.showGeoSync && sceneRef.current && (
-      <div className="fixed bottom-4 left-4 z-50 bg-slate-800 p-4 rounded-lg border border-slate-600">
+      <div ref={geoSyncPanel.ref} style={geoSyncPanel.style} className="fixed left-4 z-50 bg-slate-800 p-4 rounded-lg border border-slate-600">
         <h3 className="text-white mb-2">Geo Sync</h3>
         <p className="text-slate-300 text-sm">Geo sync active</p>
         <Button size="sm" variant="outline" onClick={() => disableFeature('showGeoSync')} className="mt-2">Close</Button>
       </div>
     )}
   </>
-);
+  );
+};
 
 const SpecializedComponentsSegment: React.FC<Pick<CustomPanelsSegmentProps, 'featureStates' | 'sceneRef' | 'cameraRef' | 'engineRef' | 'simulationManagerRef' | 'presentationManagerRef' | 'disableFeature' | 'enableFeature' | 'gestureHistory' | 'onDomainChange'>> = ({
   featureStates, sceneRef, cameraRef, engineRef, simulationManagerRef, presentationManagerRef, disableFeature, enableFeature, gestureHistory, onDomainChange
-}) => (
+}) => {
+  const collabManagerPanel = usePanelStack('top-left');
+  return (
   <>
     {featureStates.showCollabManager && sceneRef.current && (
-      <div className="fixed top-4 left-4 z-50 bg-slate-800 p-4 rounded-lg border border-slate-600">
+      <div ref={collabManagerPanel.ref} style={collabManagerPanel.style} className="fixed left-4 z-50 bg-slate-800 p-4 rounded-lg border border-slate-600">
         <h3 className="text-white mb-2">Collaboration Manager</h3>
         <p className="text-slate-300 text-sm">Collaboration manager active</p>
         <Button size="sm" variant="outline" onClick={() => disableFeature('showCollabManager')} className="mt-2">Close</Button>
@@ -1816,16 +1997,17 @@ const SpecializedComponentsSegment: React.FC<Pick<CustomPanelsSegmentProps, 'fea
         onClose={() => disableFeature('showKeyboardShortcuts')}
       />
     )}
-    {featureStates.showPresentationManager && sceneRef.current && (
+    {featureStates.showMoodLighting && sceneRef.current && (
       <Suspense fallback={null}>
         <MoodLightingPanel
           presentationManager={presentationManagerRef?.current || null}
-          onClose={() => disableFeature('showPresentationManager')}
+          onClose={() => disableFeature('showMoodLighting')}
         />
       </Suspense>
     )}
   </>
-);
+  );
+};
 
 // Props interfaces for render functions
 interface RenderLeftPanelProps {

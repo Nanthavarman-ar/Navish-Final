@@ -4,6 +4,7 @@ import { Button } from './ui/button';
 import type { SustainabilityManager } from './SustainabilityManager';
 import type { CostEstimator } from './CostEstimator';
 import type { BIMManager } from './BIMManager';
+import { usePanelStack } from '../hooks/usePanelStack';
 
 interface AIAdvisorPanelProps {
   sustainabilityManager: SustainabilityManager | null;
@@ -26,6 +27,7 @@ const PRIORITY_COLOR: Record<string, string> = {
 };
 
 const AIAdvisorPanel: React.FC<AIAdvisorPanelProps> = ({ sustainabilityManager, costEstimator, bimManager, modelId, onClose }) => {
+  const { ref: panelRef, style: panelStyle } = usePanelStack('top-right');
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [recommendations, setRecommendations] = useState<Recommendation[] | null>(null);
 
@@ -111,7 +113,7 @@ const AIAdvisorPanel: React.FC<AIAdvisorPanelProps> = ({ sustainabilityManager, 
   };
 
   return (
-    <div className="fixed top-20 right-4 z-40 w-80 max-w-[90vw] bg-gray-900/95 border border-cyan-500/20 rounded-lg shadow-2xl text-white flex flex-col max-h-[70vh]">
+    <div ref={panelRef} style={panelStyle} className="fixed right-4 z-40 w-80 max-w-[90vw] bg-gray-900/95 border border-cyan-500/20 rounded-lg shadow-2xl text-white flex flex-col max-h-[70vh]">
       <div className="flex items-center justify-between p-4 border-b border-gray-700 shrink-0">
         <div className="flex items-center gap-2">
           <Brain className="w-4 h-4 text-purple-400" />

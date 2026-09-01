@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { X, Sparkles, RotateCcw } from 'lucide-react';
 import type { PresentationManager } from './PresentationManager';
+import { usePanelStack } from '../hooks/usePanelStack';
 
 interface MoodLightingPanelProps {
   presentationManager: PresentationManager | null;
@@ -23,6 +24,7 @@ const PRESETS: Array<{ id: string; label: string; description: string }> = [
 ];
 
 const MoodLightingPanel: React.FC<MoodLightingPanelProps> = ({ presentationManager, onClose }) => {
+  const { ref: panelRef, style: panelStyle } = usePanelStack('top-right');
   const [activePreset, setActivePreset] = useState<string | null>(null);
 
   const applyPreset = (presetId: string) => {
@@ -41,7 +43,7 @@ const MoodLightingPanel: React.FC<MoodLightingPanelProps> = ({ presentationManag
   };
 
   return (
-    <div className="fixed top-20 right-4 z-40 w-72 max-w-[90vw] bg-gray-900/95 border border-cyan-500/20 rounded-lg shadow-2xl text-white">
+    <div ref={panelRef} style={panelStyle} className="fixed right-4 z-40 w-72 max-w-[90vw] bg-gray-900/95 border border-cyan-500/20 rounded-lg shadow-2xl text-white">
       <div className="flex items-center justify-between p-4 border-b border-gray-700">
         <div className="flex items-center gap-2">
           <Sparkles className="w-4 h-4 text-cyan-400" />

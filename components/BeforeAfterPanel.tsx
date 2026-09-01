@@ -8,6 +8,7 @@ import '@babylonjs/core/Misc/screenshotTools';
 import { X, Activity, Camera as CameraIcon, RotateCcw } from 'lucide-react';
 import { Button } from './ui/button';
 import { showToast } from './utils/toast';
+import { usePanelStack } from '../hooks/usePanelStack';
 
 interface BeforeAfterPanelProps {
   scene: Scene;
@@ -16,6 +17,7 @@ interface BeforeAfterPanelProps {
 }
 
 const BeforeAfterPanel: React.FC<BeforeAfterPanelProps> = ({ scene, engine, onClose }) => {
+  const { ref: panelRef, style: panelStyle } = usePanelStack('bottom-left');
   const [beforeImage, setBeforeImage] = useState<string | null>(null);
   const [afterImage, setAfterImage] = useState<string | null>(null);
   const [isCapturing, setIsCapturing] = useState<'before' | 'after' | null>(null);
@@ -59,7 +61,7 @@ const BeforeAfterPanel: React.FC<BeforeAfterPanelProps> = ({ scene, engine, onCl
   };
 
   return (
-    <div className="fixed bottom-4 left-4 z-40 w-96 max-w-[90vw] bg-gray-900/95 border border-cyan-500/20 rounded-lg shadow-2xl text-white">
+    <div ref={panelRef} style={panelStyle} className="fixed left-4 z-40 w-96 max-w-[90vw] bg-gray-900/95 border border-cyan-500/20 rounded-lg shadow-2xl text-white">
       <div className="flex items-center justify-between p-4 border-b border-gray-700">
         <div className="flex items-center gap-2">
           <Activity className="w-4 h-4 text-cyan-400" />

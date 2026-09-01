@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Scene, Vector3, DirectionalLight } from '@babylonjs/core';
 import { X, Sun } from 'lucide-react';
 import { calculateSunAngle, calculateSunIntensity, calculateColorTemperature } from '../utils/lightingUtils';
+import { usePanelStack } from '../hooks/usePanelStack';
 
 interface SunStudyPanelProps {
   scene: Scene;
@@ -18,6 +19,7 @@ function temperatureToTint(kelvin: number): { r: number; g: number; b: number } 
 }
 
 const SunStudyPanel: React.FC<SunStudyPanelProps> = ({ scene, onClose }) => {
+  const { ref: panelRef, style: panelStyle } = usePanelStack('top-right');
   const [hour, setHour] = useState(12);
   const [month, setMonth] = useState(new Date().getMonth());
 
@@ -60,7 +62,7 @@ const SunStudyPanel: React.FC<SunStudyPanelProps> = ({ scene, onClose }) => {
   const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
   return (
-    <div className="fixed top-4 right-4 z-40 w-80 max-w-[90vw] bg-gray-900/95 border border-cyan-500/20 rounded-lg shadow-2xl text-white">
+    <div ref={panelRef} style={panelStyle} className="fixed right-4 z-40 w-80 max-w-[90vw] bg-gray-900/95 border border-cyan-500/20 rounded-lg shadow-2xl text-white">
       <div className="flex items-center justify-between p-4 border-b border-gray-700">
         <div className="flex items-center gap-2">
           <Sun className="w-4 h-4 text-amber-400" />

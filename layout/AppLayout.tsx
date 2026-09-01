@@ -17,6 +17,7 @@ import { useAuth, useApp } from '../contexts';
 import { LAST_MODEL_ID_KEY } from '../contexts/AppContext';
 import { apiCall } from '../hooks/useApi';
 import { showToast } from '../components/utils/toast';
+import { PanelStackProvider, usePanelStack } from '../hooks/usePanelStack';
 import type { Scene } from '@babylonjs/core';
 
 // Lazy-loaded: pulls in the full Babylon.js engine (~1.25MB gzip). Previously this was a
@@ -127,6 +128,70 @@ const ToolPageRoute: React.FC = () => {
   const normalized = toolId.toLowerCase() as ToolPageId;
   if (!toolPageSlugs.includes(normalized)) return <Home />;
   return <ToolPage page={normalized} />;
+};
+
+// Split out from AppLayout itself so usePanelStack() can actually see PanelStackProvider -
+// a component can never consume a context it renders as part of its own return value, only
+// one rendered inside it. AppLayout wraps its whole tree (including this) in
+// PanelStackProvider so these two chrome buttons stack correctly against every panel
+// BabylonWorkspace renders further down, instead of the manual top-4/top-16 guess this used
+// to be (which only ever accounted for one specific known collision, not all of them).
+interface AppChromeProps {
+  showMyModelsShortcut: boolean;
+  onMyModelsClick: () => void;
+  showAIVoice: boolean;
+  scene: Scene | null;
+  showAIVoiceAssistant: boolean;
+  onOpenAIVoice: () => void;
+  onCloseAIVoice: () => void;
+}
+
+const AppChrome: React.FC<AppChromeProps> = ({
+  showMyModelsShortcut, onMyModelsClick, showAIVoice, scene, showAIVoiceAssistant, onOpenAIVoice, onCloseAIVoice
+}) => {
+  const myModels = usePanelStack('top-left');
+  const aiVoice = usePanelStack('top-right');
+
+  return (
+    <>
+      {showMyModelsShortcut && (
+        <button
+          ref={myModels.ref as React.Ref<HTMLButtonElement>}
+          style={myModels.style}
+          type="button"
+          onClick={onMyModelsClick}
+          className="fixed left-4 z-50 flex items-center gap-2 px-3 py-2 bg-slate-800/90 hover:bg-slate-700 border border-slate-600 rounded-lg text-white text-sm shadow-lg transition-colors pointer-events-auto cursor-pointer"
+          title="Go to My Models"
+          aria-label="Go to My Models"
+        >
+          My Models
+        </button>
+      )}
+
+      {/* AI Voice Assistant - fixed position, z-50 for visibility and clickability */}
+      {showAIVoice && scene && (
+        <>
+          <Suspense fallback={null}>
+            <AIVoiceAssistant scene={scene} isActive={showAIVoiceAssistant} onClose={onCloseAIVoice} />
+          </Suspense>
+          {!showAIVoiceAssistant && (
+            <button
+              ref={aiVoice.ref as React.Ref<HTMLButtonElement>}
+              style={aiVoice.style}
+              type="button"
+              onClick={onOpenAIVoice}
+              className="fixed right-4 z-50 flex items-center gap-2 px-3 py-2 bg-slate-800/90 hover:bg-slate-700 border border-slate-600 rounded-lg text-white text-sm shadow-lg transition-colors pointer-events-auto cursor-pointer"
+              title="Open AI Voice Assistant"
+              aria-label="Open AI Voice Assistant"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+              AI Voice
+            </button>
+          )}
+        </>
+      )}
+    </>
+  );
 };
 
 export default function AppLayout() {
@@ -411,6 +476,7 @@ export default function AppLayout() {
 
   return (
     <ThemeProvider attribute="class" defaultTheme="dark" enableSystem>
+      <PanelStackProvider>
       <div className="min-h-screen bg-slate-900 text-white relative overflow-hidden">
         {/* Cyberpunk background particles */}
         <div className="fixed inset-0 pointer-events-none">
@@ -436,49 +502,23 @@ export default function AppLayout() {
           {mainContent}
         </div>
 
-        {showMyModelsShortcut && (
-          <button
-            type="button"
-            onClick={() => navigate('/client/models')}
-            className="fixed top-4 left-4 z-50 flex items-center gap-2 px-3 py-2 bg-slate-800/90 hover:bg-slate-700 border border-slate-600 rounded-lg text-white text-sm shadow-lg transition-colors pointer-events-auto cursor-pointer"
-            title="Go to My Models"
-            aria-label="Go to My Models"
-          >
-            My Models
-          </button>
-        )}
-
-        {/* AI Voice Assistant - has fixed position and z-50 for visibility and clickability */}
-        {user && sceneReady && sceneRef.current && (
-          <>
-            <Suspense fallback={null}>
-              <AIVoiceAssistant
-                scene={sceneRef.current}
-                isActive={showAIVoiceAssistant}
-                onClose={() => {
-                  setShowAIVoiceAssistant(false);
-                  // Keeps the workspace's own "Voice Assistant" tool-panel button in
-                  // sync so it doesn't keep showing "on" after this panel is closed.
-                  window.dispatchEvent(new CustomEvent('naviz:voiceAssistantClosed'));
-                }}
-              />
-            </Suspense>
-            {!showAIVoiceAssistant && (
-              <button
-                type="button"
-                onClick={() => setShowAIVoiceAssistant(true)}
-                className={`fixed ${currentPath === '/workspace' ? 'top-16' : 'top-4'} right-4 z-50 flex items-center gap-2 px-3 py-2 bg-slate-800/90 hover:bg-slate-700 border border-slate-600 rounded-lg text-white text-sm shadow-lg transition-colors pointer-events-auto cursor-pointer`}
-                title="Open AI Voice Assistant"
-                aria-label="Open AI Voice Assistant"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-                AI Voice
-              </button>
-            )}
-          </>
-        )}
+        <AppChrome
+          showMyModelsShortcut={showMyModelsShortcut}
+          onMyModelsClick={() => navigate('/client/models')}
+          showAIVoice={!!(user && sceneReady && sceneRef.current)}
+          scene={sceneRef.current}
+          showAIVoiceAssistant={showAIVoiceAssistant}
+          onOpenAIVoice={() => setShowAIVoiceAssistant(true)}
+          onCloseAIVoice={() => {
+            setShowAIVoiceAssistant(false);
+            // Keeps the workspace's own "Voice Assistant" tool-panel button in sync so
+            // it doesn't keep showing "on" after this panel is closed.
+            window.dispatchEvent(new CustomEvent('naviz:voiceAssistantClosed'));
+          }}
+        />
         <Toaster />
       </div>
+      </PanelStackProvider>
     </ThemeProvider>
   );
 }

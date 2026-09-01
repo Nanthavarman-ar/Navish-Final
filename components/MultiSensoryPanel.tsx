@@ -3,6 +3,7 @@ import { X, Sparkles, Volume2, Sun } from 'lucide-react';
 import type { MoodSceneManager, MoodScene } from './managers/MoodSceneManager';
 import type { AudioManager } from './AudioManager';
 import { showToast } from './utils/toast';
+import { usePanelStack } from '../hooks/usePanelStack';
 
 interface MultiSensoryPanelProps {
   moodSceneManager: MoodSceneManager | null;
@@ -13,6 +14,7 @@ interface MultiSensoryPanelProps {
 // Combines the visual mood scene system with spatial audio into a single "preview
 // experience" toggle, rather than requiring the user to open two separate panels.
 const MultiSensoryPanel: React.FC<MultiSensoryPanelProps> = ({ moodSceneManager, audioManager, onClose }) => {
+  const { ref: panelRef, style: panelStyle } = usePanelStack('top-left');
   const [scenes, setScenes] = useState<MoodScene[]>([]);
   const [selectedSceneId, setSelectedSceneId] = useState<string | null>(null);
   const [audioOn, setAudioOn] = useState(false);
@@ -45,7 +47,7 @@ const MultiSensoryPanel: React.FC<MultiSensoryPanelProps> = ({ moodSceneManager,
   };
 
   return (
-    <div className="fixed top-4 left-4 z-40 w-72 max-w-[90vw] bg-gray-900/95 border border-cyan-500/20 rounded-lg shadow-2xl text-white">
+    <div ref={panelRef} style={panelStyle} className="fixed left-4 z-40 w-72 max-w-[90vw] bg-gray-900/95 border border-cyan-500/20 rounded-lg shadow-2xl text-white">
       <div className="flex items-center justify-between p-4 border-b border-gray-700">
         <div className="flex items-center gap-2">
           <Sparkles className="w-4 h-4 text-purple-400" />

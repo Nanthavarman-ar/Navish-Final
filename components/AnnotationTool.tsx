@@ -4,6 +4,7 @@ import { X, MapPin, Trash2, Plus } from 'lucide-react';
 import { Button } from './ui/button';
 import { supabase, projectId } from '../supabase/client';
 import { showToast } from './utils/toast';
+import { usePanelStack } from '../hooks/usePanelStack';
 
 interface AnnotationToolProps {
   scene: Scene;
@@ -22,6 +23,7 @@ interface Annotation {
 const functionsBaseUrl = `https://${projectId}.supabase.co/functions/v1/make-server-cf230d31`;
 
 const AnnotationTool: React.FC<AnnotationToolProps> = ({ scene, roomId, onClose }) => {
+  const { ref: panelRef, style: panelStyle } = usePanelStack('top-left');
   const [annotations, setAnnotations] = useState<Annotation[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isPlacing, setIsPlacing] = useState(false);
@@ -165,7 +167,7 @@ const AnnotationTool: React.FC<AnnotationToolProps> = ({ scene, roomId, onClose 
   };
 
   return (
-    <div className="fixed top-20 left-4 z-40 w-80 max-w-[90vw] bg-gray-900/95 border border-cyan-500/20 rounded-lg shadow-2xl text-white flex flex-col max-h-[70vh]">
+    <div ref={panelRef} style={panelStyle} className="fixed left-4 z-40 w-80 max-w-[90vw] bg-gray-900/95 border border-cyan-500/20 rounded-lg shadow-2xl text-white flex flex-col max-h-[70vh]">
       <div className="flex items-center justify-between p-4 border-b border-gray-700 shrink-0">
         <div className="flex items-center gap-2">
           <MapPin className="w-4 h-4 text-amber-400" />

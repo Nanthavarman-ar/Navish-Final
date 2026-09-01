@@ -3,6 +3,7 @@ import { X, Sun, Play, Pause, Sparkles } from 'lucide-react';
 import { Button } from './ui/button';
 import type { ScenarioManager, PresentationScenario } from './managers/ScenarioManager';
 import { showToast } from './utils/toast';
+import { usePanelStack } from '../hooks/usePanelStack';
 
 interface ScenarioTourPanelProps {
   scenarioManager: ScenarioManager | null;
@@ -16,6 +17,7 @@ const TIME_ICONS: Record<string, string> = {
 };
 
 const ScenarioTourPanel: React.FC<ScenarioTourPanelProps> = ({ scenarioManager, title = 'Scenarios', autoStart = false, onClose }) => {
+  const { ref: panelRef, style: panelStyle } = usePanelStack('top-left');
   const [scenarios, setScenarios] = useState<PresentationScenario[]>([]);
   const [currentId, setCurrentId] = useState<string | null>(null);
   const [isTouring, setIsTouring] = useState(false);
@@ -81,7 +83,7 @@ const ScenarioTourPanel: React.FC<ScenarioTourPanelProps> = ({ scenarioManager, 
   }, [autoStart, scenarios.length]);
 
   return (
-    <div className="fixed top-20 left-4 z-40 w-80 max-w-[90vw] bg-gray-900/95 border border-cyan-500/20 rounded-lg shadow-2xl text-white flex flex-col max-h-[70vh]">
+    <div ref={panelRef} style={panelStyle} className="fixed left-4 z-40 w-80 max-w-[90vw] bg-gray-900/95 border border-cyan-500/20 rounded-lg shadow-2xl text-white flex flex-col max-h-[70vh]">
       <div className="flex items-center justify-between p-4 border-b border-gray-700 shrink-0">
         <div className="flex items-center gap-2">
           <Sun className="w-4 h-4 text-amber-400" />

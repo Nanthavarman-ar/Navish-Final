@@ -70,15 +70,29 @@ export function UploadPage() {
   // Fetch clients from backend
   const { data: clientsResponse, loading: clientsLoading } = useApi<{ clients: any[] }>('/clients');
 
-  const supportedFormats = [
-    '.glb', '.gltf', '.fbx', '.obj', '.dae', '.3ds', '.ply',
-    '.stl', '.x3d', '.blend', '.max', '.ma', '.mb', '.c4d',
-    '.lwo', '.lws', '.3dm', '.step', '.stp', '.iges', '.igs',
-    '.dwg', '.dxf', '.ifc', '.skp', '.usd', '.usda', '.usdc',
+  // This used to also list .fbx/.dae/.3ds/.ply/.x3d/.blend/.max/.ma/.mb/.c4d/.lwo/.lws/
+  // .3dm/.step/.stp/.iges/.igs/.dwg/.dxf/.skp/.usd/.usda/.usdc as "supported", with a
+  // claim below that "all formats are converted to glTF 2.0" - no such conversion exists
+  // anywhere in this upload flow (finalizeModelUpload just forwards the raw file bytes to
+  // R2). @babylonjs/loaders only registers glTF/GLB/OBJ/STL plugins (see the dynamic
+  // import in BabylonWorkspace.tsx), and IFC is separately handled by BIMManager's own
+  // parser (components/utils/ifcParser.ts) - every other extension in that old list would
+  // upload successfully and then silently fail to render, with no indication why. This
+  // list now only names formats that actually load.
+  const supportedFormats = ['.glb', '.gltf', '.obj', '.stl', '.ifc',
     // Floor plans, not 3D models - rendered as a flat image plane instead of
     // through SceneLoader (see the model-load effect in BabylonWorkspace.tsx),
     // but placed/scaled/rotated in AR through the exact same flow otherwise.
     '.pdf'
+  ];
+
+  // Common exports from other 3D tools (SketchUp, 3ds Max, Revit/AutoCAD, Blender, etc.)
+  // that people reasonably expect to just upload - shown a specific "convert first"
+  // message instead of the generic "(unsupported format)" so they know what to do next.
+  const needsConversionFormats = [
+    '.skp', '.fbx', '.dae', '.3ds', '.ply', '.x3d', '.blend', '.max', '.ma', '.mb',
+    '.c4d', '.lwo', '.lws', '.3dm', '.step', '.stp', '.iges', '.igs', '.dwg', '.dxf',
+    '.usd', '.usda', '.usdc'
   ];
 
   const handleFileSelect = (files: FileList | null) => {
@@ -97,7 +111,11 @@ export function UploadPage() {
       const maxSize = 500 * 1024 * 1024;
 
       if (!supportedFormats.includes(extension)) {
-        invalidFiles.push(`${file.name} (unsupported format)`);
+        invalidFiles.push(
+          needsConversionFormats.includes(extension)
+            ? `${file.name} (${extension} isn't supported yet - export as .glb, .gltf, .obj, or .stl first)`
+            : `${file.name} (unsupported format)`
+        );
         return;
       }
 
@@ -333,15 +351,15 @@ export function UploadPage() {
                 <p className="text-gray-400 mb-4">
                   or click to browse your files (Max 500MB per file)
                 </p>
-                <div className="grid grid-cols-4 gap-2 max-w-md mx-auto">
-                  {supportedFormats.slice(0, 12).map((format) => (
+                <div className="grid grid-cols-3 gap-2 max-w-sm mx-auto">
+                  {supportedFormats.map((format) => (
                     <Badge key={format} variant="outline" className="text-xs border-slate-600 justify-center">
                       {format}
                     </Badge>
                   ))}
                 </div>
                 <p className="text-xs text-gray-500 mt-2">
-                  +{supportedFormats.length - 12} more formats supported
+                  Have a SketchUp, FBX, or CAD file? Export it as .glb, .gltf, .obj, or .stl first.
                 </p>
                 <input
                   ref={fileInputRef}
@@ -587,16 +605,12 @@ export function UploadPage() {
             <CardContent>
               <div className="space-y-3 text-sm text-gray-400">
                 <div className="flex items-start gap-2">
-                  <Zap className="w-4 h-4 text-yellow-400 mt-0.5 flex-shrink-0" />
-                  <p>Models are automatically optimized for web viewing with mesh simplification and texture compression.</p>
-                </div>
-                <div className="flex items-start gap-2">
                   <FileType className="w-4 h-4 text-blue-400 mt-0.5 flex-shrink-0" />
-                  <p>All formats are converted to glTF 2.0 for maximum compatibility with Babylon.js.</p>
+                  <p>Uploaded as-is - .glb/.gltf load with no conversion step; .obj and .stl load directly through Babylon.js's own importer.</p>
                 </div>
                 <div className="flex items-start gap-2">
-                  <HardDrive className="w-4 h-4 text-green-400 mt-0.5 flex-shrink-0" />
-                  <p>LOD (Level of Detail) versions are generated automatically for better performance.</p>
+                  <Zap className="w-4 h-4 text-yellow-400 mt-0.5 flex-shrink-0" />
+                  <p>For best performance, optimize meshes and compress textures in your 3D tool before exporting - this isn't done automatically yet.</p>
                 </div>
               </div>
             </CardContent>

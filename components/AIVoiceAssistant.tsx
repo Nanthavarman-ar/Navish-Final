@@ -8,6 +8,7 @@ import { Separator } from './ui/separator';
 import { Alert, AlertDescription } from './ui/alert';
 import { featureCategoriesArray } from '../config/featureCategories';
 import { showToast } from './utils/toast';
+import { usePanelStack } from '../hooks/usePanelStack';
 import {
   Mic,
   MicOff,
@@ -155,6 +156,7 @@ const AIVoiceAssistant: React.FC<AIVoiceAssistantProps> = ({
   onCommandExecute,
   onSceneUpdate
 }) => {
+  const { ref: panelRef, style: panelStyle } = usePanelStack('top-right');
   const [isListening, setIsListening] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [transcript, setTranscript] = useState('');
@@ -885,7 +887,7 @@ const AIVoiceAssistant: React.FC<AIVoiceAssistantProps> = ({
   if (!isActive) return null;
 
   return (
-    <div className="fixed top-4 right-4 w-96 bg-slate-900 border border-slate-700 rounded-lg shadow-xl z-50 pointer-events-auto">
+    <div ref={panelRef} style={panelStyle} className="fixed right-4 w-96 bg-slate-900 border border-slate-700 rounded-lg shadow-xl z-50 pointer-events-auto">
       <Card className="bg-slate-900 border-slate-700 text-white">
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between gap-3">

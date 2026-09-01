@@ -4,7 +4,7 @@ import { useSearchParams } from 'react-router-dom';
 import './BabylonWorkspace.css';
 
 // Core Babylon.js imports only (minimal for initial load)
-import { Engine, Scene, ArcRotateCamera, FreeCamera, UniversalCamera, HemisphericLight, DirectionalLight, Vector3, Vector2, Quaternion, Color3, Color4, Mesh, AbstractMesh, StandardMaterial, DefaultRenderingPipeline, SSAORenderingPipeline, SSRRenderingPipeline, HighlightLayer, PBRMaterial, Material, ImageProcessingConfiguration, ColorCurves, PointerInfo, PickingInfo, Camera, PointerEventTypes, ParticleSystem, MeshBuilder, Texture, GizmoManager, GizmoAnchorPoint, ShadowGenerator, Ray } from '@babylonjs/core';
+import { Engine, Scene, ArcRotateCamera, FreeCamera, UniversalCamera, HemisphericLight, DirectionalLight, Vector3, Vector2, Quaternion, Color3, Color4, Mesh, AbstractMesh, StandardMaterial, DefaultRenderingPipeline, SSAORenderingPipeline, SSRRenderingPipeline, HighlightLayer, PBRMaterial, Material, ImageProcessingConfiguration, ColorCurves, PointerInfo, PickingInfo, Camera, PointerEventTypes, ParticleSystem, MeshBuilder, Texture, GizmoManager, GizmoAnchorPoint, ShadowGenerator, CascadedShadowGenerator, Ray } from '@babylonjs/core';
 import { WaterMaterial } from '@babylonjs/materials/water';
 import { PerlinNoiseProceduralTexture } from '@babylonjs/procedural-textures';
 
@@ -63,6 +63,7 @@ import { SimulationManager } from './SimulationManager';
 import { SustainabilityManager, SustainabilityReport } from './SustainabilityManager';
 import { PresentationManager } from './PresentationManager';
 import { IoTManager } from './IoTManager';
+import { captureSceneEdits, applySceneEdits, saveSceneEdits, loadSceneEdits } from './utils/sceneEditsPersistence';
 
 // UI Component imports
 import FeatureButton from './FeatureButton';
@@ -415,6 +416,7 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
     showEnergyDashboard: false,
     showSessionInsights: false,
     showIoTPanel: false,
+    showMoodLighting: false,
     showMiscellaneous: false,
     // false so these don't render as "pressed" on load while transformMode is still 'none' -
     // they used to default true while the state actually driving the tool defaulted false, so
@@ -644,6 +646,17 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
           if (cancelled) return;
           const newMeshes = scene.meshes.filter((m) => !meshesBefore.has(m));
           loadedModelMeshesRef.current = newMeshes;
+          // Re-applies whatever was auto-saved (see pushUndo/scheduleAutoSave above) the
+          // last time this same model was edited - a fresh SceneLoader.Append here always
+          // recreates meshes straight from the source file with none of that, which is why
+          // an edit used to vanish the moment you navigated away and back. Computed
+          // directly from selectedModel rather than reading the currentModelId state
+          // variable, since this closure was created before this same effect's own
+          // setCurrentModelId() call above would have taken effect.
+          const loadedModelId = selectedModel?.id ? String(selectedModel.id) : 'default-model';
+          loadSceneEdits(loadedModelId).then((savedEdits) => {
+            if (!cancelled && savedEdits) applySceneEdits(loadedModelMeshesRef.current, savedEdits);
+          });
           removePlaceholderGeometry(scene);
           // Some exported CAD/BIM files mark certain nodes hidden (e.g. glTF's
           // KHR_node_visibility, from an alternate design option or hidden layer in the
@@ -732,16 +745,15 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
     });
   }, [categoryPanelVisible, setCategoryPanelVisible]);
 
+  // Same bug as handleCategoryToggle above, just at the "Expand all" scale: this was
+  // force-enabling (or disabling) every single feature in every category - clicking
+  // "Expand all" turned on all ~60 tools (BIM, Weather, VR, AR, everything) at once
+  // instead of just opening every category's list to choose from.
   const handleToggleAllCategories = useCallback((visible: boolean) => {
     const updates: Record<string, boolean> = {};
     Object.keys(featureCategories).forEach(cat => { updates[cat] = visible; });
     setCategoryPanelVisible(updates);
-    if (visible) {
-      Object.values(featureCategories).flat().forEach(f => enableFeature(f.id));
-    } else {
-      Object.values(featureCategories).flat().forEach(f => disableFeature(f.id));
-    }
-  }, [setCategoryPanelVisible, enableFeature, disableFeature]);
+  }, [setCategoryPanelVisible]);
 
   // Domain Selector previously only set local component state and showed a toast with
   // zero effect on the rest of the workspace, despite being described as scoping "the
@@ -810,6 +822,11 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
     | { kind: 'materialSwap'; mesh: AbstractMesh; previousMaterial: Material }
     | { kind: 'delete'; mesh: AbstractMesh };
   const undoHistoryRef = useRef<UndoEntry[]>([]);
+  // Debounce handle for the auto-save scheduled by pushUndo() (declared further below,
+  // once loadedModelMeshesRef/currentModelId are in scope) - one timer shared across every
+  // edit source (gizmo, Mirror, Material Editor, Property Inspector) so a burst of edits
+  // triggers a single save ~1.5s after the user stops, not one network call per edit.
+  const saveEditsDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [sustainabilityReport, setSustainabilityReport] = React.useState<SustainabilityReport | null>(null);
   const sustainabilityManagerRef = useRef<SustainabilityManager | null>(null);
   const presentationManagerRef = useRef<PresentationManager | null>(null);
@@ -918,6 +935,35 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
     showToast.success('Zoomed to fit model');
   }, []);
 
+  // Central entry point for every undoable edit (gizmo drag, Mirror, Delete, Material
+  // Editor, Property Inspector) - pushes the entry (same shape/cap every call site already
+  // used individually) AND schedules the debounced auto-save that's what actually makes an
+  // edit survive navigating away and back. Without persisting through this single choke
+  // point, every new kind of edit would need its own separate save wiring, and it'd be easy
+  // for one to quietly fall through the cracks the way ALL of them did before this existed.
+  // scheduleAutoSave is split out so a gizmo drag's onDragEnd (further below) can also
+  // refresh the save timer without pushing a second undo entry - recordSnapshot already
+  // pushes the "before" state once at onDragStart, which is all undo needs, but a drag
+  // lasting longer than the debounce window would otherwise get auto-saved mid-drag (from
+  // the onDragStart push) and never again, missing wherever the mesh actually ended up.
+  // loadedModelMeshesRef is a ref (declared further below) rather than a dependency here -
+  // only read inside these callbacks' bodies once they actually fire, by which point every
+  // ref for this render has long since been assigned.
+  const scheduleAutoSave = useCallback(() => {
+    if (saveEditsDebounceRef.current) clearTimeout(saveEditsDebounceRef.current);
+    saveEditsDebounceRef.current = setTimeout(() => {
+      saveEditsDebounceRef.current = null;
+      if (loadedModelMeshesRef.current.length === 0) return;
+      saveSceneEdits(currentModelId, captureSceneEdits(loadedModelMeshesRef.current));
+    }, 1500);
+  }, [currentModelId]);
+
+  const pushUndo = useCallback((entry: UndoEntry) => {
+    undoHistoryRef.current.push(entry);
+    if (undoHistoryRef.current.length > 50) undoHistoryRef.current.shift();
+    scheduleAutoSave();
+  }, [scheduleAutoSave]);
+
   // One-shot flip of the selected mesh across its local X axis (left-right mirror) -
   // negating a scaling component is the standard way to mirror a mesh in Babylon;
   // rendering stays correct (no inside-out faces) because Babylon flips the culling
@@ -939,7 +985,7 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
     }
     const mesh = workspaceState.selectedMesh;
     if (!mesh) return;
-    undoHistoryRef.current.push({
+    pushUndo({
       kind: 'transform',
       mesh,
       position: mesh.position.clone(),
@@ -947,10 +993,9 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
       rotation: mesh.rotation.clone(),
       scaling: mesh.scaling.clone(),
     });
-    if (undoHistoryRef.current.length > 50) undoHistoryRef.current.shift();
     mesh.scaling.x *= -1;
     showToast.success('Mirrored');
-  }, [workspaceState.selectedMesh]);
+  }, [workspaceState.selectedMesh, pushUndo]);
 
   // "Delete" the selected mesh - a soft delete (setEnabled(false), not dispose()) so
   // Ctrl+Z can bring it back. A real dispose() frees the mesh's GPU buffers permanently;
@@ -960,8 +1005,7 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
   const handleDeleteSelected = React.useCallback(() => {
     const mesh = workspaceState.selectedMesh;
     if (!mesh) return;
-    undoHistoryRef.current.push({ kind: 'delete', mesh });
-    if (undoHistoryRef.current.length > 50) undoHistoryRef.current.shift();
+    pushUndo({ kind: 'delete', mesh });
     if (highlightLayerRef.current) {
       highlightLayerRef.current.removeMesh(mesh as Mesh);
     }
@@ -969,7 +1013,7 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
     setTransformMode('none');
     setSelectedMesh(null);
     showToast.success('Deleted');
-  }, [workspaceState.selectedMesh]);
+  }, [workspaceState.selectedMesh, pushUndo]);
 
   // handle files selected via workspace import dialog
   const handleWorkspaceFileUpload = React.useCallback((files: FileList | null) => {
@@ -1310,9 +1354,38 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
         // other tool that moves "sun") only produces a faint brightness/color
         // shift with no actual moving shadows, which is the whole visible point
         // of simulating time-of-day.
-        const shadowGenerator = new ShadowGenerator(1024, dirLight);
-        shadowGenerator.useBlurExponentialShadowMap = true;
-        shadowGenerator.blurKernel = 32;
+        //
+        // CascadedShadowGenerator (not the plain ShadowGenerator this used to be)
+        // splits the shadow frustum into multiple cascades at increasing distance from
+        // the camera, so nearby geometry gets a sharp, high-resolution shadow while
+        // far geometry still gets a soft one from the same single directional light -
+        // a single flat shadow map at this size either looked blocky up close or
+        // wasted resolution on distant geometry, no setting split the difference.
+        // Standard choice for a single sun/directional light over an architectural
+        // scene walked through at varying distances (the exact case this app is for).
+        //
+        // CSM requires WebGL2 - confirmed via a headless-engine test that Babylon's own
+        // CascadedShadowGenerator constructor doesn't fail gracefully when it isn't
+        // supported (it logs a warning, then throws mid-construction instead of falling
+        // back on its own). A device/browser still on WebGL1 would otherwise crash scene
+        // init entirely, which is a far worse outcome than just not getting CSM - so this
+        // explicitly falls back to the plain ShadowGenerator this used to be.
+        let shadowGenerator: ShadowGenerator;
+        try {
+          const csm = new CascadedShadowGenerator(1024, dirLight);
+          csm.usePercentageCloserFiltering = true;
+          csm.filteringQuality = ShadowGenerator.QUALITY_MEDIUM;
+          // Stops the cascade boundaries visibly swimming/popping as the camera moves -
+          // a known CSM artifact, worth the (small) extra cost for a walkthrough app
+          // where the camera is in near-constant motion.
+          csm.stabilizeCascades = true;
+          shadowGenerator = csm;
+        } catch (csmError) {
+          console.warn('CascadedShadowGenerator unavailable (likely WebGL1) - falling back to standard shadows:', csmError);
+          shadowGenerator = new ShadowGenerator(1024, dirLight);
+          shadowGenerator.useBlurExponentialShadowMap = true;
+          shadowGenerator.blurKernel = 32;
+        }
         shadowGeneratorRef.current = shadowGenerator;
 
         // Placeholder ground + box so there's something to click/test tools on
@@ -1446,7 +1519,7 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
         // XRManager already applies for headset use.
         if (!capabilities.mobile && (resolvedQuality === 'high' || resolvedQuality === 'ultra') && shadowGeneratorRef.current && !shouldAbort()) {
           shadowGeneratorRef.current.mapSize = 2048;
-          shadowGeneratorRef.current.blurKernel = 64;
+          shadowGeneratorRef.current.filteringQuality = ShadowGenerator.QUALITY_HIGH;
         }
 
         // Sharper textures at oblique viewing angles (a wall/floor texture stays crisp
@@ -2112,7 +2185,7 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
     setEnableSSR(resolved === 'ultra');
     if (shadowGeneratorRef.current) {
       shadowGeneratorRef.current.mapSize = isHighTier ? 2048 : 1024;
-      shadowGeneratorRef.current.blurKernel = isHighTier ? 64 : 32;
+      shadowGeneratorRef.current.filteringQuality = isHighTier ? ShadowGenerator.QUALITY_HIGH : ShadowGenerator.QUALITY_MEDIUM;
     }
     Texture.DEFAULT_ANISOTROPIC_FILTERING_LEVEL = isHighTier ? 8 : 4;
   }, [graphicsQuality, recommendedQuality]);
@@ -2208,7 +2281,7 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
     const recordSnapshot = () => {
       const mesh = workspaceState.selectedMesh;
       if (!mesh) return;
-      undoHistoryRef.current.push({
+      pushUndo({
         kind: 'transform',
         mesh,
         position: mesh.position.clone(),
@@ -2216,20 +2289,23 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
         rotation: mesh.rotation.clone(),
         scaling: mesh.scaling.clone(),
       });
-      // Cap history so it can't grow unbounded during a long editing session
-      if (undoHistoryRef.current.length > 50) undoHistoryRef.current.shift();
     };
 
     const gizmos = [gizmoManager.gizmos.positionGizmo, gizmoManager.gizmos.rotationGizmo, gizmoManager.gizmos.scaleGizmo];
     const disposers: Array<() => void> = [];
     gizmos.forEach((gizmo) => {
       if (!gizmo) return;
-      const observer = gizmo.onDragStartObservable.add(recordSnapshot);
-      disposers.push(() => gizmo.onDragStartObservable.remove(observer));
+      const startObserver = gizmo.onDragStartObservable.add(recordSnapshot);
+      disposers.push(() => gizmo.onDragStartObservable.remove(startObserver));
+      // Refreshes the auto-save timer with wherever the mesh actually ended up, in case
+      // the drag itself ran longer than the debounce window (recordSnapshot's pushUndo
+      // already scheduled a save at drag START, which a slow drag could otherwise beat).
+      const endObserver = gizmo.onDragEndObservable.add(scheduleAutoSave);
+      disposers.push(() => gizmo.onDragEndObservable.remove(endObserver));
     });
 
     return () => { disposers.forEach((d) => d()); };
-  }, [transformMode, workspaceState.selectedMesh]);
+  }, [transformMode, workspaceState.selectedMesh, scheduleAutoSave]);
 
   // Click-to-select: clicking any real object mesh in the scene selects it, which
   // Material Editor, Smart Alternatives, and other selection-aware panels rely on via
@@ -3556,12 +3632,11 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
       const ev = e as CustomEvent<{ material: Material; snapshot: Record<string, any> }>;
       const { material, snapshot } = ev.detail || {};
       if (!material || !snapshot) return;
-      undoHistoryRef.current.push({ kind: 'material', material, snapshot });
-      if (undoHistoryRef.current.length > 50) undoHistoryRef.current.shift();
+      pushUndo({ kind: 'material', material, snapshot });
     };
     window.addEventListener('naviz:materialSnapshot', handler);
     return () => window.removeEventListener('naviz:materialSnapshot', handler);
-  }, []);
+  }, [pushUndo]);
 
   // Material Type switch undo - see the naviz:materialSwapUndo dispatch in
   // MaterialEditor.tsx's applyMaterialType/ensurePBRMaterial. Switching type replaces the
@@ -3573,12 +3648,27 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
       const ev = e as CustomEvent<{ mesh: AbstractMesh; previousMaterial: Material }>;
       const { mesh, previousMaterial } = ev.detail || {};
       if (!mesh || !previousMaterial) return;
-      undoHistoryRef.current.push({ kind: 'materialSwap', mesh, previousMaterial });
-      if (undoHistoryRef.current.length > 50) undoHistoryRef.current.shift();
+      pushUndo({ kind: 'materialSwap', mesh, previousMaterial });
     };
     window.addEventListener('naviz:materialSwapUndo', handler);
     return () => window.removeEventListener('naviz:materialSwapUndo', handler);
-  }, []);
+  }, [pushUndo]);
+
+  // Property Inspector undo - see beginTransformUndoSession()/resetTransform() in
+  // uiSegments.tsx's PropertyInspectorPanel. That panel writes position/rotation/scale
+  // straight to the mesh with no access to undoHistoryRef of its own, so it dispatches this
+  // event (same decoupling pattern MaterialEditor.tsx already uses for material edits)
+  // instead of needing pushUndo threaded all the way down through the render props.
+  React.useEffect(() => {
+    const handler = (e: Event) => {
+      const ev = e as CustomEvent<{ mesh: Mesh; position: Vector3; rotationQuaternion: Quaternion | null; rotation: Vector3; scaling: Vector3 }>;
+      const { mesh, position, rotationQuaternion, rotation, scaling } = ev.detail || {};
+      if (!mesh || !position || !rotation || !scaling) return;
+      pushUndo({ kind: 'transform', mesh, position, rotationQuaternion, rotation, scaling });
+    };
+    window.addEventListener('naviz:transformSnapshot', handler);
+    return () => window.removeEventListener('naviz:transformSnapshot', handler);
+  }, [pushUndo]);
 
 interface Feature {
   id: string;

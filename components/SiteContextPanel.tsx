@@ -4,6 +4,7 @@ import { Button } from './ui/button';
 import { showToast } from './utils/toast';
 import type { SiteContextManager } from './SiteContextManager';
 import type { GeoSyncManager } from './GeoSyncManager';
+import { usePanelStack } from '../hooks/usePanelStack';
 
 interface SiteContextPanelProps {
   siteContextManager: SiteContextManager | null;
@@ -12,6 +13,7 @@ interface SiteContextPanelProps {
 }
 
 const SiteContextPanel: React.FC<SiteContextPanelProps> = ({ siteContextManager, geoSyncManager, onClose }) => {
+  const { ref: panelRef, style: panelStyle } = usePanelStack('top-left');
   const [radius, setRadius] = useState(500);
   const [isGeneratingTerrain, setIsGeneratingTerrain] = useState(false);
   const [isGeneratingBuildings, setIsGeneratingBuildings] = useState(false);
@@ -58,7 +60,7 @@ const SiteContextPanel: React.FC<SiteContextPanelProps> = ({ siteContextManager,
   };
 
   return (
-    <div className="fixed top-20 left-4 z-40 w-80 max-w-[90vw] bg-gray-900/95 border border-cyan-500/20 rounded-lg shadow-2xl text-white">
+    <div ref={panelRef} style={panelStyle} className="fixed left-4 z-40 w-80 max-w-[90vw] bg-gray-900/95 border border-cyan-500/20 rounded-lg shadow-2xl text-white">
       <div className="flex items-center justify-between p-4 border-b border-gray-700">
         <div className="flex items-center gap-2">
           <Globe2 className="w-4 h-4 text-cyan-400" />

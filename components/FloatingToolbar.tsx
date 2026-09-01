@@ -10,6 +10,7 @@ import {
   Minimize,
   Maximize
 } from 'lucide-react';
+import { usePanelStack } from '../hooks/usePanelStack';
 
 interface FloatingToolbarProps {
   onMoveToggle: () => void;
@@ -37,10 +38,11 @@ const FloatingToolbar: React.FC<FloatingToolbarProps> = ({
   isPerspectiveActive
 }) => {
   const [isVisible, setIsVisible] = useState(true);
+  const { ref: panelRef, style: panelStyle } = usePanelStack('top-left');
 
   if (!isVisible) {
     return (
-      <div className="fixed top-20 left-4 z-50">
+      <div ref={panelRef} style={panelStyle} className="fixed left-4 z-50">
         <Button
           size="sm"
           variant="outline"
@@ -56,7 +58,9 @@ const FloatingToolbar: React.FC<FloatingToolbarProps> = ({
 
   return (
     <div
-      className="fixed top-20 left-4 z-50 bg-background/95 backdrop-blur border border-gray-600 rounded-lg shadow-lg p-2 flex flex-col gap-2"
+      ref={panelRef}
+      style={panelStyle}
+      className="fixed left-4 z-50 bg-background/95 backdrop-blur border border-gray-600 rounded-lg shadow-lg p-2 flex flex-col gap-2"
       aria-label="Floating Toolbar"
     >
       <div className="flex justify-between items-center mb-1">

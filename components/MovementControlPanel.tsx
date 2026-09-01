@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Scene, Camera, Ray, Vector3 } from '@babylonjs/core';
 import { X, Move3d, CheckCircle2, AlertTriangle } from 'lucide-react';
+import { usePanelStack } from '../hooks/usePanelStack';
 
 interface MovementControlPanelProps {
   scene: Scene;
@@ -24,6 +25,7 @@ const SAFE_DISTANCE = 0.4; // meters - comfortable clearance before flagging "to
 const CHECK_RANGE = 3; // how far to raycast when looking for obstacles
 
 const MovementControlPanel: React.FC<MovementControlPanelProps> = ({ scene, camera, onClose }) => {
+  const { ref: panelRef, style: panelStyle } = usePanelStack('top-left');
   const [checks, setChecks] = useState<DirectionCheck[]>([]);
   const [isLive, setIsLive] = useState(true);
   const observerRef = useRef<any>(null);
@@ -54,7 +56,7 @@ const MovementControlPanel: React.FC<MovementControlPanelProps> = ({ scene, came
   const anyTooClose = checks.some((c) => c.distance !== null && c.distance < SAFE_DISTANCE);
 
   return (
-    <div className="fixed top-4 left-4 z-40 w-64 bg-gray-900/95 border border-cyan-500/20 rounded-lg shadow-2xl text-white">
+    <div ref={panelRef} style={panelStyle} className="fixed left-4 z-40 w-64 bg-gray-900/95 border border-cyan-500/20 rounded-lg shadow-2xl text-white">
       <div className="flex items-center justify-between p-4 border-b border-gray-700">
         <div className="flex items-center gap-2">
           <Move3d className="w-4 h-4 text-cyan-400" />

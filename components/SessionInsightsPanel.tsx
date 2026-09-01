@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { X, Activity } from 'lucide-react';
 import type { AnalyticsManager } from './AnalyticsManager';
+import { usePanelStack } from '../hooks/usePanelStack';
 
 interface SessionInsightsPanelProps {
   analyticsManager: AnalyticsManager | null;
@@ -18,6 +19,7 @@ interface WorkspaceReport {
 // engine with no data and no UI. handleFeatureToggle now calls trackFeatureUsage() on every
 // toggle, and this panel is the first real consumer of the report that produces.
 const SessionInsightsPanel: React.FC<SessionInsightsPanelProps> = ({ analyticsManager, onClose }) => {
+  const { ref: panelRef, style: panelStyle } = usePanelStack('top-left');
   const [report, setReport] = useState<WorkspaceReport | null>(null);
 
   // Polled, not subscribed - AnalyticsManager's event log is a plain mutated array, not
@@ -39,7 +41,7 @@ const SessionInsightsPanel: React.FC<SessionInsightsPanelProps> = ({ analyticsMa
     featureId.replace(/^show/, '').replace(/([a-z])([A-Z])/g, '$1 $2');
 
   return (
-    <div className="fixed top-20 left-4 z-40 w-72 max-w-[90vw] bg-gray-900/95 border border-cyan-500/20 rounded-lg shadow-2xl text-white">
+    <div ref={panelRef} style={panelStyle} className="fixed left-4 z-40 w-72 max-w-[90vw] bg-gray-900/95 border border-cyan-500/20 rounded-lg shadow-2xl text-white">
       <div className="flex items-center justify-between p-4 border-b border-gray-700">
         <div className="flex items-center gap-2">
           <Activity className="w-4 h-4 text-cyan-400" />

@@ -3,6 +3,7 @@ import { Scene, AbstractMesh } from '@babylonjs/core';
 import { X, Maximize2, RotateCcw } from 'lucide-react';
 import { Button } from './ui/button';
 import type { XRManager } from './XRManager';
+import { usePanelStack } from '../hooks/usePanelStack';
 
 interface ARScalePanelProps {
   scene: Scene;
@@ -18,6 +19,7 @@ interface ARScalePanelProps {
 const EXCLUDED_NAME_PATTERN = /^(ground|floor|measure_|preview_|measurement_|annotation_|cursor_|__root__)/i;
 
 const ARScalePanel: React.FC<ARScalePanelProps> = ({ scene, onClose, xrManagerRef }) => {
+  const { ref: panelRef, style: panelStyle } = usePanelStack('bottom-left');
   const [scale, setScale] = useState(1);
   const [liveARActive, setLiveARActive] = useState(false);
 
@@ -52,7 +54,7 @@ const ARScalePanel: React.FC<ARScalePanelProps> = ({ scene, onClose, xrManagerRe
   const handleReset = () => applyScale(1);
 
   return (
-    <div className="fixed bottom-4 left-4 z-40 w-72 max-w-[90vw] bg-gray-900/95 border border-cyan-500/20 rounded-lg shadow-2xl text-white">
+    <div ref={panelRef} style={panelStyle} className="fixed left-4 z-40 w-72 max-w-[90vw] bg-gray-900/95 border border-cyan-500/20 rounded-lg shadow-2xl text-white">
       <div className="flex items-center justify-between p-4 border-b border-gray-700">
         <div className="flex items-center gap-2">
           <Maximize2 className="w-4 h-4 text-cyan-400" />

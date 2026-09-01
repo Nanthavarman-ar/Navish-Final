@@ -3,6 +3,7 @@ import { X, Send, MessageSquare } from 'lucide-react';
 import { Button } from './ui/button';
 import { showToast } from './utils/toast';
 import type { CollabManager, ChatMessage, CollabEvent } from './CollabManager';
+import { usePanelStack } from '../hooks/usePanelStack';
 
 interface ChatPanelProps {
   collabManager: CollabManager | null;
@@ -10,6 +11,7 @@ interface ChatPanelProps {
 }
 
 const ChatPanel: React.FC<ChatPanelProps> = ({ collabManager, onClose }) => {
+  const { ref: panelRef, style: panelStyle } = usePanelStack('bottom-right');
   const [messages, setMessages] = useState<ChatMessage[]>(() => collabManager?.getChatHistory() || []);
   const [draft, setDraft] = useState('');
   const [isConnected, setIsConnected] = useState(() => collabManager?.getIsConnected() ?? false);
@@ -59,7 +61,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ collabManager, onClose }) => {
   const currentUserId = collabManager?.getCurrentUser()?.id;
 
   return (
-    <div className="fixed bottom-4 right-4 z-40 w-80 max-w-[90vw] h-96 max-h-[70vh] bg-gray-900/95 border border-cyan-500/20 rounded-lg shadow-2xl text-white flex flex-col">
+    <div ref={panelRef} style={panelStyle} className="fixed right-4 z-40 w-80 max-w-[90vw] h-96 max-h-[70vh] bg-gray-900/95 border border-cyan-500/20 rounded-lg shadow-2xl text-white flex flex-col">
       <div className="flex items-center justify-between p-3 border-b border-gray-700 shrink-0">
         <div className="flex items-center gap-2">
           <MessageSquare className="w-4 h-4 text-cyan-400" />

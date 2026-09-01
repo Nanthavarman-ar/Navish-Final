@@ -3,6 +3,7 @@ import * as BABYLON from '@babylonjs/core';
 import { X, Volume2, VolumeX, Play, Pause, Music, Upload } from 'lucide-react';
 import { Button } from './ui/button';
 import type { AudioManager } from './AudioManager';
+import { usePanelStack } from '../hooks/usePanelStack';
 
 interface SpatialAudioPanelProps {
   audioManager: AudioManager | null;
@@ -15,6 +16,7 @@ interface SpatialAudioPanelProps {
 // do. Uses AudioManager.createAmbientSound(), which was already fully built
 // but never wired to any UI.
 const SpatialAudioPanel: React.FC<SpatialAudioPanelProps> = ({ audioManager, onClose }) => {
+  const { ref: panelRef, style: panelStyle } = usePanelStack('bottom-left');
   const [fileName, setFileName] = useState<string | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [volume, setVolume] = useState(0.7);
@@ -86,7 +88,7 @@ const SpatialAudioPanel: React.FC<SpatialAudioPanelProps> = ({ audioManager, onC
   };
 
   return (
-    <div className="fixed bottom-4 left-4 z-50 w-80 bg-slate-800 border border-slate-600 rounded-lg text-white shadow-xl">
+    <div ref={panelRef} style={panelStyle} className="fixed left-4 z-50 w-80 bg-slate-800 border border-slate-600 rounded-lg text-white shadow-xl">
       <div className="flex items-center justify-between p-3 border-b border-slate-700">
         <div className="flex items-center gap-2">
           <Music className="w-4 h-4 text-cyan-400" />

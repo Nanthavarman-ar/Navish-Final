@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { X, Radio, Power } from 'lucide-react';
 import type { IoTManager } from './IoTManager';
+import { usePanelStack } from '../hooks/usePanelStack';
 
 interface IoTSensorsPanelProps {
   iotManager: IoTManager | null;
@@ -22,6 +23,7 @@ const deviceStatusColor = (status: string) =>
 // BabylonWorkspace.tsx's IoTManager init block for why it was effectively dead. This is
 // the first real consumer of getSensors()/getDevices()/sendCommand().
 const IoTSensorsPanel: React.FC<IoTSensorsPanelProps> = ({ iotManager, onClose }) => {
+  const { ref: panelRef, style: panelStyle } = usePanelStack('top-right');
   const [, forceTick] = useState(0);
   const [pendingDeviceId, setPendingDeviceId] = useState<string | null>(null);
 
@@ -47,7 +49,7 @@ const IoTSensorsPanel: React.FC<IoTSensorsPanelProps> = ({ iotManager, onClose }
   };
 
   return (
-    <div className="fixed top-20 right-4 z-40 w-80 max-w-[90vw] bg-gray-900/95 border border-cyan-500/20 rounded-lg shadow-2xl text-white">
+    <div ref={panelRef} style={panelStyle} className="fixed right-4 z-40 w-80 max-w-[90vw] bg-gray-900/95 border border-cyan-500/20 rounded-lg shadow-2xl text-white">
       <div className="flex items-center justify-between p-4 border-b border-gray-700">
         <div className="flex items-center gap-2">
           <Radio className="w-4 h-4 text-cyan-400" />

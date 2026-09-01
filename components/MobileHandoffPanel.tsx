@@ -3,6 +3,7 @@ import { QRCodeSVG } from 'qrcode.react';
 import { X, Smartphone, Copy } from 'lucide-react';
 import { Button } from './ui/button';
 import { showToast } from './utils/toast';
+import { usePanelStack } from '../hooks/usePanelStack';
 
 interface MobileHandoffPanelProps {
   onClose: () => void;
@@ -11,6 +12,7 @@ interface MobileHandoffPanelProps {
 // Encodes the real current workspace URL - not a data blob - so any phone camera app
 // can scan it and open the exact same workspace directly in its own mobile browser.
 const MobileHandoffPanel: React.FC<MobileHandoffPanelProps> = ({ onClose }) => {
+  const { ref: panelRef, style: panelStyle } = usePanelStack('top-right');
   const url = typeof window !== 'undefined' ? window.location.href : '';
   // A phone scanning this QR code has to reach `url` over the network - during
   // local dev that's "localhost", which only ever means the phone itself, so
@@ -28,7 +30,7 @@ const MobileHandoffPanel: React.FC<MobileHandoffPanelProps> = ({ onClose }) => {
   };
 
   return (
-    <div className="fixed top-20 right-4 z-40 w-72 max-w-[90vw] bg-gray-900/95 border border-cyan-500/20 rounded-lg shadow-2xl text-white">
+    <div ref={panelRef} style={panelStyle} className="fixed right-4 z-40 w-72 max-w-[90vw] bg-gray-900/95 border border-cyan-500/20 rounded-lg shadow-2xl text-white">
       <div className="flex items-center justify-between p-4 border-b border-gray-700">
         <div className="flex items-center gap-2">
           <Smartphone className="w-4 h-4 text-cyan-400" />

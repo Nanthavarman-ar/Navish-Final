@@ -3,6 +3,7 @@ import { Scene, Vector3, Ray, MeshBuilder, StandardMaterial, Color3, Mesh, Point
 import { X, Volume2, MapPin, Trash2 } from 'lucide-react';
 import { Button } from './ui/button';
 import { showToast } from './utils/toast';
+import { usePanelStack } from '../hooks/usePanelStack';
 
 interface SoundPrivacyPanelProps {
   scene: Scene;
@@ -39,6 +40,7 @@ const RATING_COLOR: Record<string, string> = {
 };
 
 const SoundPrivacyPanel: React.FC<SoundPrivacyPanelProps> = ({ scene, onClose }) => {
+  const { ref: panelRef, style: panelStyle } = usePanelStack('bottom-left');
   const [pointA, setPointA] = useState<Vector3 | null>(null);
   const [pointB, setPointB] = useState<Vector3 | null>(null);
   const [isPlacing, setIsPlacing] = useState<'a' | 'b' | null>(null);
@@ -104,7 +106,7 @@ const SoundPrivacyPanel: React.FC<SoundPrivacyPanelProps> = ({ scene, onClose })
   };
 
   return (
-    <div className="fixed bottom-4 left-4 z-40 w-80 max-w-[90vw] bg-gray-900/95 border border-cyan-500/20 rounded-lg shadow-2xl text-white">
+    <div ref={panelRef} style={panelStyle} className="fixed left-4 z-40 w-80 max-w-[90vw] bg-gray-900/95 border border-cyan-500/20 rounded-lg shadow-2xl text-white">
       <div className="flex items-center justify-between p-4 border-b border-gray-700">
         <div className="flex items-center gap-2">
           <Volume2 className="w-4 h-4 text-cyan-400" />
