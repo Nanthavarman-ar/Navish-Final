@@ -122,9 +122,16 @@ export function usePanelStack(corner: PanelCorner, active: boolean = true): { re
     if (!ctx || !el || !active) return;
     ctx.register(corner, idRef.current, orderRef.current);
     ctx.setHeight(corner, idRef.current, el.getBoundingClientRect().height);
-    const ro = new ResizeObserver((entries) => {
-      const h = entries[0]?.contentRect.height ?? el.getBoundingClientRect().height;
-      ctx.setHeight(corner, idRef.current, h);
+    // ResizeObserver's own entries[0].contentRect deliberately excludes padding AND
+    // border (it's the CONTENT box) - getBoundingClientRect() above returns the full
+    // border box. For any panel with padding/border (i.e. nearly all of them, including
+    // the "My Models" chrome button), the observer's first callback silently overwrote
+    // the correct initial height with a smaller, wrong one, corrupting every OTHER
+    // panel's stacking offset in the same corner and reproducing exactly as two panels
+    // overlapping at the top of the stack. Re-measuring via getBoundingClientRect() here
+    // too (ignoring contentRect entirely) keeps both readings on the same box model.
+    const ro = new ResizeObserver(() => {
+      ctx.setHeight(corner, idRef.current, el.getBoundingClientRect().height);
     });
     ro.observe(el);
     return () => {

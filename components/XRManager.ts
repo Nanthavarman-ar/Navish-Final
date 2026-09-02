@@ -883,7 +883,15 @@ export class XRManager {
       if (!this.lastHitPose) return;
       const root = this.getOrCreatePlacementRoot();
       root.position.copyFrom(this.lastHitPose.position);
-      root.rotationQuaternion = this.lastHitPose.rotationQuaternion.clone();
+      // The hit-test surface's own rotationQuaternion (previously applied directly) only
+      // meaningfully encodes the plane's UP direction for a flat floor - its heading/yaw
+      // is an implementation-arbitrary convention, not "which way should this model
+      // face". Using it as-is made a freshly-tapped placement face a seemingly random
+      // direction each time, including facing away from whoever just tapped it ("back
+      // side thaan place aaguthu"). Facing the model toward wherever the user was
+      // standing when they tapped is the one deterministic, sensible default - the
+      // Rotate buttons already let them dial in the exact heading afterward.
+      this.faceCameraAtPlacement(root);
     };
     session?.addEventListener('select', this.arSelectListener);
 
@@ -1076,9 +1084,37 @@ export class XRManager {
       }
 
       root.position.set(targetX, floorY, targetZ);
+      // Same "face whoever placed it" default the tap-to-place path uses (see
+      // faceCameraAtPlacement) - previously this fallback set no rotation at all, leaving
+      // the model at its as-authored orientation, which is just as likely to show its
+      // back to the user as its front.
+      this.faceCameraAtPlacement(root);
       this.showAROverlayHint('Placed near you - tap the ground to fine-tune, or keep using the buttons');
     }
     return root;
+  }
+
+  // Points the placement root's local +Z ("forward", Babylon's mesh-orientation
+  // convention) at wherever the camera currently is, on the horizontal plane only (no
+  // tilt - a placed model should stay upright regardless of how the phone is angled).
+  // yaw = atan2(target.x, target.z) is what actually makes local +Z point at `target`
+  // for a Y-axis Quaternion.RotationAxis rotation - verified empirically, this is NOT the
+  // more commonly-seen atan2(target.z, target.x) formula some other engines use.
+  private faceCameraAtPlacement(root: TransformNode): void {
+    const camera = this.xrCamera;
+    if (!camera) {
+      root.rotationQuaternion = Quaternion.Identity();
+      return;
+    }
+    const toCamera = camera.position.subtract(root.position);
+    toCamera.y = 0;
+    if (toCamera.lengthSquared() < 1e-6) {
+      root.rotationQuaternion = Quaternion.Identity();
+      return;
+    }
+    toCamera.normalize();
+    const yaw = Math.atan2(toCamera.x, toCamera.z);
+    root.rotationQuaternion = Quaternion.RotationAxis(Vector3.Up(), yaw);
   }
 
   // Applies placementScale AND placementMirrored together via signed x-scale, instead of

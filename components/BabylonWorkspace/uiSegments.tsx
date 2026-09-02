@@ -989,6 +989,7 @@ const PropertyInspectorPanel: React.FC<{ mesh: any; meshCount: number; lightCoun
   // separately from a generic "color" so the right one gets read/written.
   const [materialColor, setMaterialColor] = useState<{ r: number; g: number; b: number } | null>(null);
   const [materialAlpha, setMaterialAlpha] = useState(1);
+  const [hasHome, setHasHome] = useState(false);
   const colorPropertyName = mesh?.material ? ('diffuseColor' in mesh.material ? 'diffuseColor' : 'albedoColor' in mesh.material ? 'albedoColor' : null) : null;
 
   // Position/Rotation/Scale edits here used to write straight to the mesh with no undo
@@ -1077,6 +1078,7 @@ const PropertyInspectorPanel: React.FC<{ mesh: any; meshCount: number; lightCoun
     });
     setScale({ x: mesh.scaling.x, y: mesh.scaling.y, z: mesh.scaling.z });
     setVisible(mesh.isVisible);
+    setHasHome(!!mesh.metadata?.navizHome);
     const colorProp = mesh.material ? ('diffuseColor' in mesh.material ? 'diffuseColor' : 'albedoColor' in mesh.material ? 'albedoColor' : null) : null;
     if (colorProp && mesh.material[colorProp]) {
       const c = mesh.material[colorProp];
@@ -1127,10 +1129,30 @@ const PropertyInspectorPanel: React.FC<{ mesh: any; meshCount: number; lightCoun
   // clearing the number field by hand.
   const zeroPositionAxis = (axis: 'x' | 'y' | 'z') => updatePosition(axis, 0);
   const zeroRotationAxis = (axis: 'x' | 'y' | 'z') => updateRotation(axis, 0);
-  // Resets position and rotation back to the origin (scale left alone - "reset" here means
-  // "put it back where it was placed," not "undo any intentional resizing"). Pushes one
-  // undo entry for the whole reset by flushing any pending session first, so Ctrl+Z
-  // reverts it in a single step rather than three.
+  // "Reset" on its own only ever meant "back to world (0,0,0)" - not useful for a real-site
+  // placement where the CORRECT position is wherever you manually aligned the model, not
+  // the origin. Set Home captures the current position/rotation onto the mesh's own
+  // metadata (same place-to-stash-custom-data convention already used elsewhere in this
+  // app, e.g. mesh.metadata.elementId in CostEstimatorWrapper.tsx) so Reset can snap back
+  // to THAT instead, falling back to the origin only if no home was ever set.
+  const setHomePosition = () => {
+    if (!mesh) return;
+    mesh.metadata = {
+      ...mesh.metadata,
+      navizHome: {
+        position: { x: mesh.position.x, y: mesh.position.y, z: mesh.position.z },
+        rotation: { x: mesh.rotation.x, y: mesh.rotation.y, z: mesh.rotation.z },
+      },
+    };
+    setHasHome(true);
+    showToast.success('Home position set', 'Reset will now return here');
+  };
+
+  // Resets position and rotation back to the saved home (or the origin if none was ever
+  // set for this mesh) - scale left alone, "reset" means "put it back where it belongs,"
+  // not "undo any intentional resizing." Pushes one undo entry for the whole reset by
+  // flushing any pending session first, so Ctrl+Z reverts it in a single step rather than
+  // three.
   const resetTransform = () => {
     if (!mesh) return;
     if (transformIdleTimerRef.current) clearTimeout(transformIdleTimerRef.current);
@@ -1145,11 +1167,15 @@ const PropertyInspectorPanel: React.FC<{ mesh: any; meshCount: number; lightCoun
     const snapshot = pendingTransformSnapshotRef.current;
     pendingTransformSnapshotRef.current = null;
     window.dispatchEvent(new CustomEvent('naviz:transformSnapshot', { detail: { mesh, ...snapshot } }));
-    mesh.position.set(0, 0, 0);
-    mesh.rotation.set(0, 0, 0);
+    const home = mesh.metadata?.navizHome;
+    const targetPosition = home?.position ?? { x: 0, y: 0, z: 0 };
+    const targetRotation = home?.rotation ?? { x: 0, y: 0, z: 0 };
+    mesh.position.set(targetPosition.x, targetPosition.y, targetPosition.z);
+    mesh.rotation.set(targetRotation.x, targetRotation.y, targetRotation.z);
     if (mesh.rotationQuaternion) mesh.rotationQuaternion = null;
-    setPosition({ x: 0, y: 0, z: 0 });
-    setRotationDeg({ x: 0, y: 0, z: 0 });
+    setPosition(targetPosition);
+    setRotationDeg(targetRotation);
+    showToast.success(home ? 'Reset to home position' : 'Reset to origin');
   };
 
   // onZero renders a small "0" button next to the field - a one-click way to zero out just
@@ -1199,14 +1225,24 @@ const PropertyInspectorPanel: React.FC<{ mesh: any; meshCount: number; lightCoun
             <div>
               <div className="flex items-center justify-between mb-1">
                 <p className="text-slate-500">Position</p>
-                <button
-                  type="button"
-                  onClick={resetTransform}
-                  title="Reset position and rotation to the origin"
-                  className="text-[10px] text-slate-400 hover:text-white px-1.5 py-0.5 rounded border border-slate-700 hover:bg-slate-700"
-                >
-                  Reset
-                </button>
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={setHomePosition}
+                    title="Save the current position/rotation as this mesh's home - Reset will return here"
+                    className="text-[10px] text-slate-400 hover:text-white px-1.5 py-0.5 rounded border border-slate-700 hover:bg-slate-700"
+                  >
+                    Set Home
+                  </button>
+                  <button
+                    type="button"
+                    onClick={resetTransform}
+                    title={hasHome ? 'Reset position and rotation to the saved home' : 'Reset position and rotation to the origin (no home set yet)'}
+                    className="text-[10px] text-slate-400 hover:text-white px-1.5 py-0.5 rounded border border-slate-700 hover:bg-slate-700"
+                  >
+                    Reset{hasHome ? ' → Home' : ''}
+                  </button>
+                </div>
               </div>
               <div className="flex gap-2">
                 {numberField('X', position.x, (v) => updatePosition('x', v), () => zeroPositionAxis('x'))}
