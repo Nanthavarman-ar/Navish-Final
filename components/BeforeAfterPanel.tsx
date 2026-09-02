@@ -33,15 +33,25 @@ const BeforeAfterPanel: React.FC<BeforeAfterPanelProps> = ({ scene, engine, onCl
     }
     setIsCapturing(which);
     try {
-      const dataUrl = await Tools.CreateScreenshotUsingRenderTargetAsync(
-        engine, camera, { width: 640, height: 480 }
-      );
+      // Babylon's CreateScreenshotUsingRenderTargetAsync waits internally for the
+      // render target/camera to report ready, retrying for up to 30s - but if that
+      // readiness check never passes (e.g. scene still loading, shaders still
+      // compiling), its timeout path only restores engine state and never settles
+      // the promise, so this would hang forever and leave isCapturing stuck true
+      // (button permanently disabled). Race it against our own timeout so capture()
+      // always finishes one way or the other.
+      const dataUrl = await Promise.race([
+        Tools.CreateScreenshotUsingRenderTargetAsync(engine, camera, { width: 640, height: 480 }),
+        new Promise<string>((_, reject) =>
+          setTimeout(() => reject(new Error('Screenshot capture timed out')), 8000)
+        ),
+      ]);
       if (which === 'before') setBeforeImage(dataUrl);
       else setAfterImage(dataUrl);
       showToast.success(`${which === 'before' ? 'Before' : 'After'} snapshot captured`);
     } catch (error) {
       console.error(`Failed to capture ${which} screenshot:`, error);
-      showToast.error('Failed to capture screenshot');
+      showToast.error('Failed to capture screenshot - try again');
     } finally {
       setIsCapturing(null);
     }

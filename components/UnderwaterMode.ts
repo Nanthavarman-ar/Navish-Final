@@ -79,7 +79,13 @@ export class UnderwaterMode {
       uniform float chromaticAberration;
       uniform float refractionStrength;
       uniform vec2 resolution;
-      uniform sampler2D sceneSampler;
+      // Babylon only ever binds the post-process's input frame to a sampler literally
+      // named "textureSampler" (see PostProcess's _bindTexture call) - the previous name
+      // here, "sceneSampler", was never bound to anything by Babylon, so it only "worked"
+      // by WebGL's spec-mandated default (an unset sampler uniform defaults to texture
+      // unit 0, which happens to be where textureSampler's real texture is bound too).
+      // Using the real name removes that fragile coincidence.
+      uniform sampler2D textureSampler;
 
       varying vec2 vUV;
 
@@ -109,7 +115,15 @@ export class UnderwaterMode {
 
       void main(void) {
         vec2 uv = vUV;
-        vec3 color = texture2D(sceneSampler, uv).rgb;
+        vec3 color = texture2D(textureSampler, uv).rgb;
+
+        // Unconditional full-screen tint toward the water color, independent of the
+        // caustics sparkle below and of scene fog - the scene's tonemapping/contrast
+        // pipeline (ACES + boosted contrast/saturation) was pulling the fog-only look
+        // back toward normal daylight colors, so relying on fog alone read as "nothing
+        // happened". This blend runs after that pipeline (it's part of this same
+        // post-process's output) so it can't be washed out the same way.
+        color = mix(color, waterColor, 0.35);
 
         // Apply refraction distortion
         vec2 distortedUV = uv + refractionDistortion(uv, refractionStrength);
@@ -320,7 +334,13 @@ export class UnderwaterMode {
     // Update caustics animation
     if (this.causticsPostProcess) {
       const effect = this.causticsPostProcess.getEffect();
-      if (effect) {
+      // getEffect() can return a non-null Effect before its GPU program has actually
+      // finished compiling (shader compilation is async) - calling setFloat on one of
+      // those throws inside Babylon (its internal _pipelineContext is still null),
+      // which happened here on the very next rendered frame after activate() and
+      // crashed out of the render loop for that frame, right after fog/caustics had
+      // just been turned on. isReady() is the actual "safe to touch" check.
+      if (effect && effect.isReady()) {
         effect.setFloat("time", this.scene.getEngine().getDeltaTime() * 0.001);
       }
     }

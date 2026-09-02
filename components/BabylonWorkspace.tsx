@@ -221,6 +221,11 @@ function removePlaceholderGeometry(scene: Scene): void {
 function computePrecipitationBounds(scene: Scene): { centerX: number; centerZ: number; topY: number; bottomY: number; halfExtent: number } {
   const realMeshes = scene.meshes.filter((m) =>
     m.isEnabled() && m.getTotalVertices() > 0 &&
+    // infiniteDistance marks skybox meshes (procedural sky dome, HDRI skybox) - without
+    // excluding those, their ~1000-unit box gets folded into this bounding box, ballooning
+    // halfExtent/topY so rain/snow spawns far above and spread far wider than the actual
+    // model, dying of old age before ever falling into view (looks like "nothing happens").
+    !m.infiniteDistance &&
     !/^(ground|measure_|annotation_|cursor_|collab_|sound_privacy_marker_|mood_light_|__root__)/i.test(m.name || '')
   );
   let halfExtent = 25;
@@ -267,6 +272,11 @@ function buildPrecipitationHeightmap(scene: Scene, centerX: number, centerZ: num
   const rayLength = rayStartY + 1000;
   const predicate = (mesh: AbstractMesh) =>
     mesh.isEnabled() && mesh.isPickable !== false && mesh.getTotalVertices() > 0 &&
+    // The procedural sky dome (unlike the HDRI skybox) never sets isPickable = false, so
+    // without this a ray over an empty cell (no roof/ground under it) can travel all the
+    // way out and register the sky box's inner surface as the "ground", parking rain/snow
+    // hundreds of units above where it should land.
+    !mesh.infiniteDistance &&
     !/^(measure_|annotation_|cursor_|collab_|sound_privacy_marker_|mood_light_|__root__|weatherRain|weatherSnow)/i.test(mesh.name || '');
   for (let i = 0; i < resolution; i++) {
     for (let j = 0; j < resolution; j++) {
@@ -1385,6 +1395,13 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
           // a known CSM artifact, worth the (small) extra cost for a walkthrough app
           // where the camera is in near-constant motion.
           csm.stabilizeCascades = true;
+          // Without this, cascades split the full camera frustum (near/far planes),
+          // which is far larger than the actual scene - the mismatch between
+          // neighbouring cascades' shadow bias shows up as banded seam lines across
+          // large flat surfaces (roads, floors), most visible when the sun direction
+          // rotates and the splits shift. Fitting each cascade to the real scene depth
+          // instead removes that mismatch.
+          csm.autoCalcDepthBounds = true;
           shadowGenerator = csm;
         } catch (csmError) {
           console.warn('CascadedShadowGenerator unavailable (likely WebGL1) - falling back to standard shadows:', csmError);
@@ -1469,7 +1486,13 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
         }
 
         // Initialize HighlightLayer
-        const highlightLayer = new HighlightLayer("highlightLayer", scene);
+        // Default mode renders the selection outline as a blurred glow, built from a
+        // downsampled (blurTextureSizeRatio 0.5) silhouette - on a thin, pointed shape
+        // (e.g. a roof beam tip) that low-res blur pass can split the silhouette into two
+        // parallel lines instead of one clean outline, which got worse/more visible as the
+        // light angle changed what part of the edge was in view. isStroke draws a precise
+        // solid outline instead of a blurred glow, avoiding that doubling entirely.
+        const highlightLayer = new HighlightLayer("highlightLayer", scene, { isStroke: true, blurTextureSizeRatio: 1 });
         highlightLayerRef.current = highlightLayer;
 
         // Detect device capabilities
@@ -2391,12 +2414,21 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
     let updateObserver: any = null;
 
     try {
-      underwater = new UnderwaterMode(scene, camera, { waterLevel: 0 });
+      // waterLevel=0 is an absolute world Y coordinate - this scene has no actual body of
+      // water, so 0 doesn't correspond to anything the camera would ever reach (an outdoor
+      // walkthrough camera stays well above it). SwimMode's own physics/rails/comfort-zone
+      // only ever engage when camera.y < waterLevel + 0.5, so with a fixed 0 they silently
+      // never activated at all. Basing it on the camera's height when the mode is turned on
+      // means "submerge wherever you're currently standing", which is what this toggle is
+      // actually meant to do.
+      const waterLevel = camera.position.y + 5;
+
+      underwater = new UnderwaterMode(scene, camera, { waterLevel });
       underwaterModeRef.current = underwater;
       underwater.activate();
 
       swim = new SwimMode(scene, camera, underwater, {
-        waterLevel: 0,
+        waterLevel,
         swimSpeed: 2,
         buoyancyForce: 0.5,
         surfaceTension: 0.1,
