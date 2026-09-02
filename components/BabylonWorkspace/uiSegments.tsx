@@ -2113,6 +2113,10 @@ interface RenderFloatingToolbarProps {
   updateState: (updates: any) => void;
   transformMode: 'none' | 'position' | 'rotation' | 'scale';
   setTransformMode: (updater: (m: 'none' | 'position' | 'rotation' | 'scale') => 'none' | 'position' | 'rotation' | 'scale') => void;
+  // From usePanelStack('top-left'), called in BabylonWorkspace.tsx (this function isn't a
+  // component, so it can't call the hook itself - see the comment there).
+  panelRef: (el: HTMLElement | null) => void;
+  panelStyle: React.CSSProperties;
 }
 
 interface RenderCustomPanelsProps {
@@ -2302,8 +2306,8 @@ export const renderFloatingToolbar = (props: RenderFloatingToolbarProps) => {
   // active on the same mesh at the same time as the gizmo (e.g. press 'g' for the gizmo, then
   // also click Move here), producing two conflicting drag handlers on one mesh at once.
   return (
-    <React.Suspense fallback={<div className="p-2">Loading Toolbar...</div>}>
-      <div className="absolute top-4 left-4 z-40 bg-gray-900/95 border border-gray-700 rounded-lg shadow-xl p-2 pointer-events-auto">
+    <React.Suspense fallback={<div ref={props.panelRef} style={props.panelStyle} className="fixed left-4 z-40 bg-gray-900/95 border border-gray-700 rounded-lg shadow-xl p-2">Loading Toolbar...</div>}>
+      <div ref={props.panelRef} style={props.panelStyle} className="fixed left-4 z-40 bg-gray-900/95 border border-gray-700 rounded-lg shadow-xl p-2 pointer-events-auto">
         <FloatingToolbar
           onMoveToggle={() => props.setTransformMode((m) => m === 'position' ? 'none' : 'position')}
           onRotateToggle={() => props.setTransformMode((m) => m === 'rotation' ? 'none' : 'rotation')}

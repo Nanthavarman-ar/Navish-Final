@@ -64,6 +64,7 @@ import { SustainabilityManager, SustainabilityReport } from './SustainabilityMan
 import { PresentationManager } from './PresentationManager';
 import { IoTManager } from './IoTManager';
 import { captureSceneEdits, applySceneEdits, saveSceneEdits, loadSceneEdits } from './utils/sceneEditsPersistence';
+import { usePanelStack } from '../hooks/usePanelStack';
 
 // UI Component imports
 import FeatureButton from './FeatureButton';
@@ -816,6 +817,11 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
   const [gpuName, setGpuName] = React.useState<string>('');
   const gizmoManagerRef = useRef<GizmoManager | null>(null);
   const [transformMode, setTransformMode] = React.useState<'none' | 'position' | 'rotation' | 'scale'>('none');
+  // Called unconditionally here (not inside renderFloatingToolbar itself, which is a plain
+  // function, not a component - calling a hook inside it after its own early `if
+  // (!showFloatingToolbar) return null` would violate the Rules of Hooks and desync this
+  // component's whole hook order whenever that flag toggles) and passed down as props.
+  const floatingToolbarStack = usePanelStack('top-left');
   type UndoEntry =
     | { kind: 'transform'; mesh: Mesh; position: Vector3; rotationQuaternion: Quaternion | null; rotation: Vector3; scaling: Vector3 }
     | { kind: 'material'; material: Material; snapshot: Record<string, any> }
@@ -4077,7 +4083,9 @@ const getCategoryDescription = (categoryName: string): string => {
               workspaceState,
               updateState,
               transformMode,
-              setTransformMode
+              setTransformMode,
+              panelRef: floatingToolbarStack.ref,
+              panelStyle: floatingToolbarStack.style
             })}
             {layoutMode === 'immersive' && (
               <div className="absolute top-4 left-1/2 transform -translate-x-1/2 z-20">

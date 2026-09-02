@@ -10,7 +10,6 @@ import {
   Minimize,
   Maximize
 } from 'lucide-react';
-import { usePanelStack } from '../hooks/usePanelStack';
 
 interface FloatingToolbarProps {
   onMoveToggle: () => void;
@@ -38,11 +37,18 @@ const FloatingToolbar: React.FC<FloatingToolbarProps> = ({
   isPerspectiveActive
 }) => {
   const [isVisible, setIsVisible] = useState(true);
-  const { ref: panelRef, style: panelStyle } = usePanelStack('top-left');
+  // No positioning/fixed classes here on purpose - both real callers of this component
+  // (renderFloatingToolbar in uiSegments.tsx, and its dead FloatingToolbarSegment sibling)
+  // already wrap it in their own positioned container. This component used to ALSO
+  // usePanelStack() and position itself with `fixed`, which put it in the shared corner
+  // registry a second, independent time while its caller's own wrapper div positioned an
+  // empty box elsewhere - two position:fixed layers computing against the viewport
+  // independently, landing the actual toolbar wherever the stack put it rather than where
+  // its wrapper visually was, overlapping "My Models"/Movement Check.
 
   if (!isVisible) {
     return (
-      <div ref={panelRef} style={panelStyle} className="fixed left-4 z-50">
+      <div>
         <Button
           size="sm"
           variant="outline"
@@ -58,9 +64,7 @@ const FloatingToolbar: React.FC<FloatingToolbarProps> = ({
 
   return (
     <div
-      ref={panelRef}
-      style={panelStyle}
-      className="fixed left-4 z-50 bg-background/95 backdrop-blur border border-gray-600 rounded-lg shadow-lg p-2 flex flex-col gap-2"
+      className="bg-background/95 backdrop-blur border border-gray-600 rounded-lg shadow-lg p-2 flex flex-col gap-2"
       aria-label="Floating Toolbar"
     >
       <div className="flex justify-between items-center mb-1">
