@@ -63,7 +63,7 @@ import { SimulationManager } from './SimulationManager';
 import { SustainabilityManager, SustainabilityReport } from './SustainabilityManager';
 import { PresentationManager } from './PresentationManager';
 import { IoTManager } from './IoTManager';
-import { captureSceneEdits, applySceneEdits, saveSceneEdits, loadSceneEdits } from './utils/sceneEditsPersistence';
+import { captureSceneEdits, applySceneEdits, saveSceneEdits, loadSceneEdits, type SceneEditsData } from './utils/sceneEditsPersistence';
 
 // UI Component imports
 import FeatureButton from './FeatureButton';
@@ -564,9 +564,11 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
 
     // A saved Home view (see setHomeView/runAutoZoom further down) only makes sense for the
     // model it was captured on - carrying it over to whatever loads next could frame empty
-    // space or the wrong object entirely.
+    // space or the wrong object entirely. The just-loaded model's own saved record (if any)
+    // is re-fetched and re-applied below once SceneLoader.Append finishes.
     homeViewRef.current = null;
     scenarioManagerRef.current?.setHomeCenter(null);
+    sceneEditsRef.current = { meshes: {} };
 
     // Dispose whatever the previous model loaded before importing the next one,
     // otherwise this and the prior model's meshes both end up in the scene at
@@ -679,7 +681,23 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
           // setCurrentModelId() call above would have taken effect.
           const loadedModelId = selectedModel?.id ? String(selectedModel.id) : 'default-model';
           loadSceneEdits(loadedModelId).then((savedEdits) => {
-            if (!cancelled && savedEdits) applySceneEdits(loadedModelMeshesRef.current, savedEdits);
+            if (cancelled || !savedEdits) return;
+            sceneEditsRef.current = savedEdits;
+            applySceneEdits(loadedModelMeshesRef.current, savedEdits);
+            // Restores the saved Home view (see setHomeView) on this device too - previously
+            // this only ever lived in a plain useRef, so it reset the moment you navigated
+            // away and back, let alone opened the model on a different device.
+            const home = savedEdits.homeView;
+            const cam = cameraRef.current;
+            if (home && cam && typeof cam.setTarget === 'function') {
+              const target = new Vector3(home.target.x, home.target.y, home.target.z);
+              cam.setTarget(target);
+              cam.alpha = home.alpha;
+              cam.beta = home.beta;
+              cam.radius = home.radius;
+              homeViewRef.current = { alpha: home.alpha, beta: home.beta, radius: home.radius, target };
+              scenarioManagerRef.current?.setHomeCenter(target);
+            }
           });
           removePlaceholderGeometry(scene);
           // Some exported CAD/BIM files mark certain nodes hidden (e.g. glTF's
@@ -921,17 +939,21 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
       return;
     }
     const arcCam = camera as ArcRotateCamera;
-    homeViewRef.current = {
-      alpha: arcCam.alpha,
-      beta: arcCam.beta,
-      radius: arcCam.radius,
-      target: arcCam.target.clone()
-    };
+    const target = arcCam.target.clone();
+    homeViewRef.current = { alpha: arcCam.alpha, beta: arcCam.beta, radius: arcCam.radius, target };
     // Presentation Mode's auto-rotate (ScenarioManager) should circle this same identified
     // point too, not a separately-computed bounds center - see setHomeCenter's own comment.
-    scenarioManagerRef.current?.setHomeCenter(arcCam.target);
-    showToast.success('Home view saved', 'Fit and Presentation Mode will use this point from now on');
-  }, []);
+    scenarioManagerRef.current?.setHomeCenter(target);
+
+    // Persisted to the backend (same per-model record as mesh edits) rather than just this
+    // ref, so it's the same on every device that opens this model, not just this browser tab.
+    sceneEditsRef.current = {
+      ...sceneEditsRef.current,
+      homeView: { alpha: arcCam.alpha, beta: arcCam.beta, radius: arcCam.radius, target: { x: target.x, y: target.y, z: target.z } }
+    };
+    saveSceneEdits(currentModelId, sceneEditsRef.current);
+    showToast.success('Home view saved', 'Fit and Presentation Mode will use this point on every device from now on');
+  }, [currentModelId]);
 
   // Auto zoom: frame whole model area (all meshes; prefer model, exclude ground/defaultBox when imported)
   const runAutoZoom = React.useCallback(() => {
@@ -1018,7 +1040,13 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
     saveEditsDebounceRef.current = setTimeout(() => {
       saveEditsDebounceRef.current = null;
       if (loadedModelMeshesRef.current.length === 0) return;
-      saveSceneEdits(currentModelId, captureSceneEdits(loadedModelMeshesRef.current));
+      // Merge mesh edits into the existing per-model record (sceneEditsRef) rather than
+      // saving a freshly-built { meshes } object - a fresh object has no homeView field at
+      // all, and since the backend record is one JSON blob per model that a save fully
+      // replaces, that would silently wipe out a previously-saved Home view every time a
+      // mesh gets moved/recolored.
+      sceneEditsRef.current = { ...sceneEditsRef.current, meshes: captureSceneEdits(loadedModelMeshesRef.current).meshes };
+      saveSceneEdits(currentModelId, sceneEditsRef.current);
     }, 1500);
   }, [currentModelId]);
 
@@ -1161,6 +1189,13 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
   // and disposing these first, loading a new/different model just piled its
   // meshes on top of whatever was loaded before).
   const loadedModelMeshesRef = useRef<AbstractMesh[]>([]);
+  // The full per-model record last loaded from (or about to be saved to) the backend -
+  // holds every field of SceneEditsData (mesh edits, homeView, ...), not just whichever one
+  // the caller currently cares about. Saves must always write this whole merged object back,
+  // not a freshly-built one containing only e.g. `meshes` - otherwise saving a mesh edit
+  // would silently wipe out a previously-saved Home view (and vice versa), since the backend
+  // record is a single JSON blob per model that a POST fully replaces.
+  const sceneEditsRef = useRef<SceneEditsData>({ meshes: {} });
 
   const switchCamera = useCallback((mode: 'orbit' | 'fly' | 'walk') => {
     const scene = sceneRef.current;

@@ -473,42 +473,64 @@ export class ScenarioManager {
     const authoredRadius = 5; // roughly matches the distances the presets were authored around
     const viewDir = scenario.cameraPosition.subtract(authoredTarget);
     const viewDirLength = viewDir.length() || 1;
-    const scaledCameraPosition = center.add(viewDir.normalize().scale((viewDirLength / authoredRadius) * radius * 1.5));
+    const scaledRadius = (viewDirLength / authoredRadius) * radius * 1.5;
     const scaledCameraTarget = center.clone();
 
-    // Create smooth camera transition animation
-    const positionAnimation = new Animation(
-      'cameraPositionTransition',
-      'position',
-      30,
-      Animation.ANIMATIONTYPE_VECTOR3,
-      Animation.ANIMATIONLOOPMODE_CONSTANT
-    );
-
-    const targetAnimation = new Animation(
-      'cameraTargetTransition',
-      'target',
-      30,
-      Animation.ANIMATIONTYPE_VECTOR3,
-      Animation.ANIMATIONLOOPMODE_CONSTANT
-    );
-
-    const positionKeys = [
-      { frame: 0, value: camera.position.clone() },
-      { frame: 60, value: scaledCameraPosition }
-    ];
-
-    const targetKeys = [
-      { frame: 0, value: (camera as any).target?.clone() || Vector3.Zero() },
-      { frame: 60, value: scaledCameraTarget }
-    ];
-
-    positionAnimation.setKeys(positionKeys);
-    targetAnimation.setKeys(targetKeys);
-
     const animationGroup = new AnimationGroup('cameraTransition');
-    animationGroup.addTargetedAnimation(positionAnimation, camera);
-    animationGroup.addTargetedAnimation(targetAnimation, camera);
+
+    if (camera instanceof ArcRotateCamera) {
+      // ArcRotateCamera recomputes its own .position every frame from
+      // alpha/beta/radius/target - animating .position directly (the old approach) gets
+      // silently overwritten by that recompute each frame, since alpha/beta/radius never
+      // actually changed to match. The camera's target WOULD move correctly (target is a
+      // real property), but its rendered position stayed wherever alpha/beta/radius already
+      // were - for a freshly loaded scene, or a model much bigger/smaller than the
+      // hardcoded default radius the camera started with, that could put the camera nowhere
+      // near the model (or clipped inside it), while auto-rotate kept incrementing alpha
+      // from that same wrong basis. Animating alpha/beta/radius/target instead makes the
+      // camera actually arrive at the intended view.
+      const horizontalLen = Math.sqrt(viewDir.x * viewDir.x + viewDir.z * viewDir.z);
+      const targetAlpha = Math.atan2(viewDir.z, viewDir.x);
+      const targetBeta = Math.atan2(horizontalLen, viewDir.y);
+
+      const makeAnim = (property: string, from: number, to: number) => {
+        const anim = new Animation(`camera${property}Transition`, property, 30, Animation.ANIMATIONTYPE_FLOAT, Animation.ANIMATIONLOOPMODE_CONSTANT);
+        anim.setKeys([{ frame: 0, value: from }, { frame: 60, value: to }]);
+        return anim;
+      };
+      // Take the shortest path around for alpha (e.g. 179deg -> -179deg should animate
+      // through 180, not spin almost all the way back around).
+      let alphaTo = targetAlpha;
+      const alphaDiff = ((alphaTo - camera.alpha + Math.PI) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2) - Math.PI;
+      alphaTo = camera.alpha + alphaDiff;
+
+      animationGroup.addTargetedAnimation(makeAnim('alpha', camera.alpha, alphaTo), camera);
+      animationGroup.addTargetedAnimation(makeAnim('beta', camera.beta, targetBeta), camera);
+      animationGroup.addTargetedAnimation(makeAnim('radius', camera.radius, scaledRadius), camera);
+
+      const targetAnimation = new Animation('cameraTargetTransition', 'target', 30, Animation.ANIMATIONTYPE_VECTOR3, Animation.ANIMATIONLOOPMODE_CONSTANT);
+      targetAnimation.setKeys([
+        { frame: 0, value: camera.target.clone() },
+        { frame: 60, value: scaledCameraTarget }
+      ]);
+      animationGroup.addTargetedAnimation(targetAnimation, camera);
+    } else {
+      // Non-orbit cameras (Walk/Fly) genuinely do use .position directly, so the original
+      // approach is correct for them.
+      const scaledCameraPosition = center.add(viewDir.normalize().scale(scaledRadius));
+      const positionAnimation = new Animation('cameraPositionTransition', 'position', 30, Animation.ANIMATIONTYPE_VECTOR3, Animation.ANIMATIONLOOPMODE_CONSTANT);
+      positionAnimation.setKeys([
+        { frame: 0, value: camera.position.clone() },
+        { frame: 60, value: scaledCameraPosition }
+      ]);
+      const targetAnimation = new Animation('cameraTargetTransition', 'target', 30, Animation.ANIMATIONTYPE_VECTOR3, Animation.ANIMATIONLOOPMODE_CONSTANT);
+      targetAnimation.setKeys([
+        { frame: 0, value: (camera as any).target?.clone() || Vector3.Zero() },
+        { frame: 60, value: scaledCameraTarget }
+      ]);
+      animationGroup.addTargetedAnimation(positionAnimation, camera);
+      animationGroup.addTargetedAnimation(targetAnimation, camera);
+    }
 
     this.transitionAnimations.push(animationGroup);
 

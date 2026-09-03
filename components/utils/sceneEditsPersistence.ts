@@ -18,8 +18,20 @@ interface SavedMeshEdit {
   material?: SavedMaterialEdit;
 }
 
+export interface SavedHomeView {
+  alpha: number;
+  beta: number;
+  radius: number;
+  target: { x: number; y: number; z: number };
+}
+
 export interface SceneEditsData {
   meshes: Record<string, SavedMeshEdit>;
+  // The camera view captured by the workspace's "Set" button (BabylonWorkspace.tsx's
+  // setHomeView) - saved alongside mesh edits under the same per-model record so Fit and
+  // Presentation Mode's reference point are the same on every device, not just the browser
+  // that clicked Set.
+  homeView?: SavedHomeView;
 }
 
 // Real model meshes only - loadedModelMeshesRef (BabylonWorkspace.tsx) already scopes this
