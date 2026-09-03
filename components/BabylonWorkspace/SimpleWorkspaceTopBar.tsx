@@ -129,9 +129,11 @@ export function SimpleWorkspaceTopBar({
             </button>
           )}
           <span className="w-px h-5 bg-gray-600 mx-1 shrink-0" />
-          <Button variant="ghost" size="sm" className="h-10 w-10 p-0" onClick={onImport || noop} title="Import">
-            <Upload className="w-4 h-4" />
-          </Button>
+          {onImport && (
+            <Button variant="ghost" size="sm" className="h-10 w-10 p-0" onClick={onImport} title="Import">
+              <Upload className="w-4 h-4" />
+            </Button>
+          )}
           <Button variant="ghost" size="sm" className="h-10 w-10 p-0" onClick={onExport || noop} title="Export">
             <Download className="w-4 h-4" />
           </Button>

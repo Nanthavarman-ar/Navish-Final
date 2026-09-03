@@ -39,12 +39,24 @@ export interface SavedFloorPlan {
 export interface SavedSwatchOption {
   id: string;
   label: string;
-  kind: 'preset' | 'texture';
+  // 'scene-material' pins one of the materials already present on the loaded model
+  // (e.g. "groundMaterial", the same list the Material Editor's own Materials panel
+  // shows) rather than a generic preset or an uploaded texture - the option most people
+  // actually want, since it reuses a material that's already known to look right on
+  // this specific model instead of a generic named color.
+  kind: 'preset' | 'texture' | 'scene-material';
   presetId?: string;
   previewColor?: string;
   textureDataUrl?: string;
   tileWidthCm?: number;
   tileHeightCm?: number;
+  // kind === 'scene-material' - the source material's own .name at the time it was
+  // pinned. Applying always clones it fresh (see applySceneMaterialOption) rather than
+  // assigning this same live reference, specifically so switching one marked mesh's
+  // material never visually changes any OTHER mesh that happens to share the same
+  // original material, and so a later edit to the original in the Material Editor can't
+  // retroactively change what this marker already applied.
+  sourceMaterialName?: string;
 }
 
 // Per-mesh material-swap markers (components/MeshMaterialSwatches.tsx) - saved here

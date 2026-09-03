@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Scene, Mesh, AbstractMesh, MeshBuilder, StandardMaterial, PBRMaterial, DynamicTexture, Texture, Color3, Vector3, PointerEventTypes } from '@babylonjs/core';
+import { Scene, Mesh, AbstractMesh, Material, MultiMaterial, MeshBuilder, StandardMaterial, PBRMaterial, DynamicTexture, Texture, Color3, Vector3, PointerEventTypes } from '@babylonjs/core';
 import { AdvancedDynamicTexture, Rectangle, StackPanel, Image as GuiImage } from '@babylonjs/gui';
 import { X, Palette, Trash2, Plus, Upload } from 'lucide-react';
 import { Button } from './ui/button';
@@ -39,6 +39,29 @@ const MAX_TEXTURE_DIMENSION = 512;
 
 function resolveMeshRef(scene: Scene, meshId: string, meshName: string): AbstractMesh | null {
   return scene.getMeshById(meshId) || scene.meshes.find((m) => m.name === meshName) || null;
+}
+
+// Same enumeration MaterialEditor.tsx's own "Materials" list uses (scene.materials plus
+// MultiMaterial's subMaterials, deduped) - the actual materials already on the loaded
+// model (e.g. "groundMaterial", "boxMaterial"), which is what an admin pinning a swatch
+// almost always means, rather than a generic named preset that may not match this
+// model's real look at all.
+function getSceneMaterials(scene: Scene): Material[] {
+  const plain = scene.materials;
+  const sub = scene.multiMaterials.flatMap((mm: MultiMaterial) => mm.subMaterials.filter((m): m is Material => !!m));
+  const seen = new Set<Material>();
+  return [...plain, ...sub].filter((mat) => {
+    if (seen.has(mat)) return false;
+    seen.add(mat);
+    return true;
+  });
+}
+
+function materialPreviewColor(mat: Material): string {
+  const anyMat = mat as any;
+  const c = anyMat.albedoColor || anyMat.diffuseColor;
+  if (c) return `rgb(${Math.round(c.r * 255)}, ${Math.round(c.g * 255)}, ${Math.round(c.b * 255)})`;
+  return '#475569';
 }
 
 function downscaleImageFile(file: File, maxDimension: number): Promise<string> {
@@ -207,16 +230,36 @@ const MeshMaterialSwatches: React.FC<MeshMaterialSwatchesProps> = ({ scene, mate
     mesh.material = material;
   }, [scene]);
 
+  // Pins one of the model's OWN existing materials (e.g. "groundMaterial") onto the
+  // target mesh. Always clones it fresh rather than assigning the same live material
+  // object - if it just assigned the original reference, switching one marked mesh to
+  // "groundMaterial" would make it visually identical to every OTHER mesh already using
+  // that material, AND a later edit to the original in the Material Editor (which does
+  // mutate in place) would silently change this mesh's look too. Cloning makes this
+  // marker's result a fully independent copy: applying it only ever changes the one
+  // mesh the marker was placed on, never any other mesh sharing the source material.
+  const applySceneMaterialOption = useCallback((mesh: AbstractMesh, option: SwatchOption) => {
+    const source = getSceneMaterials(scene).find((m) => m.name === option.sourceMaterialName);
+    if (!source) {
+      showToast.error(`"${option.sourceMaterialName}" is no longer in this scene`);
+      return;
+    }
+    const clone = source.clone(`swatch_${option.id}_${Date.now()}`);
+    if (clone) mesh.material = clone;
+  }, [scene]);
+
   const applyOption = useCallback((mesh: AbstractMesh, option: SwatchOption) => {
     if (option.kind === 'texture') {
       applyTextureOption(mesh, option);
+    } else if (option.kind === 'scene-material') {
+      applySceneMaterialOption(mesh, option);
     } else if (option.presetId) {
       const material = materialManager.createMaterialFromPreset(option.presetId);
       if (material) materialManager.applyMaterialToMesh(material.name, mesh);
     }
     showToast.success(`Applied ${option.label}`);
     closeSwatchPopup();
-  }, [applyTextureOption, materialManager, closeSwatchPopup]);
+  }, [applyTextureOption, applySceneMaterialOption, materialManager, closeSwatchPopup]);
 
   // Click a marker (outside placing mode) to open its round swatch popup right below it.
   useEffect(() => {
@@ -333,6 +376,17 @@ const MeshMaterialSwatches: React.FC<MeshMaterialSwatchesProps> = ({ scene, mate
     }]);
   };
 
+  const addSceneMaterialOption = (mat: Material) => {
+    if (draftOptions.length >= MAX_OPTIONS) return;
+    setDraftOptions((prev) => [...prev, {
+      id: `opt_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      label: mat.name,
+      kind: 'scene-material',
+      sourceMaterialName: mat.name,
+      previewColor: materialPreviewColor(mat),
+    }]);
+  };
+
   const addTextureOption = async (file: File) => {
     if (draftOptions.length >= MAX_OPTIONS) return;
     let dataUrl: string;
@@ -433,7 +487,7 @@ const MeshMaterialSwatches: React.FC<MeshMaterialSwatchesProps> = ({ scene, mate
                   <div key={o.id} className="relative">
                     <div
                       className="w-9 h-9 rounded-full border-2 border-slate-600 bg-cover bg-center flex items-center justify-center text-[9px] overflow-hidden"
-                      style={o.kind === 'preset' ? { background: o.previewColor } : { backgroundImage: `url(${o.textureDataUrl})` }}
+                      style={o.kind === 'texture' ? { backgroundImage: `url(${o.textureDataUrl})` } : { background: o.previewColor }}
                       title={o.label}
                     />
                     {o.kind === 'texture' && (
@@ -450,6 +504,22 @@ const MeshMaterialSwatches: React.FC<MeshMaterialSwatchesProps> = ({ scene, mate
 
             {draftOptions.length < MAX_OPTIONS && (
               <>
+                {getSceneMaterials(scene).length > 0 && (
+                  <>
+                    <div className="text-[10px] text-gray-500 uppercase tracking-wide">From materials already on this model</div>
+                    <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto">
+                      {getSceneMaterials(scene).map((mat) => (
+                        <button
+                          key={mat.uniqueId}
+                          onClick={() => addSceneMaterialOption(mat)}
+                          className="w-7 h-7 rounded-full border border-slate-600 hover:border-cyan-400 transition-colors"
+                          style={{ background: materialPreviewColor(mat) }}
+                          title={mat.name}
+                        />
+                      ))}
+                    </div>
+                  </>
+                )}
                 <div className="text-[10px] text-gray-500 uppercase tracking-wide">From existing material slots</div>
                 <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto">
                   {presets.map((preset) => {
@@ -505,7 +575,7 @@ const MeshMaterialSwatches: React.FC<MeshMaterialSwatchesProps> = ({ scene, mate
             {expandedMarkerId === m.id && (
               <div className="flex gap-1.5 mt-2">
                 {m.options.map((o) => (
-                  <div key={o.id} className="w-7 h-7 rounded-full border border-slate-600 bg-cover bg-center" style={o.kind === 'preset' ? { background: o.previewColor } : { backgroundImage: `url(${o.textureDataUrl})` }} title={o.label} />
+                  <div key={o.id} className="w-7 h-7 rounded-full border border-slate-600 bg-cover bg-center" style={o.kind === 'texture' ? { backgroundImage: `url(${o.textureDataUrl})` } : { background: o.previewColor }} title={o.label} />
                 ))}
               </div>
             )}

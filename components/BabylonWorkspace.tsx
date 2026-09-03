@@ -477,6 +477,19 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
     featuresByCategory: rawFeaturesByCategory
   } = useFeatureStates(initialFeatureStates);
 
+  // Import is admin-only (see handleFeatureToggle/onImport/handleWorkspaceFileUpload's
+  // own isAdmin checks below, which block the action itself) - filtered out of the
+  // feature list entirely for a client so the button doesn't appear at all, rather than
+  // being visible but erroring when clicked.
+  const rawFeaturesByCategoryVisible = React.useMemo(() => {
+    if (isAdmin) return rawFeaturesByCategory;
+    const filtered: Record<string, any[]> = {};
+    Object.entries(rawFeaturesByCategory).forEach(([category, features]) => {
+      filtered[category] = (features as any[]).filter((f) => f.id !== 'showImport');
+    });
+    return filtered;
+  }, [rawFeaturesByCategory, isAdmin]);
+
   // "Open in Workspace" from a Tools & Features page (ToolPage.tsx) navigates here as
   // /workspace?feature=showXxx - this is what actually turns that flag on. Only enables
   // a flag that's a real key in initialFeatureStates, so an arbitrary/malformed query
@@ -1140,6 +1153,13 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
   // handle files selected via workspace import dialog
   const handleWorkspaceFileUpload = React.useCallback((files: FileList | null) => {
     if (!files || !sceneRef.current) return;
+    // Importing a model straight into the live scene is admin-only - guarded here (not
+    // just by hiding the button/hotkey below) so it's blocked even if something else
+    // ever manages to trigger the hidden file input directly.
+    if (!isAdmin) {
+      showToast.error('Only admins can import models');
+      return;
+    }
     Array.from(files).forEach(file => {
       const toastId = showToast.loading(`Loading ${file.name}...`, 'Starting');
       // No database id exists for an ad-hoc local file upload, but model-scoped
@@ -1198,7 +1218,7 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
-  }, [runAutoZoom]);
+  }, [runAutoZoom, isAdmin]);
 
   // Babylon.js refs
   const engineRef = useRef<Engine | null>(null);
@@ -3558,10 +3578,13 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
 
         // Performance Features
         if (id === 'showImport') {
-          if (fileInputRef.current) {
+          if (!isAdmin) {
+            showToast.error('Only admins can import models');
+            disableFeature('showImport');
+          } else if (fileInputRef.current) {
             fileInputRef.current.click();
+            showToast.success('Import dialog opened');
           }
-          showToast.success('Import dialog opened');
         }
         if (id === 'showKeyboardShortcuts') {
           showToast.info('Keyboard shortcuts panel activated');
@@ -3706,7 +3729,7 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
         console.error(`Error disabling feature ${id}:`, error);
       }
     }
-  }, [enableFeature, disableFeature, setTransformMode, setCameraActive]);
+  }, [enableFeature, disableFeature, setTransformMode, setCameraActive, isAdmin]);
 
   // Global keyboard shortcuts (must be after handleFeatureToggle)
   React.useEffect(() => {
@@ -4043,7 +4066,7 @@ const getCategoryDescription = (categoryName: string): string => {
     <ErrorBoundary>
       <div className={layoutClasses.container}>
   {leftPanelVisible && renderLeftPanel({
-    featureCategories: rawFeaturesByCategory,
+    featureCategories: rawFeaturesByCategoryVisible,
     categoryPanelVisible,
     searchTerm,
     activeFeatures,
@@ -4090,10 +4113,13 @@ const getCategoryDescription = (categoryName: string): string => {
                 enableFeature('showKeyboardShortcuts');
               }
             },
-            onImport: () => {
+            // Undefined (not just a no-op) when not admin - SimpleWorkspaceTopBar only
+            // renders the Import button at all when this prop is present, so a client
+            // never sees it rather than seeing a button that errors when clicked.
+            onImport: isAdmin ? () => {
               if (fileInputRef.current) fileInputRef.current.click();
               showToast.success('Import dialog opened');
-            },
+            } : undefined,
             onExport: () => {
               const scene = sceneRef.current;
               if (!scene) {
