@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { X, BarChart3, TrendingUp } from 'lucide-react';
 import type { CostEstimator, CostBreakdown } from './CostEstimator';
 import { usePanelStack } from '../hooks/usePanelStack';
+import { USD_TO_INR } from './utils/currency';
 
 interface ROICalculatorPanelProps {
   costEstimator: CostEstimator | null;
@@ -24,7 +25,10 @@ const ROICalculatorPanel: React.FC<ROICalculatorPanelProps> = ({ costEstimator, 
     }
   }, [costEstimator, modelId]);
 
-  const totalCost = costBreakdown?.total ?? 0;
+  // The underlying CostEstimator database is USD-denominated - converted once here so
+  // everything downstream (the ROI ratio, payback period, net gain) is computed and
+  // displayed consistently in INR instead of mixing currencies.
+  const totalCost = (costBreakdown?.total ?? 0) * USD_TO_INR;
 
   const { roiPercent, paybackYears, cumulativeAtHorizon } = useMemo(() => {
     if (totalCost <= 0 || annualReturn <= 0) {
@@ -38,8 +42,7 @@ const ROICalculatorPanel: React.FC<ROICalculatorPanelProps> = ({ costEstimator, 
     };
   }, [totalCost, annualReturn, horizonYears]);
 
-  const formatCurrency = (value: number) =>
-    value.toLocaleString(undefined, { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
+  const formatCurrency = (value: number) => `₹${value.toLocaleString('en-IN', { maximumFractionDigits: 0 })}`;
 
   return (
     <div ref={panelRef} style={panelStyle} className="fixed right-4 z-40 w-80 max-w-[90vw] bg-gray-900/95 border border-cyan-500/20 rounded-lg shadow-2xl text-white">
@@ -66,7 +69,7 @@ const ROICalculatorPanel: React.FC<ROICalculatorPanelProps> = ({ costEstimator, 
             <div>
               <label className="text-xs text-gray-400 block mb-1">Expected annual return / savings</label>
               <div className="flex items-center gap-1">
-                <span className="text-gray-400 text-sm">$</span>
+                <span className="text-gray-400 text-sm">₹</span>
                 <input
                   type="number"
                   min={0}

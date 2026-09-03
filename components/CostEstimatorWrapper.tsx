@@ -82,6 +82,14 @@ const CostEstimatorWrapper: React.FC<CostEstimatorWrapperProps> = ({
   const bimManagerRef = useRef<BIMManager | null>(null);
   const simulationManagerRef = useRef<SimulationManager | null>(null);
 
+  // Manual overrides for the cost breakdown, keyed by element id - once a user edits
+  // and saves an element's costs, re-selecting it (or region/budget changes triggering
+  // a recalculation) must keep showing the saved figures instead of silently
+  // recalculating over them.
+  const breakdownOverridesRef = useRef<Map<string, { material: number; labor: number; equipment: number; overhead: number; total: number }>>(new Map());
+  const [isEditingBreakdown, setIsEditingBreakdown] = useState(false);
+  const [breakdownDraft, setBreakdownDraft] = useState<{ material: number; labor: number; equipment: number; overhead: number; total: number } | null>(null);
+
   const [costState, setCostState] = useState<CostState>({
     totalCost: 0,
     breakdown: null,
@@ -330,6 +338,22 @@ const CostEstimatorWrapper: React.FC<CostEstimatorWrapperProps> = ({
         throw new Error('Invalid quantity calculated for element');
       }
 
+      // A previously saved manual edit for this exact element wins over recalculating -
+      // otherwise switching away and back (or a region/budget change re-running this)
+      // would silently discard what the user typed in and saved.
+      const saved = breakdownOverridesRef.current.get(element.id);
+      if (saved) {
+        setCostState({
+          totalCost: saved.total,
+          breakdown: saved,
+          selectedElement: element,
+          isCalculating: false,
+          error: null
+        });
+        if (onCostUpdate) onCostUpdate(saved.total, saved);
+        return;
+      }
+
       // Calculate cost estimate
       const estimate = costEstimatorRef.current!.calculateElementCost(element, quantity, region);
 
@@ -387,6 +411,10 @@ const CostEstimatorWrapper: React.FC<CostEstimatorWrapperProps> = ({
 
   // Handle mesh selection changes
   useEffect(() => {
+    // Switching elements mid-edit would otherwise leave a stale draft that gets saved
+    // against whatever's newly selected instead of what it was actually edited for.
+    setIsEditingBreakdown(false);
+    setBreakdownDraft(null);
     if (selectedMesh) {
       calculateMeshCost(selectedMesh);
     } else {
@@ -399,6 +427,48 @@ const CostEstimatorWrapper: React.FC<CostEstimatorWrapperProps> = ({
       }));
     }
   }, [selectedMesh, calculateMeshCost]);
+
+  const startEditingBreakdown = () => {
+    setBreakdownDraft({
+      material: costState.breakdown?.material ?? 0,
+      labor: costState.breakdown?.labor ?? 0,
+      equipment: costState.breakdown?.equipment ?? 0,
+      overhead: costState.breakdown?.overhead ?? 0,
+      total: costState.totalCost ?? 0
+    });
+    setIsEditingBreakdown(true);
+  };
+
+  const cancelEditingBreakdown = () => {
+    setIsEditingBreakdown(false);
+    setBreakdownDraft(null);
+  };
+
+  // Editing a breakdown part keeps Total in sync as their sum (the normal case) - but
+  // Total itself stays independently editable too, so typing directly into it (e.g. to
+  // match a contractor's bottom-line quote without fussing over the split) overrides
+  // that sum instead of being fought back to it.
+  const updateDraftPart = (key: 'material' | 'labor' | 'equipment' | 'overhead', value: number) => {
+    setBreakdownDraft(prev => {
+      if (!prev) return prev;
+      const next = { ...prev, [key]: value };
+      next.total = next.material + next.labor + next.equipment + next.overhead;
+      return next;
+    });
+  };
+
+  const saveEditedBreakdown = () => {
+    if (!breakdownDraft || !costState.selectedElement) return;
+    const savedBreakdown = { ...breakdownDraft };
+
+    breakdownOverridesRef.current.set(costState.selectedElement.id, savedBreakdown);
+
+    setCostState(prev => ({ ...prev, totalCost: savedBreakdown.total, breakdown: savedBreakdown }));
+    setIsEditingBreakdown(false);
+    setBreakdownDraft(null);
+
+    if (onCostUpdate) onCostUpdate(savedBreakdown.total, savedBreakdown);
+  };
 
   // Handle budget changes
   const handleBudgetChange = (newBudget: number) => {
@@ -588,25 +658,92 @@ const CostEstimatorWrapper: React.FC<CostEstimatorWrapperProps> = ({
       {/* Cost Breakdown */}
       {costState.breakdown && (
         <div className={styles.costBreakdown}>
-          <h4 className={styles.breakdownHeader}>Cost Breakdown</h4>
-          <ul className={styles.breakdownList}>
-            <li className={styles.breakdownItem}>
-              <span>Material:</span>
-              <span>{formatCost(costState.breakdown.material ?? 0)}</span>
-            </li>
-            <li className={styles.breakdownItem}>
-              <span>Labor:</span>
-              <span>{formatCost(costState.breakdown.labor ?? 0)}</span>
-            </li>
-            <li className={styles.breakdownItem}>
-              <span>Equipment:</span>
-              <span>{formatCost(costState.breakdown.equipment ?? 0)}</span>
-            </li>
-            <li className={styles.breakdownItem}>
-              <span>Overhead:</span>
-              <span>{formatCost(costState.breakdown.overhead ?? 0)}</span>
-            </li>
-          </ul>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <h4 className={styles.breakdownHeader}>Cost Breakdown</h4>
+            {costState.selectedElement && !isEditingBreakdown && (
+              <button
+                type="button"
+                onClick={startEditingBreakdown}
+                style={{ fontSize: 11, padding: '3px 8px', background: '#334155', borderRadius: 4, cursor: 'pointer', border: 'none', color: 'white' }}
+              >
+                Edit
+              </button>
+            )}
+          </div>
+
+          {isEditingBreakdown && breakdownDraft ? (
+            <>
+              <div style={{ fontSize: 10, opacity: 0.7, margin: '2px 0 6px' }}>
+                Values below are in USD - the underlying stored currency, regardless of the display region above.
+              </div>
+              {(['material', 'labor', 'equipment', 'overhead'] as const).map((key) => (
+                <div key={key} className={styles.breakdownItem} style={{ alignItems: 'center' }}>
+                  <span style={{ textTransform: 'capitalize' }}>{key}:</span>
+                  <input
+                    type="number"
+                    value={breakdownDraft[key]}
+                    min="0"
+                    step="100"
+                    onChange={(e) => updateDraftPart(key, Number(e.target.value))}
+                    className={styles.budgetInput}
+                    style={{ width: 100 }}
+                    title={key}
+                  />
+                </div>
+              ))}
+              <li className={styles.costBreakdownTotal} style={{ listStyle: 'none', alignItems: 'center' }}>
+                <span>Total:</span>
+                <input
+                  type="number"
+                  value={breakdownDraft.total}
+                  min="0"
+                  step="100"
+                  onChange={(e) => setBreakdownDraft(prev => prev && { ...prev, total: Number(e.target.value) })}
+                  className={styles.budgetInput}
+                  style={{ width: 100, fontWeight: 'bold' }}
+                  title="total"
+                />
+              </li>
+              <div style={{ fontSize: 10, opacity: 0.6, margin: '2px 0 0' }}>
+                Total auto-fills as Material+Labor+Equipment+Overhead when you edit those - type into Total directly to override it independently (e.g. to match a quoted lump sum).
+              </div>
+              <div style={{ display: 'flex', gap: 6, marginTop: 8, justifyContent: 'flex-end' }}>
+                <button
+                  type="button"
+                  onClick={cancelEditingBreakdown}
+                  style={{ fontSize: 11, padding: '4px 10px', background: '#334155', borderRadius: 4, cursor: 'pointer', border: 'none', color: 'white' }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={saveEditedBreakdown}
+                  style={{ fontSize: 11, padding: '4px 10px', background: '#0ea5a5', borderRadius: 4, cursor: 'pointer', border: 'none', color: 'white' }}
+                >
+                  Save
+                </button>
+              </div>
+            </>
+          ) : (
+            <ul className={styles.breakdownList}>
+              <li className={styles.breakdownItem}>
+                <span>Material:</span>
+                <span>{formatCost(costState.breakdown.material ?? 0)}</span>
+              </li>
+              <li className={styles.breakdownItem}>
+                <span>Labor:</span>
+                <span>{formatCost(costState.breakdown.labor ?? 0)}</span>
+              </li>
+              <li className={styles.breakdownItem}>
+                <span>Equipment:</span>
+                <span>{formatCost(costState.breakdown.equipment ?? 0)}</span>
+              </li>
+              <li className={styles.breakdownItem}>
+                <span>Overhead:</span>
+                <span>{formatCost(costState.breakdown.overhead ?? 0)}</span>
+              </li>
+            </ul>
+          )}
         </div>
       )}
 

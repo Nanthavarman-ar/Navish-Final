@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef, Suspense, lazy, startTransition } from "react";
+import React, { useState, useEffect, useCallback, useRef, Suspense, lazy } from "react";
 import { createPortal } from "react-dom";
 import { useSearchParams } from 'react-router-dom';
 import './BabylonWorkspace.css';
@@ -1337,7 +1337,17 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
           // stacked with them and washed highlights out toward white. Dimmed to a level
           // that still gives reflections something believable to show without
           // overpowering the scene's actual light sources.
-          scene.environmentIntensity = 0.6;
+          //
+          // It's also Babylon's generic stock studio probe, not this scene's actual
+          // sky - it has a distinct cool/blue tint that has nothing to do with the
+          // procedural sky or an uploaded HDRI. PBR Fresnel reflectance rises sharply
+          // at grazing angles regardless of this scaling, so that mismatched blue
+          // still showed as a visible rim/line along edges viewed edge-on (a roof
+          // silhouette, a beam tip) - worse against light-colored materials, and
+          // shifting as the sun angle changed which edges were grazing vs. face-on.
+          // Dropped further so that rim stops reading as a rendering artifact while
+          // still leaving PBR reflections non-black before any real HDRI is loaded.
+          scene.environmentIntensity = 0.25;
         } catch (envError) {
           console.warn('Default environment texture unavailable (offline/CDN blocked?) - PBR reflections will be flat:', envError);
         }
@@ -1402,12 +1412,26 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
           // rotates and the splits shift. Fitting each cascade to the real scene depth
           // instead removes that mismatch.
           csm.autoCalcDepthBounds = true;
+          // Babylon's shadow bias defaults to bias=0.00005, normalBias=0 - normalBias is
+          // specifically what pushes a shadow sample along the surface normal to avoid
+          // the surface self-intersecting its own shadow map, and at 0 that correction
+          // doesn't happen at all. On flat geometry that's mostly invisible; on the
+          // curved/rounded wall sections this building actually has, it shows up as
+          // banded self-shadowing stripes hugging the curve, worse or better depending on
+          // how grazing the sun angle is against that curvature - a distinct mechanism
+          // from the cascade-seam fix above (that one's about mismatches BETWEEN cascade
+          // zones; this is self-shadowing WITHIN one surface), so autoCalcDepthBounds
+          // alone never touched it.
+          csm.bias = 0.0015;
+          csm.normalBias = 0.035;
           shadowGenerator = csm;
         } catch (csmError) {
           console.warn('CascadedShadowGenerator unavailable (likely WebGL1) - falling back to standard shadows:', csmError);
           shadowGenerator = new ShadowGenerator(1024, dirLight);
           shadowGenerator.useBlurExponentialShadowMap = true;
           shadowGenerator.blurKernel = 32;
+          shadowGenerator.bias = 0.0015;
+          shadowGenerator.normalBias = 0.035;
         }
         shadowGeneratorRef.current = shadowGenerator;
 
@@ -2900,10 +2924,21 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
     }
   }, []);
 
-  // Centralized feature toggle logic - use startTransition for lazy-loading features to avoid sync suspend
+  // Centralized feature toggle logic.
+  //
+  // This used to wrap the whole body in startTransition() so a first-time toggle of a
+  // React.lazy()-loaded panel (e.g. CostEstimatorWrapper) wouldn't force the nearest
+  // Suspense fallback to flash in. In this scene that backfired badly: the app has a
+  // continuous 60fps Babylon render loop, and per-frame/per-second React state updates
+  // (the FPS counter) count as higher-priority work that can keep preempting a pending
+  // low-priority transition indefinitely - so featureStates[id] would never actually
+  // commit, leaving the toggle looking like it silently did nothing (confirmed: the
+  // Cost Estimator panel never mounted no matter how long you waited after clicking).
+  // A user clicking a button to open a panel is exactly the kind of urgent, direct
+  // update startTransition is NOT meant for - the brief Suspense fallback on a lazy
+  // panel's first open is a fair trade for the toggle actually working.
   const handleFeatureToggle = useCallback((featureId: string | number, enabled: boolean) => {
     const id = String(featureId);
-    startTransition(() => {
     if (enabled) {
       enableFeature(id);
       // Feeds the Session Insights panel (config/featureCategories.tsx's
@@ -3528,7 +3563,6 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
         console.error(`Error disabling feature ${id}:`, error);
       }
     }
-    });
   }, [enableFeature, disableFeature, setTransformMode, setCameraActive]);
 
   // Global keyboard shortcuts (must be after handleFeatureToggle)

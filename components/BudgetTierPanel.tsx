@@ -1,7 +1,8 @@
-import React, { useMemo } from 'react';
-import { X, LayoutGrid, TrendingUp } from 'lucide-react';
+import React, { useMemo, useState } from 'react';
+import { X, LayoutGrid, TrendingUp, Pencil } from 'lucide-react';
 import type { CostEstimator } from './CostEstimator';
 import type { SustainabilityManager } from './SustainabilityManager';
+import { USD_TO_INR } from './utils/currency';
 
 interface BudgetTierPanelProps {
   costEstimator: CostEstimator | null;
@@ -26,6 +27,14 @@ const TIERS: Tier[] = [
   { label: 'Premium', multiplier: 1.55, color: 'text-purple-400', sustainabilityDelta: 12 },
 ];
 
+interface TierRow {
+  label: string;
+  color: string;
+  materials: number; // INR
+  total: number; // INR
+  greenScore: number | null;
+}
+
 const BudgetTierPanel: React.FC<BudgetTierPanelProps> = ({ costEstimator, sustainabilityManager, modelId, onClose }) => {
   const baseCost = useMemo(() => {
     if (!costEstimator) return null;
@@ -45,19 +54,52 @@ const BudgetTierPanel: React.FC<BudgetTierPanelProps> = ({ costEstimator, sustai
     }
   }, [sustainabilityManager, modelId]);
 
-  const rows = useMemo(() => {
+  // Computed rows, in INR - the underlying CostEstimator database is USD-denominated,
+  // converted here once for display/editing since this panel is INR throughout.
+  const computedRows: TierRow[] = useMemo(() => {
     if (!baseCost) return [];
     return TIERS.map((tier) => {
-      const materials = baseCost.materials * tier.multiplier;
-      const total = materials + baseCost.labor + baseCost.overhead + baseCost.disposal;
+      const materials = baseCost.materials * tier.multiplier * USD_TO_INR;
+      const total = (baseCost.materials * tier.multiplier + baseCost.labor + baseCost.overhead + baseCost.disposal) * USD_TO_INR;
       const greenScore = baseGreenScore !== null
         ? Math.max(0, Math.min(100, baseGreenScore + tier.sustainabilityDelta))
         : null;
-      return { ...tier, materials, total, greenScore };
+      return { label: tier.label, color: tier.color, materials, total, greenScore };
     });
   }, [baseCost, baseGreenScore]);
 
-  const formatCurrency = (v: number) => `$${v.toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
+  // A user-saved edit for a tier wins over the computed figures - kept separate from
+  // computedRows so a model/sustainability recalculation doesn't silently wipe out
+  // what was manually entered, the same pattern as the Cost Estimator panel's overrides.
+  const [savedOverrides, setSavedOverrides] = useState<Record<string, { materials: number; total: number }>>({});
+  const [isEditing, setIsEditing] = useState(false);
+  const [draft, setDraft] = useState<Record<string, { materials: number; total: number }> | null>(null);
+
+  const rows: TierRow[] = computedRows.map((row) => {
+    const override = savedOverrides[row.label];
+    return override ? { ...row, materials: override.materials, total: override.total } : row;
+  });
+
+  const formatCurrency = (v: number) => `₹${v.toLocaleString('en-IN', { maximumFractionDigits: 0 })}`;
+
+  const startEditing = () => {
+    const initial: Record<string, { materials: number; total: number }> = {};
+    rows.forEach((row) => { initial[row.label] = { materials: row.materials, total: row.total }; });
+    setDraft(initial);
+    setIsEditing(true);
+  };
+
+  const cancelEditing = () => {
+    setIsEditing(false);
+    setDraft(null);
+  };
+
+  const saveEditing = () => {
+    if (!draft) return;
+    setSavedOverrides(draft);
+    setIsEditing(false);
+    setDraft(null);
+  };
 
   return (
     <div className="fixed top-20 left-1/2 -translate-x-1/2 z-40 w-[28rem] max-w-[90vw] bg-gray-900/95 border border-cyan-500/20 rounded-lg shadow-2xl text-white">
@@ -66,9 +108,16 @@ const BudgetTierPanel: React.FC<BudgetTierPanelProps> = ({ costEstimator, sustai
           <LayoutGrid className="w-4 h-4 text-cyan-400" />
           <h3 className="font-display font-semibold">Budget Tier Comparison</h3>
         </div>
-        <button onClick={onClose} className="text-gray-400 hover:text-white transition-colors" aria-label="Close">
-          <X className="w-4 h-4" />
-        </button>
+        <div className="flex items-center gap-3">
+          {baseCost && !isEditing && (
+            <button onClick={startEditing} className="text-gray-400 hover:text-white transition-colors flex items-center gap-1 text-xs" aria-label="Edit tier values">
+              <Pencil className="w-3.5 h-3.5" /> Edit
+            </button>
+          )}
+          <button onClick={onClose} className="text-gray-400 hover:text-white transition-colors" aria-label="Close">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
       </div>
 
       <div className="p-4">
@@ -79,13 +128,36 @@ const BudgetTierPanel: React.FC<BudgetTierPanelProps> = ({ costEstimator, sustai
             {rows.map((row) => (
               <div key={row.label} className="p-3 rounded-lg bg-slate-800/50 border border-slate-700/80 flex flex-col items-center text-center">
                 <span className={`text-xs font-technical uppercase font-semibold ${row.color}`}>{row.label}</span>
-                <span className="text-lg font-technical text-gray-100 mt-2">{formatCurrency(row.total)}</span>
+
+                {isEditing && draft ? (
+                  <input
+                    type="number"
+                    min={0}
+                    value={draft[row.label].total}
+                    onChange={(e) => setDraft(prev => prev && { ...prev, [row.label]: { ...prev[row.label], total: Number(e.target.value) } })}
+                    className="w-full mt-2 bg-slate-900 border border-slate-600 rounded px-1.5 py-1 text-sm text-center text-gray-100 focus:outline-none focus:border-cyan-500"
+                    title={`${row.label} total`}
+                  />
+                ) : (
+                  <span className="text-lg font-technical text-gray-100 mt-2">{formatCurrency(row.total)}</span>
+                )}
                 <span className="text-[10px] text-gray-500 mt-0.5">total est.</span>
 
                 <div className="w-full border-t border-slate-700 my-2" />
 
                 <span className="text-[10px] text-gray-400">Materials</span>
-                <span className="text-xs font-technical text-gray-300">{formatCurrency(row.materials)}</span>
+                {isEditing && draft ? (
+                  <input
+                    type="number"
+                    min={0}
+                    value={draft[row.label].materials}
+                    onChange={(e) => setDraft(prev => prev && { ...prev, [row.label]: { ...prev[row.label], materials: Number(e.target.value) } })}
+                    className="w-full mt-1 bg-slate-900 border border-slate-600 rounded px-1.5 py-1 text-xs text-center text-gray-100 focus:outline-none focus:border-cyan-500"
+                    title={`${row.label} materials`}
+                  />
+                ) : (
+                  <span className="text-xs font-technical text-gray-300">{formatCurrency(row.materials)}</span>
+                )}
 
                 {row.greenScore !== null && (
                   <>
@@ -100,6 +172,12 @@ const BudgetTierPanel: React.FC<BudgetTierPanelProps> = ({ costEstimator, sustai
                 )}
               </div>
             ))}
+          </div>
+        )}
+        {isEditing && (
+          <div className="flex items-center justify-end gap-2 mt-3">
+            <button onClick={cancelEditing} className="text-xs px-3 py-1.5 rounded bg-slate-700 hover:bg-slate-600 transition-colors">Cancel</button>
+            <button onClick={saveEditing} className="text-xs px-3 py-1.5 rounded bg-cyan-600 hover:bg-cyan-500 transition-colors">Save</button>
           </div>
         )}
         <p className="text-[10px] text-gray-500 mt-3 text-center">
