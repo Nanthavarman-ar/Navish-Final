@@ -75,14 +75,17 @@ const HotspotNavigation: React.FC<HotspotNavigationProps> = ({ scene, roomId, on
 
     markerMeshesRef.current.forEach((mesh, id) => {
       if (!currentIds.has(id)) {
-        mesh.dispose();
+        // dispose()'s second arg (disposeMaterialAndTextures) defaults to false - each
+        // marker has its own DynamicTexture baked just for it, so leaving it out here
+        // would leak a texture every time a hotspot is deleted.
+        mesh.dispose(false, true);
         markerMeshesRef.current.delete(id);
       }
     });
 
     hotspots.forEach((hotspot) => {
       if (markerMeshesRef.current.has(hotspot.id)) return;
-      const marker = MeshBuilder.CreatePlane(`hotspot_marker_${hotspot.id}`, { size: 0.42 }, scene);
+      const marker = MeshBuilder.CreatePlane(`hotspot_marker_${hotspot.id}`, { size: 0.55 }, scene);
       marker.position = new Vector3(hotspot.position.x, hotspot.position.y + 0.05, hotspot.position.z);
       marker.billboardMode = Mesh.BILLBOARDMODE_ALL;
       marker.renderingGroupId = 1;
@@ -135,7 +138,7 @@ const HotspotNavigation: React.FC<HotspotNavigationProps> = ({ scene, roomId, on
 
   useEffect(() => {
     return () => {
-      markerMeshesRef.current.forEach((mesh) => mesh.dispose());
+      markerMeshesRef.current.forEach((mesh) => mesh.dispose(false, true));
       markerMeshesRef.current.clear();
     };
   }, []);

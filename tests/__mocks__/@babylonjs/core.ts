@@ -319,6 +319,22 @@ export class SSAORenderingPipeline {
   }
 }
 
+export class SSAO2RenderingPipeline {
+  totalStrength: number;
+  radius: number;
+  base: number;
+  samples: number;
+
+  constructor(name: string, scene: Scene, ratio: any, cameras?: any[]) {
+    this.totalStrength = 1.0;
+    this.radius = 2;
+    this.base = 0.02;
+    this.samples = 16;
+  }
+
+  dispose(): void {}
+}
+
 export class SSRRenderingPipeline {
   strength: number;
   thickness: number;
@@ -579,6 +595,7 @@ const BabylonJS = {
   ShadowGenerator,
   DefaultRenderingPipeline,
   SSAORenderingPipeline,
+  SSAO2RenderingPipeline,
   SSRRenderingPipeline,
   SceneOptimizer,
   SceneOptimizerOptions,

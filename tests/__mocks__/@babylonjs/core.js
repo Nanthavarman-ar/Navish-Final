@@ -453,6 +453,39 @@ export class SSAORenderingPipeline {
         this.fallOff = 0.000001;
     }
 }
+export class SSAO2RenderingPipeline {
+    constructor(name, scene, ratio, cameras) {
+        Object.defineProperty(this, "totalStrength", {
+            enumerable: true,
+            configurable: true,
+            writable: true,
+            value: void 0
+        });
+        Object.defineProperty(this, "radius", {
+            enumerable: true,
+            configurable: true,
+            writable: true,
+            value: void 0
+        });
+        Object.defineProperty(this, "base", {
+            enumerable: true,
+            configurable: true,
+            writable: true,
+            value: void 0
+        });
+        Object.defineProperty(this, "samples", {
+            enumerable: true,
+            configurable: true,
+            writable: true,
+            value: void 0
+        });
+        this.totalStrength = 1.0;
+        this.radius = 2;
+        this.base = 0.02;
+        this.samples = 16;
+    }
+    dispose() {}
+}
 export class SceneOptimizer {
     static OptimizeAsync(scene, options) {
         return Promise.resolve({ success: true });
@@ -687,6 +720,7 @@ const BabylonJS = {
     ShadowGenerator,
     DefaultRenderingPipeline,
     SSAORenderingPipeline,
+    SSAO2RenderingPipeline,
     SceneOptimizer,
     SceneOptimizerOptions,
     HardwareScalingOptimization,

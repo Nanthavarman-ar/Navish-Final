@@ -93,7 +93,10 @@ const AnnotationTool: React.FC<AnnotationToolProps> = ({ scene, roomId, onClose,
     // so placing a new note right next to an existing one still hits the model, not the pin.
     annotations.forEach((annotation) => {
       if (pinMeshesRef.current.has(annotation.id)) return;
-      const pin = MeshBuilder.CreatePlane(`annotation_pin_${annotation.id}`, { size: 0.4 }, scene);
+      // 0.4 world units (was) is a genuinely small click target at typical architectural
+      // scale and camera distance - easy to miss, which read as "clicking the note does
+      // nothing" even though the handler itself was working correctly.
+      const pin = MeshBuilder.CreatePlane(`annotation_pin_${annotation.id}`, { size: 0.55 }, scene);
       pin.position = new Vector3(annotation.position.x, annotation.position.y + 0.28, annotation.position.z);
       pin.billboardMode = Mesh.BILLBOARDMODE_ALL;
       pin.renderingGroupId = 1;

@@ -4,7 +4,7 @@ import { useSearchParams } from 'react-router-dom';
 import './BabylonWorkspace.css';
 
 // Core Babylon.js imports only (minimal for initial load)
-import { Engine, Scene, ArcRotateCamera, FreeCamera, UniversalCamera, HemisphericLight, DirectionalLight, Vector3, Vector2, Quaternion, Color3, Color4, Mesh, AbstractMesh, StandardMaterial, DefaultRenderingPipeline, SSAORenderingPipeline, SSRRenderingPipeline, HighlightLayer, PBRMaterial, Material, ImageProcessingConfiguration, ColorCurves, PointerInfo, PickingInfo, Camera, PointerEventTypes, ParticleSystem, MeshBuilder, Texture, GizmoManager, GizmoAnchorPoint, ShadowGenerator, CascadedShadowGenerator, Ray } from '@babylonjs/core';
+import { Engine, Scene, ArcRotateCamera, FreeCamera, UniversalCamera, HemisphericLight, DirectionalLight, Vector3, Vector2, Quaternion, Color3, Color4, Mesh, AbstractMesh, StandardMaterial, DefaultRenderingPipeline, SSAO2RenderingPipeline, SSRRenderingPipeline, HighlightLayer, PBRMaterial, Material, ImageProcessingConfiguration, ColorCurves, PointerInfo, PickingInfo, Camera, PointerEventTypes, ParticleSystem, MeshBuilder, Texture, GizmoManager, GizmoAnchorPoint, ShadowGenerator, CascadedShadowGenerator, Ray } from '@babylonjs/core';
 import { WaterMaterial } from '@babylonjs/materials/water';
 import { PerlinNoiseProceduralTexture } from '@babylonjs/procedural-textures';
 
@@ -1225,7 +1225,7 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
   const sceneRef = useRef<Scene | null>(null);
   const cameraRef = useRef<ArcRotateCamera | null>(null);
   const pipelineRef = useRef<DefaultRenderingPipeline | null>(null);
-  const ssaoPipelineRef = useRef<SSAORenderingPipeline | null>(null);
+  const ssaoPipelineRef = useRef<SSAO2RenderingPipeline | null>(null);
   const ssrPipelineRef = useRef<SSRRenderingPipeline | null>(null);
   const highlightLayerRef = useRef<HighlightLayer | null>(null);
   // Shadow generator for the scene's "sun" light - lets Sun Study actually show
@@ -1661,14 +1661,19 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
           pipelineRef.current = pipeline;
         }
 
-        // Set up SSAO if enabled
+        // Set up SSAO if enabled - SSAO2 (Horizon-Based Ambient Occlusion) rather than the
+        // older SSAORenderingPipeline: noticeably more accurate contact shadows in corners
+        // and under/behind objects, which is a real part of what reads as "Enscape/Lumion-
+        // style realism" versus a flatter-looking viewport. Its radius/base/samples are on
+        // a completely different scale than the legacy pipeline's (radius is real world
+        // units, ~2 by default, not a near-zero value) - reusing the old tuned numbers here
+        // would have been meaningless on this pipeline.
         if (enableSSAO) {
-          const ssao = new SSAORenderingPipeline("ssao", scene, 1.0);
+          const ssao = new SSAO2RenderingPipeline("ssao", scene, 1.0, [camera]);
           ssao.totalStrength = ssaoIntensity;
-          ssao.base = 0.5;
-          ssao.radius = 0.0001;
-          ssao.area = 0.0075;
-          ssao.fallOff = 0.000001;
+          ssao.radius = 2;
+          ssao.base = 0.02;
+          ssao.samples = 16;
           ssaoPipelineRef.current = ssao;
         }
 
@@ -2288,14 +2293,14 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
   // Reactively create/dispose the SSAO pipeline itself when toggled after mount
   useEffect(() => {
     const scene = sceneRef.current;
-    if (!scene) return;
+    const camera = cameraRef.current;
+    if (!scene || !camera) return;
     if (enableSSAO && !ssaoPipelineRef.current) {
-      const ssao = new SSAORenderingPipeline("ssao", scene, 1.0);
+      const ssao = new SSAO2RenderingPipeline("ssao", scene, 1.0, [camera]);
       ssao.totalStrength = ssaoIntensity;
-      ssao.base = 0.5;
-      ssao.radius = 0.0001;
-      ssao.area = 0.0075;
-      ssao.fallOff = 0.000001;
+      ssao.radius = 2;
+      ssao.base = 0.02;
+      ssao.samples = 16;
       ssaoPipelineRef.current = ssao;
     } else if (!enableSSAO && ssaoPipelineRef.current) {
       ssaoPipelineRef.current.dispose();
@@ -2532,11 +2537,15 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
     if (!scene) return;
 
     // Exclude helper/UI geometry (measurement lines, cursor markers, annotation pins,
-    // teleport/AR-scale helper meshes) so clicking a tool's own visual aid doesn't
-    // accidentally "select" it as if it were part of the design.
+    // hotspot-navigation and material-swatch markers, teleport/AR-scale helper meshes)
+    // so clicking a tool's own visual aid doesn't accidentally "select" it as if it were
+    // part of the design - hotspot_marker_/swatch_marker_ were missing here (only
+    // annotation_pin_ was ever added), so clicking either of those two newer marker
+    // types was hijacking selection (and, through it, the Move/Rotate/Scale gizmos)
+    // instead of leaving whatever real mesh was actually meant to be selected alone.
     const isSelectableMesh = (mesh: AbstractMesh) =>
       mesh.isEnabled() && mesh.isVisible && mesh.isPickable &&
-      !/^(ground|ceiling_light|measure_|annotation_pin_|cursor_|collab_|sound_privacy_marker_|__root__)/i.test(mesh.name || '');
+      !/^(ground|ceiling_light|measure_|annotation_pin_|hotspot_marker_|swatch_marker_|swatch_popup_panel_|cursor_|collab_|sound_privacy_marker_|__root__)/i.test(mesh.name || '');
 
     const observer = scene.onPointerObservable.add((pointerInfo) => {
       if (pointerInfo.type !== PointerEventTypes.POINTERPICK) return;

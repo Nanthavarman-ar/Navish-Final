@@ -97,8 +97,6 @@ const MeshMaterialSwatches: React.FC<MeshMaterialSwatchesProps> = ({ scene, mate
   const [expandedMarkerId, setExpandedMarkerId] = useState<string | null>(null);
   const [openPopupMarkerId, setOpenPopupMarkerId] = useState<string | null>(null);
   const markerMeshesRef = useRef<Map<string, Mesh>>(new Map());
-  const guiTextureRef = useRef<AdvancedDynamicTexture | null>(null);
-  const popupControlRef = useRef<Rectangle | null>(null);
   // A mutable snapshot, refreshed after each addCustomPreset call below - the "existing
   // material slots" reuse row needs to reflect a texture just uploaded and registered
   // within this same session, not only the ~14 presets MaterialManager ships with.
@@ -120,14 +118,17 @@ const MeshMaterialSwatches: React.FC<MeshMaterialSwatchesProps> = ({ scene, mate
     const currentIds = new Set(markers.map((m) => m.id));
     markerMeshesRef.current.forEach((mesh, id) => {
       if (!currentIds.has(id)) {
-        mesh.dispose();
+        // dispose()'s second arg (disposeMaterialAndTextures) defaults to false - each
+        // marker has its own DynamicTexture baked just for it, so leaving it out here
+        // would leak a texture every time a marker is deleted.
+        mesh.dispose(false, true);
         markerMeshesRef.current.delete(id);
       }
     });
 
     markers.forEach((marker) => {
       if (markerMeshesRef.current.has(marker.id)) return;
-      const pin = MeshBuilder.CreatePlane(`swatch_marker_${marker.id}`, { size: 0.4 }, scene);
+      const pin = MeshBuilder.CreatePlane(`swatch_marker_${marker.id}`, { size: 0.55 }, scene);
       pin.position = new Vector3(marker.position.x, marker.position.y + 0.05, marker.position.z);
       pin.billboardMode = Mesh.BILLBOARDMODE_ALL;
       pin.renderingGroupId = 1;
@@ -170,26 +171,34 @@ const MeshMaterialSwatches: React.FC<MeshMaterialSwatchesProps> = ({ scene, mate
 
   useEffect(() => {
     return () => {
-      markerMeshesRef.current.forEach((mesh) => mesh.dispose());
+      markerMeshesRef.current.forEach((mesh) => mesh.dispose(false, true));
       markerMeshesRef.current.clear();
+      popupPlaneRef.current?.dispose(false, true);
+      popupPlaneRef.current = null;
     };
   }, []);
 
-  useEffect(() => {
-    const texture = AdvancedDynamicTexture.CreateFullscreenUI('swatch_gui', true, scene);
-    guiTextureRef.current = texture;
-    return () => {
-      texture.dispose();
-      guiTextureRef.current = null;
-    };
-  }, [scene]);
+  // The popup used to be a Rectangle on a shared AdvancedDynamicTexture.CreateFullscreenUI
+  // - a flat 2D layer composited onto the regular canvas. A WebXR immersive session
+  // renders straight to the headset's own framebuffers and never draws that canvas
+  // overlay at all, so the swatch popup was invisible in VR even though the marker
+  // itself (a real 3D mesh) showed up fine - the same reason XRManager's AR controls
+  // needed a raw DOM overlay instead of Babylon GUI. CreateForMesh is the fix: it puts
+  // the GUI onto an actual plane that's part of the 3D scene, so it renders (and is
+  // clickable via the VR controller's own pointer-selection, same as the marker) exactly
+  // like any other object - in the headset, not just on a flat desktop overlay. Created
+  // fresh per popup (not once up front) since each one needs its own plane positioned at
+  // its own marker.
+  const popupPlaneRef = useRef<Mesh | null>(null);
 
   const closeSwatchPopup = useCallback(() => {
-    const texture = guiTextureRef.current;
-    if (popupControlRef.current && texture) {
-      texture.removeControl(popupControlRef.current);
-      popupControlRef.current.dispose();
-      popupControlRef.current = null;
+    if (popupPlaneRef.current) {
+      // dispose()'s disposeMaterialAndTextures arg defaults to false - a popup gets a
+      // fresh CreateForMesh material/texture every time it opens, so leaving this out
+      // would leak one on every close (and every reopen, since each open also closes
+      // whatever was already showing).
+      popupPlaneRef.current.dispose(false, true);
+      popupPlaneRef.current = null;
     }
     setOpenPopupMarkerId(null);
   }, []);
@@ -261,12 +270,17 @@ const MeshMaterialSwatches: React.FC<MeshMaterialSwatchesProps> = ({ scene, mate
     closeSwatchPopup();
   }, [applyTextureOption, applySceneMaterialOption, materialManager, closeSwatchPopup]);
 
-  // Click a marker (outside placing mode) to open its round swatch popup right below it.
+  // Click a marker (outside placing mode) to open its round swatch popup right above it.
   useEffect(() => {
     if (isPlacing) return;
     const observer = scene.onPointerObservable.add((pointerInfo) => {
       if (pointerInfo.type !== PointerEventTypes.POINTERPICK) return;
       const mesh = pointerInfo.pickInfo?.pickedMesh;
+      // A click on the popup panel itself (e.g. one of its swatch buttons) also produces
+      // a real pick against that plane - without this check, clicking a swatch would
+      // immediately close the very popup it's part of, right before applyOption's own
+      // closeSwatchPopup() call ran.
+      if (mesh?.name.startsWith('swatch_popup_panel_')) return;
       if (!mesh?.name.startsWith('swatch_marker_')) {
         closeSwatchPopup();
         return;
@@ -287,34 +301,50 @@ const MeshMaterialSwatches: React.FC<MeshMaterialSwatchesProps> = ({ scene, mate
       }
 
       closeSwatchPopup();
-      const texture = guiTextureRef.current;
-      if (!texture) return;
+
+      // A world-space plane, not a screen-space overlay - see the comment on
+      // popupPlaneRef above for why (VR visibility). Billboarded so it always faces
+      // whoever's looking at it, whether that's the desktop orbit camera or the actual
+      // position of someone's head in a VR headset. Texture pixel size keeps the same
+      // proportions the old screen-space card used (options*52+16 by 68), just at 2x
+      // resolution for a crisper look on a world-space surface; the plane's real-world
+      // size is derived from that same aspect ratio rather than a hardcoded guess.
+      const texWidth = marker.options.length * 104 + 32;
+      const texHeight = 136;
+      const planeHeight = 0.22;
+      const planeWidth = planeHeight * (texWidth / texHeight);
+      const plane = MeshBuilder.CreatePlane(`swatch_popup_panel_${id}`, { width: planeWidth, height: planeHeight }, scene);
+      plane.position = mesh.position.clone();
+      plane.position.y += 0.42;
+      plane.billboardMode = Mesh.BILLBOARDMODE_ALL;
+      plane.renderingGroupId = 1;
+
+      const texture = AdvancedDynamicTexture.CreateForMesh(plane, texWidth, texHeight, true);
 
       const card = new Rectangle(`swatch_popup_${id}`);
-      card.widthInPixels = marker.options.length * 52 + 16;
-      card.heightInPixels = 68;
+      card.width = '100%';
+      card.height = '100%';
       card.cornerRadius = 34;
       card.color = '#22d3ee';
-      card.thickness = 2;
+      card.thickness = 3;
       card.background = '#1c1917';
       card.alpha = 0.96;
-      card.isPointerBlocker = true;
+      texture.addControl(card);
 
       const row = new StackPanel(`swatch_popup_row_${id}`);
       row.isVertical = false;
-      row.spacing = 8;
+      row.spacing = 16;
       card.addControl(row);
 
       marker.options.forEach((option) => {
         const swatch = new Rectangle(`swatch_btn_${option.id}`);
-        swatch.widthInPixels = 44;
-        swatch.heightInPixels = 44;
-        swatch.cornerRadius = 22;
-        swatch.thickness = 2;
+        swatch.widthInPixels = 88;
+        swatch.heightInPixels = 88;
+        swatch.cornerRadius = 44;
+        swatch.thickness = 4;
         swatch.color = '#fff';
         swatch.clipChildren = true;
         swatch.background = option.previewColor || '#334155';
-        swatch.isPointerBlocker = true;
         if (option.kind === 'texture' && option.textureDataUrl) {
           const img = new GuiImage(`swatch_img_${option.id}`, option.textureDataUrl);
           img.stretch = GuiImage.STRETCH_UNIFORM;
@@ -324,10 +354,7 @@ const MeshMaterialSwatches: React.FC<MeshMaterialSwatchesProps> = ({ scene, mate
         row.addControl(swatch);
       });
 
-      card.linkWithMesh(mesh);
-      card.linkOffsetYInPixels = -70;
-      texture.addControl(card);
-      popupControlRef.current = card;
+      popupPlaneRef.current = plane;
       setOpenPopupMarkerId(id);
     });
     return () => { scene.onPointerObservable.remove(observer); };
@@ -340,7 +367,7 @@ const MeshMaterialSwatches: React.FC<MeshMaterialSwatchesProps> = ({ scene, mate
     if (!isPlacing) return;
     const observer = scene.onPointerObservable.add((pointerInfo) => {
       if (pointerInfo.type !== PointerEventTypes.POINTERPICK) return;
-      const pickResult = scene.pick(scene.pointerX, scene.pointerY, (m) => !m.name.startsWith('swatch_marker_'));
+      const pickResult = scene.pick(scene.pointerX, scene.pointerY, (m) => !m.name.startsWith('swatch_marker_') && !m.name.startsWith('swatch_popup_panel_'));
       if (!pickResult?.hit || !pickResult.pickedPoint || !pickResult.pickedMesh) {
         showToast.info('Click directly on a mesh to place a swatch marker');
         return;
