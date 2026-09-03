@@ -2046,6 +2046,10 @@ interface RenderTopBarProps {
   perspectiveActive?: boolean;
   onCameraActiveToggle?: () => void;
   onPerspectiveToggle?: () => void;
+  // Host-page buttons (e.g. AppLayout's "My Models"/"AI Voice" shortcuts) to render inside
+  // the bar's own left/right clusters instead of as separate floating overlays.
+  topBarExtraLeft?: React.ReactNode;
+  topBarExtraRight?: React.ReactNode;
 }
 
 interface RenderRightPanelProps {
@@ -2177,6 +2181,8 @@ export const renderTopBar = (props: RenderTopBarProps) => (
       perspectiveActive={props.perspectiveActive}
       onCameraActiveToggle={props.onCameraActiveToggle}
       onPerspectiveToggle={props.onPerspectiveToggle}
+      topBarExtraLeft={props.topBarExtraLeft}
+      topBarExtraRight={props.topBarExtraRight}
     />
   </React.Suspense>
 );

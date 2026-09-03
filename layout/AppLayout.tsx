@@ -17,7 +17,7 @@ import { useAuth, useApp } from '../contexts';
 import { LAST_MODEL_ID_KEY } from '../contexts/AppContext';
 import { apiCall } from '../hooks/useApi';
 import { showToast } from '../components/utils/toast';
-import { PanelStackProvider, usePanelStack } from '../hooks/usePanelStack';
+import { PanelStackProvider } from '../hooks/usePanelStack';
 import type { Scene } from '@babylonjs/core';
 
 // Lazy-loaded: pulls in the full Babylon.js engine (~1.25MB gzip). Previously this was a
@@ -130,67 +130,22 @@ const ToolPageRoute: React.FC = () => {
   return <ToolPage page={normalized} />;
 };
 
-// Split out from AppLayout itself so usePanelStack() can actually see PanelStackProvider -
-// a component can never consume a context it renders as part of its own return value, only
-// one rendered inside it. AppLayout wraps its whole tree (including this) in
-// PanelStackProvider so these two chrome buttons stack correctly against every panel
-// BabylonWorkspace renders further down, instead of the manual top-4/top-16 guess this used
-// to be (which only ever accounted for one specific known collision, not all of them).
-interface AppChromeProps {
-  showMyModelsShortcut: boolean;
-  onMyModelsClick: () => void;
-  showAIVoice: boolean;
-  scene: Scene | null;
-  showAIVoiceAssistant: boolean;
-  onOpenAIVoice: () => void;
-  onCloseAIVoice: () => void;
-}
-
-const AppChrome: React.FC<AppChromeProps> = ({
-  showMyModelsShortcut, onMyModelsClick, showAIVoice, scene, showAIVoiceAssistant, onOpenAIVoice, onCloseAIVoice
+// Renders the AI Voice Assistant's own panel (transcript/command history/mic status) once a
+// scene exists. The trigger buttons that used to live alongside this (a separate "My Models"
+// shortcut and an "AI Voice" open button) previously rendered as independent `fixed`-position
+// overlays via usePanelStack, which put them on top of whatever BabylonWorkspace itself was
+// showing at that same corner (the left tools panel, the FPS badge) instead of actually being
+// part of the workspace's own top bar. They're now built as plain buttons in AppLayout below
+// and handed to BabylonWorkspace as topBarExtraLeft/topBarExtraRight, so they render as real
+// children of the bar's own left/right clusters.
+const AppChrome: React.FC<{ scene: Scene | null; showAIVoiceAssistant: boolean; onCloseAIVoice: () => void }> = ({
+  scene, showAIVoiceAssistant, onCloseAIVoice
 }) => {
-  const myModels = usePanelStack('top-left');
-  const aiVoice = usePanelStack('top-right');
-
+  if (!scene) return null;
   return (
-    <>
-      {showMyModelsShortcut && (
-        <button
-          ref={myModels.ref as React.Ref<HTMLButtonElement>}
-          style={myModels.style}
-          type="button"
-          onClick={onMyModelsClick}
-          className="fixed left-4 z-50 flex items-center gap-2 px-3 py-2 bg-slate-800/90 hover:bg-slate-700 border border-slate-600 rounded-lg text-white text-sm shadow-lg transition-colors pointer-events-auto cursor-pointer"
-          title="Go to My Models"
-          aria-label="Go to My Models"
-        >
-          My Models
-        </button>
-      )}
-
-      {/* AI Voice Assistant - fixed position, z-50 for visibility and clickability */}
-      {showAIVoice && scene && (
-        <>
-          <Suspense fallback={null}>
-            <AIVoiceAssistant scene={scene} isActive={showAIVoiceAssistant} onClose={onCloseAIVoice} />
-          </Suspense>
-          {!showAIVoiceAssistant && (
-            <button
-              ref={aiVoice.ref as React.Ref<HTMLButtonElement>}
-              style={aiVoice.style}
-              type="button"
-              onClick={onOpenAIVoice}
-              className="fixed right-4 z-50 flex items-center gap-2 px-3 py-2 bg-slate-800/90 hover:bg-slate-700 border border-slate-600 rounded-lg text-white text-sm shadow-lg transition-colors pointer-events-auto cursor-pointer"
-              title="Open AI Voice Assistant"
-              aria-label="Open AI Voice Assistant"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-              AI Voice
-            </button>
-          )}
-        </>
-      )}
-    </>
+    <Suspense fallback={null}>
+      <AIVoiceAssistant scene={scene} isActive={showAIVoiceAssistant} onClose={onCloseAIVoice} />
+    </Suspense>
   );
 };
 
@@ -340,6 +295,34 @@ export default function AppLayout() {
   // panel in the app requires a deliberate click to open; this now matches that.
   const [showAIVoiceAssistant, setShowAIVoiceAssistant] = useState(false);
 
+  // Built here (not as separate floating overlays) and handed to BabylonWorkspace as
+  // topBarExtraLeft/topBarExtraRight so they render as real children of its own top bar's
+  // left/right clusters instead of `fixed`-position buttons landing on top of the left
+  // panel/FPS badge.
+  const myModelsButton = showMyModelsShortcut ? (
+    <button
+      type="button"
+      onClick={() => navigate('/client/models')}
+      className="h-10 px-3 inline-flex items-center gap-2 rounded-md text-sm text-gray-300 hover:bg-gray-700/50 hover:text-white transition-colors"
+      title="Go to My Models"
+      aria-label="Go to My Models"
+    >
+      My Models
+    </button>
+  ) : undefined;
+  const aiVoiceButton = (user && sceneReady && !showAIVoiceAssistant) ? (
+    <button
+      type="button"
+      onClick={() => setShowAIVoiceAssistant(true)}
+      className="h-10 px-3 inline-flex items-center gap-2 rounded-md text-sm text-gray-300 hover:bg-gray-700/50 hover:text-white transition-colors"
+      title="Open AI Voice Assistant"
+      aria-label="Open AI Voice Assistant"
+    >
+      <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+      AI Voice
+    </button>
+  ) : undefined;
+
   // The workspace's own "Voice Assistant" tool-panel button (BabylonWorkspace.tsx,
   // hotkey V) lives in a completely separate state system from this panel - it used to
   // only start a silent background listener with no way to actually see/use it.
@@ -457,6 +440,8 @@ export default function AppLayout() {
                 isAdmin={user?.role === 'admin'}
                 sceneRef={sceneRef}
                 onSceneReady={() => setSceneReady(true)}
+                topBarExtraLeft={myModelsButton}
+                topBarExtraRight={aiVoiceButton}
               />
             </Suspense>
           </BabylonErrorBoundary>
@@ -502,20 +487,18 @@ export default function AppLayout() {
           {mainContent}
         </div>
 
-        <AppChrome
-          showMyModelsShortcut={showMyModelsShortcut}
-          onMyModelsClick={() => navigate('/client/models')}
-          showAIVoice={!!(user && sceneReady && sceneRef.current)}
-          scene={sceneRef.current}
-          showAIVoiceAssistant={showAIVoiceAssistant}
-          onOpenAIVoice={() => setShowAIVoiceAssistant(true)}
-          onCloseAIVoice={() => {
-            setShowAIVoiceAssistant(false);
-            // Keeps the workspace's own "Voice Assistant" tool-panel button in sync so
-            // it doesn't keep showing "on" after this panel is closed.
-            window.dispatchEvent(new CustomEvent('naviz:voiceAssistantClosed'));
-          }}
-        />
+        {!!(user && sceneReady && sceneRef.current) && (
+          <AppChrome
+            scene={sceneRef.current}
+            showAIVoiceAssistant={showAIVoiceAssistant}
+            onCloseAIVoice={() => {
+              setShowAIVoiceAssistant(false);
+              // Keeps the workspace's own "Voice Assistant" tool-panel button in sync so
+              // it doesn't keep showing "on" after this panel is closed.
+              window.dispatchEvent(new CustomEvent('naviz:voiceAssistantClosed'));
+            }}
+          />
+        )}
         <Toaster />
       </div>
       </PanelStackProvider>

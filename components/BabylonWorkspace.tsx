@@ -118,6 +118,12 @@ interface BabylonWorkspaceProps {
   onMaterialChange?: (material: MaterialInterfaces.MaterialState) => void;
   sceneRef?: React.MutableRefObject<Scene | null>;
   onSceneReady?: () => void;
+  // Extra buttons the host page wants living in the top bar's own empty space (e.g.
+  // AppLayout's "My Models" shortcut and "AI Voice" trigger) - these used to be rendered as
+  // separate `fixed`-position overlays on top of everything, landing directly on top of the
+  // left panel/FPS badge instead of actually being part of the bar.
+  topBarExtraLeft?: React.ReactNode;
+  topBarExtraRight?: React.ReactNode;
 }
 
 const ErrorBoundary: React.FC<{children: React.ReactNode}> = ({ children }) => {
@@ -337,7 +343,9 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
   onAnimationCreate,
   onMaterialChange,
   sceneRef: externalSceneRef,
-  onSceneReady
+  onSceneReady,
+  topBarExtraLeft,
+  topBarExtraRight
 }) => {
   // UI-only local state
   const [searchTerm, setSearchTerm] = React.useState('');
@@ -4043,7 +4051,9 @@ const getCategoryDescription = (categoryName: string): string => {
             cameraActive,
             perspectiveActive,
             onCameraActiveToggle: () => updateState({ cameraActive: !cameraActive }),
-            onPerspectiveToggle: () => updateState({ perspectiveActive: !perspectiveActive })
+            onPerspectiveToggle: () => updateState({ perspectiveActive: !perspectiveActive }),
+            topBarExtraLeft,
+            topBarExtraRight
           })}
             </div>
           )}

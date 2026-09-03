@@ -55,6 +55,11 @@ interface SimpleWorkspaceTopBarProps {
   perspectiveActive?: boolean;
   onCameraActiveToggle?: () => void;
   onPerspectiveToggle?: () => void;
+  // Host-page buttons (e.g. AppLayout's "My Models"/"AI Voice" shortcuts) - these used to be
+  // separate `fixed`-position overlays landing on top of the left panel/FPS badge. Rendered
+  // here as normal flex children instead, in the bar's own left/right clusters.
+  topBarExtraLeft?: React.ReactNode;
+  topBarExtraRight?: React.ReactNode;
 }
 
 export function SimpleWorkspaceTopBar({
@@ -81,7 +86,9 @@ export function SimpleWorkspaceTopBar({
   cameraActive = false,
   perspectiveActive = false,
   onCameraActiveToggle,
-  onPerspectiveToggle
+  onPerspectiveToggle,
+  topBarExtraLeft,
+  topBarExtraRight
 }: SimpleWorkspaceTopBarProps) {
   const noop = () => {};
   const [showSharePanel, setShowSharePanel] = useState(false);
@@ -141,6 +148,12 @@ export function SimpleWorkspaceTopBar({
               </DropdownMenuContent>
             </DropdownMenu>
           )}
+          {topBarExtraLeft && (
+            <>
+              <span className="w-px h-5 bg-gray-600 mx-1 shrink-0" />
+              {topBarExtraLeft}
+            </>
+          )}
         </div>
 
         {/* Center - Camera / view modes - compact */}
@@ -196,6 +209,12 @@ export function SimpleWorkspaceTopBar({
 
         {/* Right - FPS, Share & help */}
         <div className="flex items-center gap-2 shrink-0 relative">
+          {topBarExtraRight && (
+            <>
+              {topBarExtraRight}
+              <span className="w-px h-5 bg-gray-600 mx-1 shrink-0" />
+            </>
+          )}
           <Badge variant="outline" className="text-xs">{activeFeatures}</Badge>
           <Badge variant="outline" className="text-xs">{fps} FPS</Badge>
           <Button variant="ghost" size="sm" className="h-10 w-10 p-0" onClick={() => setShowSharePanel((v) => !v)} title="Share & Embed">
