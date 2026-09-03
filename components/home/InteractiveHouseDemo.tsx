@@ -26,6 +26,11 @@ const GROUND_COLOR = new BABYLON.Color3(0.07, 0.11, 0.17);
 const CHIMNEY_COLOR = new BABYLON.Color3(0.35, 0.16, 0.13);
 const FOLIAGE_COLOR = new BABYLON.Color3(0.11, 0.32, 0.24);
 const TRUNK_COLOR = new BABYLON.Color3(0.22, 0.15, 0.1);
+const SOFA_COLOR = new BABYLON.Color3(0.14, 0.42, 0.48);
+const WOOD_COLOR = new BABYLON.Color3(0.36, 0.25, 0.16);
+const MATTRESS_COLOR = new BABYLON.Color3(0.93, 0.91, 0.86);
+const PILLOW_COLOR = new BABYLON.Color3(0.55, 0.8, 0.85);
+const RUG_COLOR = new BABYLON.Color3(0.1, 0.24, 0.29);
 
 interface Props {
   mode: DemoMode;
@@ -121,11 +126,25 @@ export function InteractiveHouseDemo({ mode, className = '' }: Props) {
     addWall(frontSideW, WALL_H, WALL_THICK, frontSideX, wallCenterY, -HOUSE_D / 2);
     addWall(doorW, WALL_H - doorH, WALL_THICK, 0, FLOOR_Y + 0.1 + doorH + (WALL_H - doorH) / 2, -HOUSE_D / 2);
 
-    // Door
-    const door = BABYLON.MeshBuilder.CreateBox('door', { width: doorW * 0.92, height: doorH * 0.96, depth: 0.06 }, scene);
-    door.position.set(0, FLOOR_Y + 0.1 + doorH / 2, -HOUSE_D / 2 - 0.02);
-    door.material = getMat('doorMat', DOOR_COLOR);
-    shadowGenerator.addShadowCaster(door);
+    // Doorway frame only (no solid door panel) - this is a real walk-through opening for
+    // Walk mode, not just a decorative facade, so a closed-looking door here would read as
+    // broken once you actually try to walk in.
+    const addDoorframe = (x: number, z: number, w: number, h: number, rotY: number) => {
+      const trimThick = 0.08;
+      [-1, 1].forEach((side) => {
+        const post = BABYLON.MeshBuilder.CreateBox('doorframePost', { width: trimThick, height: h, depth: trimThick }, scene);
+        const localX = (side * w) / 2;
+        post.position.set(x + localX * Math.cos(rotY), FLOOR_Y + 0.1 + h / 2, z + localX * Math.sin(rotY));
+        post.material = getMat('doorMat', DOOR_COLOR);
+        shadowGenerator.addShadowCaster(post);
+      });
+      const lintel = BABYLON.MeshBuilder.CreateBox('doorframeLintel', { width: w + trimThick, height: trimThick, depth: trimThick }, scene);
+      lintel.position.set(x, FLOOR_Y + 0.1 + h, z);
+      lintel.rotation.y = rotY;
+      lintel.material = getMat('doorMat', DOOR_COLOR);
+      shadowGenerator.addShadowCaster(lintel);
+    };
+    addDoorframe(0, -HOUSE_D / 2 - 0.02, doorW, doorH, 0);
 
     // Windows - flat glass panels on the wall faces (front pair flanking the door, one per
     // side wall). Kept frameless/simple: a colored glass rectangle reads clearly as a window
@@ -181,6 +200,51 @@ export function InteractiveHouseDemo({ mode, className = '' }: Props) {
     addTree(-4.3, 2.6, 1);
     addTree(4.6, -2.1, 0.85);
 
+    // Interior: an open-plan split into a living room (front, by the door) and a bedroom
+    // (back), furnished so Walk mode has somewhere to actually walk into rather than an
+    // empty shell. Deliberately no ceiling - it keeps the interior lit through the windows/
+    // door, and means Dollhouse mode's tilted overview reads as a proper cutaway showing
+    // the furniture layout, which a solid roof would otherwise hide completely.
+    const partitionDoorW = 0.9;
+    const partitionSideW = (HOUSE_W - partitionDoorW) / 2;
+    const partitionSideX = partitionDoorW / 2 + partitionSideW / 2;
+    addWall(partitionSideW, WALL_H, WALL_THICK, -partitionSideX, wallCenterY, 0);
+    addWall(partitionSideW, WALL_H, WALL_THICK, partitionSideX, wallCenterY, 0);
+    addDoorframe(0, 0, partitionDoorW, 2.05, 0);
+
+    const addFurnitureBox = (name: string, w: number, h: number, d: number, x: number, yBase: number, z: number, color: BABYLON.Color3, rotY = 0, collide = true) => {
+      const box = BABYLON.MeshBuilder.CreateBox(name, { width: w, height: h, depth: d }, scene);
+      box.position.set(x, yBase + h / 2, z);
+      box.rotation.y = rotY;
+      box.material = getMat(`${name}Mat`, color);
+      box.checkCollisions = collide;
+      box.receiveShadows = true;
+      shadowGenerator.addShadowCaster(box);
+      return box;
+    };
+    const floorTopY = FLOOR_Y + 0.1;
+
+    // Living room (z < 0): a sofa against the right wall facing the room, a coffee table in
+    // front of it, and a rug underneath to ground the seating area.
+    const sofaZ = -HOUSE_D / 2 + 1.3;
+    addFurnitureBox('sofaSeat', 0.65, 0.38, 1.7, HOUSE_W / 2 - 0.55, floorTopY, sofaZ, SOFA_COLOR);
+    addFurnitureBox('sofaBack', 0.15, 0.6, 1.7, HOUSE_W / 2 - 0.25, floorTopY, sofaZ, SOFA_COLOR);
+    addFurnitureBox('coffeeTable', 0.7, 0.32, 0.45, HOUSE_W / 2 - 1.35, floorTopY, sofaZ, WOOD_COLOR);
+    const rug = BABYLON.MeshBuilder.CreateGround('rug', { width: 1.6, height: 2.1 }, scene);
+    rug.position.set(HOUSE_W / 2 - 0.9, floorTopY + 0.005, sofaZ);
+    rug.material = getMat('rugMat', RUG_COLOR);
+    rug.receiveShadows = true;
+
+    // Bedroom (z > 0): a bed against the back wall with a headboard/pillow, plus a small
+    // nightstand.
+    const bedZ = HOUSE_D / 2 - 1.15;
+    const bedX = -HOUSE_W / 2 + 1.2;
+    addFurnitureBox('bedFrame', 1.4, 0.3, 2.0, bedX, floorTopY, bedZ, WOOD_COLOR);
+    addFurnitureBox('mattress', 1.3, 0.22, 1.9, bedX, floorTopY + 0.3, bedZ, MATTRESS_COLOR, 0, false);
+    addFurnitureBox('pillow', 1.1, 0.14, 0.4, bedX, floorTopY + 0.52, bedZ + 0.7, PILLOW_COLOR, 0, false);
+    addFurnitureBox('headboard', 1.4, 0.75, 0.1, bedX, floorTopY, bedZ + 1.0, WOOD_COLOR);
+    addFurnitureBox('nightstand', 0.4, 0.4, 0.4, bedX - 0.85, floorTopY, bedZ + 0.7, WOOD_COLOR);
+
     // Orbit/dollhouse camera - a single ArcRotateCamera reused for both modes (see the
     // mode-switch effect below), draggable, with a slow idle turntable that automatically
     // pauses while the visitor is interacting and resumes after they let go.
@@ -232,7 +296,13 @@ export function InteractiveHouseDemo({ mode, className = '' }: Props) {
         walkCam.speed = 0.18;
         walkCam.checkCollisions = true;
         walkCam.applyGravity = true;
-        walkCam.ellipsoid = new BABYLON.Vector3(0.4, 0.85, 0.4);
+        // The collision ellipsoid is centered ON the camera (eye height), so its half-height
+        // must reach all the way down to the floor - too small (as this first was) and the
+        // capsule's bottom never touches the floor mesh, so gravity keeps pulling the
+        // camera down until it settles crouched near the floor instead of standing at
+        // normal eye height. 1.6 = eye height (FLOOR_Y + 1.7) minus the floor's top surface
+        // (FLOOR_Y + 0.1).
+        walkCam.ellipsoid = new BABYLON.Vector3(0.4, 1.6, 0.4);
         walkCam.keysUp = [87, 38];
         walkCam.keysDown = [83, 40];
         walkCam.keysLeft = [65, 37];

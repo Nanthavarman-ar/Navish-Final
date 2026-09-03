@@ -67,13 +67,19 @@ const Minimap: React.FC<MinimapProps> = ({
     saveToStorage(savedLocations);
   }, [savedLocations]);
 
-  // Saved PDFs (floor plans, reference docs): uploaded once, kept in localStorage
-  // as a data URL so they're still there next time the workspace is opened,
-  // and can be reopened/hidden on demand instead of re-uploading every visit.
+  // Saved PDFs (floor plans, reference docs): uploaded once, kept in localStorage as a
+  // rendered preview image so they're still there next time the workspace is opened, and
+  // can be reopened/hidden on demand instead of re-uploading every visit.
+  //
+  // "Open" used to pop the full PDF up in a fixed inset-0 overlay covering the whole
+  // screen - that blocked the 3D view behind it entirely. Now it draws the rendered page
+  // directly onto the minimap's own small canvas (see the draw effect below) as a marked
+  // underlay beneath the camera/object dots, so it stays contained to the minimap's own
+  // footprint instead of taking over the view.
   interface SavedPdf {
     id: string;
     name: string;
-    dataUrl: string;
+    previewImage: string; // rendered PNG data URL of the PDF's first page
   }
   const PDF_STORAGE_KEY = 'naviz-saved-pdfs';
   const loadPdfsFromStorage = (): SavedPdf[] => {
@@ -88,8 +94,8 @@ const Minimap: React.FC<MinimapProps> = ({
     try {
       localStorage.setItem(PDF_STORAGE_KEY, JSON.stringify(pdfs));
     } catch {
-      // Most likely a quota error from a large PDF data URL - the in-memory
-      // list still works for this session, just won't persist across reloads.
+      // Most likely a quota error from a large rendered image - the in-memory list still
+      // works for this session, just won't persist across reloads.
       showToast.error('Could not save PDF', 'It may be too large to store in the browser.');
     }
   };
@@ -97,34 +103,57 @@ const Minimap: React.FC<MinimapProps> = ({
   const [savedPdfs, setSavedPdfs] = useState<SavedPdf[]>(() => loadPdfsFromStorage());
   const [openPdfId, setOpenPdfId] = useState<string | null>(null);
   const pdfInputRef = useRef<HTMLInputElement>(null);
+  // Loaded <img> elements for the currently-open preview, keyed by pdf id - the draw
+  // effect below reads from this cache each tick rather than re-decoding the data URL
+  // every frame.
+  const pdfImageCacheRef = useRef<Map<string, HTMLImageElement>>(new Map());
 
   useEffect(() => {
     savePdfsToStorage(savedPdfs);
   }, [savedPdfs]);
 
-  const handlePdfUpload = (file: File | undefined) => {
+  const handlePdfUpload = async (file: File | undefined) => {
     if (!file) return;
     if (file.type !== 'application/pdf') {
       showToast.error('Not a PDF file', 'Please choose a .pdf file.');
       return;
     }
-    const reader = new FileReader();
-    reader.onload = () => {
-      const dataUrl = reader.result as string;
+    try {
+      const [pdfjsLib, workerUrlModule] = await Promise.all([
+        import('pdfjs-dist'),
+        import('pdfjs-dist/build/pdf.worker.mjs?url')
+      ]);
+      pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrlModule.default;
+
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      const pdfDocument = await pdfjsLib.getDocument({ data: bytes }).promise;
+      const page = await pdfDocument.getPage(1);
+      // Rendered as a small thumbnail, not full resolution - this only ever needs to be
+      // legible as a marked area on a ~200px minimap, not as a readable document.
+      const rawViewport = page.getViewport({ scale: 1 });
+      const scale = 480 / Math.max(rawViewport.width, rawViewport.height);
+      const viewport = page.getViewport({ scale });
+
+      const canvas = document.createElement('canvas');
+      canvas.width = viewport.width;
+      canvas.height = viewport.height;
+      const context = canvas.getContext('2d');
+      if (!context) throw new Error('Could not create a 2D canvas context to render the PDF page');
+      await page.render({ canvas, canvasContext: context, viewport }).promise;
+
       const id = `pdf-${Date.now()}`;
-      setSavedPdfs(prev => [...prev, { id, name: file.name, dataUrl }]);
+      setSavedPdfs(prev => [...prev, { id, name: file.name, previewImage: canvas.toDataURL('image/png') }]);
       setOpenPdfId(id);
-    };
-    reader.onerror = () => showToast.error('Could not read PDF file');
-    reader.readAsDataURL(file);
+    } catch (error) {
+      showToast.error('Could not read PDF file', error instanceof Error ? error.message : undefined);
+    }
   };
 
   const removePdf = (id: string) => {
     setSavedPdfs(prev => prev.filter(p => p.id !== id));
     setOpenPdfId(prev => (prev === id ? null : prev));
+    pdfImageCacheRef.current.delete(id);
   };
-
-  const openPdf = savedPdfs.find(p => p.id === openPdfId) || null;
 
   // Save current camera position with a name
   const saveLocation = () => {
@@ -250,6 +279,27 @@ const Minimap: React.FC<MinimapProps> = ({
         y: oy + (z - bounds.min.z) * scale
       });
 
+      // Marked area of the currently-open PDF (see "Floor Plans" below) - drawn as an
+      // underlay stretched across the same plotted rect as the model footprint, so it
+      // reads as "the area this plan covers" without claiming a precision of real-world
+      // alignment we don't actually have. Stays contained to this small canvas rather
+      // than covering the whole 3D view.
+      const openPdf = openPdfId ? savedPdfs.find((p) => p.id === openPdfId) : null;
+      if (openPdf) {
+        let img = pdfImageCacheRef.current.get(openPdf.id);
+        if (!img) {
+          img = new Image();
+          img.src = openPdf.previewImage;
+          pdfImageCacheRef.current.set(openPdf.id, img);
+        }
+        if (img.complete && img.naturalWidth > 0) {
+          ctx.save();
+          ctx.globalAlpha = 0.55;
+          ctx.drawImage(img, ox, oy, w * scale, h * scale);
+          ctx.restore();
+        }
+      }
+
       // Draw the real building's footprint as one outline (see footprintHull
       // above) so the minimap reads as an actual top-down silhouette of the
       // loaded model instead of a noisy pile of overlapping per-mesh boxes.
@@ -305,7 +355,7 @@ const Minimap: React.FC<MinimapProps> = ({
     draw();
     const interval = setInterval(draw, 100);
     return () => clearInterval(interval);
-  }, [scene, camera, sceneBounds, zoom, footprintHull]);
+  }, [scene, camera, sceneBounds, zoom, footprintHull, openPdfId, savedPdfs]);
 
   // Canvas click handler
   const handleCanvasClick = (event: React.MouseEvent<HTMLCanvasElement>) => {
@@ -542,57 +592,6 @@ const Minimap: React.FC<MinimapProps> = ({
         </div>
       </div>
 
-      {/* Centered PDF viewer overlay - opens in the middle of the screen rather
-          than tucked into the minimap panel, since a floor plan needs real space
-          to be readable */}
-      {openPdf && (
-        <div
-          style={{
-            position: 'fixed',
-            inset: 0,
-            background: 'rgba(0, 0, 0, 0.6)',
-            zIndex: 1000,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center'
-          }}
-          onClick={() => setOpenPdfId(null)}
-        >
-          <div
-            style={{
-              width: '80vw',
-              height: '85vh',
-              background: '#0f172a',
-              borderRadius: '8px',
-              boxShadow: '0 10px 40px rgba(0,0,0,0.5)',
-              display: 'flex',
-              flexDirection: 'column',
-              overflow: 'hidden'
-            }}
-            onClick={e => e.stopPropagation()}
-          >
-            <div style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              padding: '8px 12px',
-              background: '#1e293b',
-              color: '#f1f5f9',
-              fontSize: '13px'
-            }}>
-              <span style={{ fontWeight: 500 }}>{openPdf.name}</span>
-              <button
-                type="button"
-                style={{ fontSize: '12px', background: '#64748b', color: '#fff', borderRadius: '4px', border: 'none', padding: '4px 10px', cursor: 'pointer' }}
-                onClick={() => setOpenPdfId(null)}
-              >
-                Hide
-              </button>
-            </div>
-            <iframe src={openPdf.dataUrl} title={openPdf.name} style={{ border: 'none', flex: 1, background: '#fff' }} />
-          </div>
-        </div>
-      )}
     </div>
   );
 };
