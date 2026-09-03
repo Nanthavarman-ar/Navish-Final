@@ -1,6 +1,6 @@
-import React, { Suspense } from 'react';
+import React, { Suspense, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import {
   Footprints,
   MousePointer,
@@ -12,10 +12,17 @@ import {
 } from 'lucide-react';
 import { LegoButton } from './LegoButton';
 import { LegoBuildAnimation } from './LegoBuildAnimation';
-// Real 3D (Babylon.js) build animation, lazy-loaded so the ~1MB+ engine isn't in the initial
+import type { DemoMode } from './InteractiveHouseDemo';
+// Real interactive 3D demo (Babylon.js), lazy-loaded so the ~1MB+ engine isn't in the initial
 // page bundle - the SVG LegoBuildAnimation above renders instantly as the Suspense fallback
 // and is what most users briefly see before this chunk finishes streaming in.
-const LegoHouseScene = React.lazy(() => import('./LegoHouseScene').then((m) => ({ default: m.LegoHouseScene })));
+const InteractiveHouseDemo = React.lazy(() => import('./InteractiveHouseDemo').then((m) => ({ default: m.InteractiveHouseDemo })));
+
+const EXPLORE_MODES: { id: DemoMode; icon: React.ElementType; label: string; desc: string; hint: string }[] = [
+  { id: 'walk', icon: Footprints, label: 'Walkable', desc: 'Walk through your space as if it was already built', hint: 'WASD to walk, drag to look around' },
+  { id: 'orbit', icon: MousePointer, label: 'Clickable', desc: 'Intuitively navigate with ease and freedom', hint: 'Drag to orbit around the model' },
+  { id: 'dollhouse', icon: LayoutGrid, label: 'Dollhouse', desc: 'Explore every angle at any scale', hint: 'Tilted overview - drag to spin' },
+];
 
 // Fixed (not re-randomized per render) star positions/timings so the twinkle field doesn't
 // jump around on every re-render - each star gets its own size/delay/min-max opacity so the
@@ -58,6 +65,8 @@ function LegoHeadline({ text, startDelay = 0 }: { text: string; startDelay?: num
 
 export function HeroSection() {
   const navigate = useNavigate();
+  const [demoMode, setDemoMode] = useState<DemoMode>('orbit');
+  const activeExploreMode = EXPLORE_MODES.find((m) => m.id === demoMode) ?? EXPLORE_MODES[1];
 
   return (
     <section className="relative min-h-screen flex items-center justify-center overflow-hidden">
@@ -147,37 +156,59 @@ export function HeroSection() {
             </div>
           </div>
 
-          {/* Signature visual: a house assembling itself from LEGO bricks, falling into place
-              with an elastic bounce - real 3D (Babylon.js), lazy-loaded behind the instant
-              SVG version so first paint isn't blocked on the 3D engine downloading. */}
-          <div className="flex justify-center lg:justify-end">
-            <Suspense fallback={<LegoBuildAnimation className="w-full max-w-md drop-shadow-[0_20px_40px_rgba(34,211,238,0.15)]" />}>
-              <LegoHouseScene className="w-full max-w-md aspect-[8/7] drop-shadow-[0_20px_40px_rgba(34,211,238,0.15)]" />
-            </Suspense>
+          {/* Signature visual: a real, live 3D demo house visitors can drag-orbit, tilt into
+              a dollhouse overview, or walk around - lazy-loaded behind the instant SVG
+              version so first paint isn't blocked on the 3D engine downloading. The Explore
+              Modes cards below double as its controls (see activeExploreMode). */}
+          <div className="flex flex-col items-center lg:items-end gap-3">
+            <div className="relative w-full max-w-md">
+              <Suspense fallback={<LegoBuildAnimation className="w-full aspect-[8/7] drop-shadow-[0_20px_40px_rgba(34,211,238,0.15)]" />}>
+                <InteractiveHouseDemo mode={demoMode} className="w-full aspect-[8/7] drop-shadow-[0_20px_40px_rgba(34,211,238,0.15)]" />
+              </Suspense>
+            </div>
+            <AnimatePresence mode="wait">
+              <motion.p
+                key={activeExploreMode.id}
+                initial={{ opacity: 0, y: -4 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.25 }}
+                className="font-technical text-xs text-slate-400 uppercase tracking-wider"
+              >
+                {activeExploreMode.hint}
+              </motion.p>
+            </AnimatePresence>
           </div>
         </div>
 
-        {/* Explore modes */}
+        {/* Explore modes - also the live demo's own controls (click one to switch the model
+            above into that mode) so the claim is something visitors try, not just read. */}
         <div className="mt-20 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-          {[
-            { icon: Footprints, label: 'Walkable', desc: 'Walk through your space as if it was already built' },
-            { icon: MousePointer, label: 'Clickable', desc: 'Intuitively navigate with ease and freedom' },
-            { icon: LayoutGrid, label: 'Dollhouse', desc: 'Explore every angle at any scale' },
-          ].map(({ icon: Icon, label, desc }, i) => (
-            <motion.div
-              key={label}
-              initial={{ opacity: 0, y: 24 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true, amount: 0.5 }}
-              transition={{ duration: 0.4, delay: i * 0.1 }}
-              whileHover={{ y: -4 }}
-              className="blueprint-corners p-6 rounded-xl bg-slate-800/50 border border-slate-700 hover:border-cyan-500/50 transition-colors"
-            >
-              <Icon className="w-10 h-10 text-cyan-400 mx-auto mb-3" />
-              <h3 className="font-display text-white font-semibold mb-2">{label}</h3>
-              <p className="text-slate-400 text-sm">{desc}</p>
-            </motion.div>
-          ))}
+          {EXPLORE_MODES.map(({ id, icon: Icon, label, desc }, i) => {
+            const isActive = demoMode === id;
+            return (
+              <motion.button
+                key={id}
+                type="button"
+                onClick={() => setDemoMode(id)}
+                aria-pressed={isActive}
+                initial={{ opacity: 0, y: 24 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true, amount: 0.5 }}
+                transition={{ duration: 0.4, delay: i * 0.1 }}
+                whileHover={{ y: -4 }}
+                className={`blueprint-corners p-6 rounded-xl text-center transition-colors ${
+                  isActive
+                    ? 'bg-cyan-500/10 border border-cyan-500/60'
+                    : 'bg-slate-800/50 border border-slate-700 hover:border-cyan-500/50'
+                }`}
+              >
+                <Icon className={`w-10 h-10 mx-auto mb-3 ${isActive ? 'text-cyan-300' : 'text-cyan-400'}`} />
+                <h3 className="font-display text-white font-semibold mb-2">{label}</h3>
+                <p className="text-slate-400 text-sm">{desc}</p>
+              </motion.button>
+            );
+          })}
         </div>
       </div>
     </section>
