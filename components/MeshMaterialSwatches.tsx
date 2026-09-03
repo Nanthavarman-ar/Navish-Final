@@ -7,6 +7,7 @@ import { showToast } from './utils/toast';
 import { usePanelStack } from '../hooks/usePanelStack';
 import type { MaterialManager } from './MaterialManager';
 import type { MaterialPreset } from './interfaces/MaterialInterfaces';
+import { loadSceneEdits, savePartialFeatureState, type SavedSwatchMarker, type SavedSwatchOption } from './utils/sceneEditsPersistence';
 
 interface MeshMaterialSwatchesProps {
   scene: Scene;
@@ -19,77 +20,76 @@ interface MeshMaterialSwatchesProps {
   visible?: boolean;
 }
 
-interface SwatchOption {
-  id: string;
-  label: string;
-  kind: 'preset' | 'texture';
-  presetId?: string; // kind === 'preset' - reuses one of MaterialManager's existing slots
-  previewColor?: string; // kind === 'preset', copied from the preset for the swatch button
-  textureDataUrl?: string; // kind === 'texture'
-  // Real-world size of ONE texture tile, in cm - what makes the applied result tile at
-  // its correct physical scale instead of stretching once across however big the target
-  // mesh happens to be (see applyTextureOption's comment below).
-  tileWidthCm?: number;
-  tileHeightCm?: number;
-}
-
-interface SwatchMarker {
-  id: string;
-  // Best-available stable-ish identifier for "the same mesh" across a reload of the same
-  // model file (Babylon's own mesh.uniqueId is re-assigned fresh every load, so it can't
-  // be used for persistence) - falls back to name-matching if the id doesn't resolve,
-  // see resolveMeshRef below. A source model with duplicate node ids/names for different
-  // meshes isn't distinguishable this way; that's a real but accepted limitation of using
-  // the file's own node identifiers rather than requiring a custom BIM id scheme.
-  meshId: string;
-  meshName: string;
-  position: { x: number; y: number; z: number };
-  options: SwatchOption[];
-}
+// Reuse the persisted shape directly (see sceneEditsPersistence.ts) - markers are saved
+// server-side under the model's own scene-edits record, the same one mesh position/home
+// view/floor plans already use, so any client opening this model sees exactly what the
+// admin configured, not just whichever browser placed them. localStorage was the first
+// cut of this feature; it never left the browser that created it, which defeated the
+// point of "admin sets it up, client picks from it" entirely.
+type SwatchOption = SavedSwatchOption;
+type SwatchMarker = SavedSwatchMarker;
 
 const MAX_OPTIONS = 4;
-
-function storageKey(roomId: string): string {
-  return `naviz:materialSwatches:${roomId}`;
-}
-
-function loadMarkers(roomId: string): SwatchMarker[] {
-  try {
-    const raw = localStorage.getItem(storageKey(roomId));
-    return raw ? JSON.parse(raw) : [];
-  } catch {
-    return [];
-  }
-}
-
-function saveMarkers(roomId: string, markers: SwatchMarker[]): void {
-  try {
-    localStorage.setItem(storageKey(roomId), JSON.stringify(markers));
-  } catch {
-    // Quota exceeded (data-URL textures can be large) or storage unavailable - swatches
-    // still work for the rest of this session, they just won't survive a reload. Not
-    // worth blocking the feature over what's a nice-to-have persistence layer.
-  }
-}
+// Longest side an uploaded texture is downscaled to before being embedded as a data URL
+// in the shared scene-edits record - keeps a handful of markers' worth of textures from
+// bloating a record that also carries every mesh's position/rotation/scale for the whole
+// model. Tiling repetition (see applyTextureOption) means detail beyond typical on-screen
+// tile size is wasted anyway.
+const MAX_TEXTURE_DIMENSION = 512;
 
 function resolveMeshRef(scene: Scene, meshId: string, meshName: string): AbstractMesh | null {
   return scene.getMeshById(meshId) || scene.meshes.find((m) => m.name === meshName) || null;
 }
 
+function downscaleImageFile(file: File, maxDimension: number): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(reader.error);
+    reader.onload = () => {
+      const img = new window.Image();
+      img.onerror = () => reject(new Error('Could not read image file'));
+      img.onload = () => {
+        const scale = Math.min(1, maxDimension / Math.max(img.width, img.height));
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.max(1, Math.round(img.width * scale));
+        canvas.height = Math.max(1, Math.round(img.height * scale));
+        const ctx = canvas.getContext('2d');
+        if (!ctx) { reject(new Error('Could not create canvas context')); return; }
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        resolve(canvas.toDataURL('image/jpeg', 0.85));
+      };
+      img.src = reader.result as string;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
 const MeshMaterialSwatches: React.FC<MeshMaterialSwatchesProps> = ({ scene, materialManager, roomId, onClose, visible = true }) => {
   const { ref: panelRef, style: panelStyle } = usePanelStack('bottom-right');
-  const [markers, setMarkers] = useState<SwatchMarker[]>(() => loadMarkers(roomId));
+  const [markers, setMarkers] = useState<SwatchMarker[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [isPlacing, setIsPlacing] = useState(false);
   const [draftMarker, setDraftMarker] = useState<{ meshId: string; meshName: string; position: Vector3 } | null>(null);
   const [draftOptions, setDraftOptions] = useState<SwatchOption[]>([]);
   const [expandedMarkerId, setExpandedMarkerId] = useState<string | null>(null);
+  const [openPopupMarkerId, setOpenPopupMarkerId] = useState<string | null>(null);
   const markerMeshesRef = useRef<Map<string, Mesh>>(new Map());
   const guiTextureRef = useRef<AdvancedDynamicTexture | null>(null);
   const popupControlRef = useRef<Rectangle | null>(null);
-  const presets = materialManager.getMaterialPresets();
+  // A mutable snapshot, refreshed after each addCustomPreset call below - the "existing
+  // material slots" reuse row needs to reflect a texture just uploaded and registered
+  // within this same session, not only the ~14 presets MaterialManager ships with.
+  const [presets, setPresets] = useState<MaterialPreset[]>(() => materialManager.getMaterialPresets());
 
   useEffect(() => {
-    setMarkers(loadMarkers(roomId));
+    let cancelled = false;
+    setIsLoading(true);
+    loadSceneEdits(roomId).then((data) => {
+      if (!cancelled) setMarkers(data?.features?.swatches ?? []);
+    }).finally(() => {
+      if (!cancelled) setIsLoading(false);
+    });
+    return () => { cancelled = true; };
   }, [roomId]);
 
   // Render/sync the diamond marker meshes whenever the marker list changes.
@@ -168,6 +168,7 @@ const MeshMaterialSwatches: React.FC<MeshMaterialSwatchesProps> = ({ scene, mate
       popupControlRef.current.dispose();
       popupControlRef.current = null;
     }
+    setOpenPopupMarkerId(null);
   }, []);
 
   // Real-world-accurate texture tiling, the same "set the texture's true physical size
@@ -228,6 +229,12 @@ const MeshMaterialSwatches: React.FC<MeshMaterialSwatchesProps> = ({ scene, mate
         return;
       }
       const id = mesh.name.slice('swatch_marker_'.length);
+      // Click the SAME marker that's already open again to close it (a plain toggle),
+      // rather than always tearing down and immediately reopening the identical popup.
+      if (openPopupMarkerId === id) {
+        closeSwatchPopup();
+        return;
+      }
       const marker = markers.find((m) => m.id === id);
       if (!marker || marker.options.length === 0) return;
       const targetMesh = resolveMeshRef(scene, marker.meshId, marker.meshName);
@@ -278,10 +285,11 @@ const MeshMaterialSwatches: React.FC<MeshMaterialSwatchesProps> = ({ scene, mate
       card.linkOffsetYInPixels = -70;
       texture.addControl(card);
       popupControlRef.current = card;
+      setOpenPopupMarkerId(id);
     });
     return () => { scene.onPointerObservable.remove(observer); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isPlacing, scene, markers, applyOption, closeSwatchPopup]);
+  }, [isPlacing, scene, markers, applyOption, closeSwatchPopup, openPopupMarkerId]);
 
   // Click-to-place: the next click on the model (not an existing marker) picks the target
   // mesh and captures where the marker itself should sit.
@@ -301,9 +309,22 @@ const MeshMaterialSwatches: React.FC<MeshMaterialSwatchesProps> = ({ scene, mate
     return () => { scene.onPointerObservable.remove(observer); };
   }, [isPlacing, scene]);
 
+  // Picking a preset that's itself a previously-uploaded texture (see addTextureOption
+  // below) must stay a texture option, not a flat-color one - createMaterialFromPreset/
+  // applyMaterialToMesh only ever read diffuseColor/metallic/roughness, so routing a
+  // texture preset through the 'preset' kind would silently apply a plain grey material
+  // with the image lost.
   const addPresetOption = (preset: MaterialPreset) => {
     if (draftOptions.length >= MAX_OPTIONS) return;
-    setDraftOptions((prev) => [...prev, {
+    const textureDataUrl = preset.properties?.textureDataUrl as string | undefined;
+    setDraftOptions((prev) => [...prev, textureDataUrl ? {
+      id: `opt_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      label: preset.name,
+      kind: 'texture',
+      textureDataUrl,
+      tileWidthCm: preset.properties?.tileWidthCm ?? 30,
+      tileHeightCm: preset.properties?.tileHeightCm ?? 30,
+    } : {
       id: `opt_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
       label: preset.name,
       kind: 'preset',
@@ -312,20 +333,39 @@ const MeshMaterialSwatches: React.FC<MeshMaterialSwatchesProps> = ({ scene, mate
     }]);
   };
 
-  const addTextureOption = (file: File) => {
+  const addTextureOption = async (file: File) => {
     if (draftOptions.length >= MAX_OPTIONS) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      setDraftOptions((prev) => [...prev, {
-        id: `opt_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-        label: file.name.replace(/\.[^.]+$/, ''),
-        kind: 'texture',
-        textureDataUrl: reader.result as string,
-        tileWidthCm: 30,
-        tileHeightCm: 30,
-      }]);
-    };
-    reader.readAsDataURL(file);
+    let dataUrl: string;
+    try {
+      dataUrl = await downscaleImageFile(file, MAX_TEXTURE_DIMENSION);
+    } catch {
+      showToast.error('Could not read that image file');
+      return;
+    }
+    const label = file.name.replace(/\.[^.]+$/, '');
+    setDraftOptions((prev) => [...prev, {
+      id: `opt_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      label,
+      kind: 'texture',
+      textureDataUrl: dataUrl,
+      tileWidthCm: 30,
+      tileHeightCm: 30,
+    }]);
+    // Registers it as an additional material slot (MaterialManager.getMaterialPresets/
+    // addCustomPreset) so a LATER marker can reuse this same texture straight from the
+    // "existing material slots" row above instead of re-uploading the file every time -
+    // in-memory for this session only, same as MaterialManager's other custom presets.
+    const presetId = `custom_texture_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+    const added = materialManager.addCustomPreset({
+      id: presetId,
+      name: label,
+      description: `Uploaded texture: ${label}`,
+      materialType: 'pbr',
+      category: 'custom',
+      preview: dataUrl,
+      properties: { textureDataUrl: dataUrl, tileWidthCm: 30, tileHeightCm: 30 },
+    });
+    if (added) setPresets(materialManager.getMaterialPresets());
   };
 
   const updateTileSize = (optionId: string, field: 'tileWidthCm' | 'tileHeightCm', value: number) => {
@@ -345,22 +385,18 @@ const MeshMaterialSwatches: React.FC<MeshMaterialSwatchesProps> = ({ scene, mate
       position: { x: draftMarker.position.x, y: draftMarker.position.y, z: draftMarker.position.z },
       options: draftOptions,
     };
-    setMarkers((prev) => {
-      const next = [...prev, marker];
-      saveMarkers(roomId, next);
-      return next;
-    });
+    const next = [...markers, marker];
+    setMarkers(next);
+    savePartialFeatureState(roomId, { swatches: next });
     showToast.success('Material swatch marker added');
     setDraftMarker(null);
     setDraftOptions([]);
   };
 
   const handleDeleteMarker = (id: string) => {
-    setMarkers((prev) => {
-      const next = prev.filter((m) => m.id !== id);
-      saveMarkers(roomId, next);
-      return next;
-    });
+    const next = markers.filter((m) => m.id !== id);
+    setMarkers(next);
+    savePartialFeatureState(roomId, { swatches: next });
   };
 
   return (
@@ -416,15 +452,18 @@ const MeshMaterialSwatches: React.FC<MeshMaterialSwatchesProps> = ({ scene, mate
               <>
                 <div className="text-[10px] text-gray-500 uppercase tracking-wide">From existing material slots</div>
                 <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto">
-                  {presets.map((preset) => (
-                    <button
-                      key={preset.id}
-                      onClick={() => addPresetOption(preset)}
-                      className="w-7 h-7 rounded-full border border-slate-600 hover:border-cyan-400 transition-colors"
-                      style={{ background: preset.preview }}
-                      title={preset.name}
-                    />
-                  ))}
+                  {presets.map((preset) => {
+                    const isTexture = preset.preview.startsWith('data:image');
+                    return (
+                      <button
+                        key={preset.id}
+                        onClick={() => addPresetOption(preset)}
+                        className="w-7 h-7 rounded-full border border-slate-600 hover:border-cyan-400 transition-colors bg-cover bg-center"
+                        style={isTexture ? { backgroundImage: `url(${preset.preview})` } : { background: preset.preview }}
+                        title={preset.name}
+                      />
+                    );
+                  })}
                 </div>
                 <label className="flex items-center justify-center gap-1.5 text-xs text-gray-300 border border-dashed border-slate-600 rounded py-1.5 cursor-pointer hover:border-cyan-500 transition-colors">
                   <Upload className="w-3 h-3" /> Upload a texture (real-world tile size)
@@ -442,7 +481,13 @@ const MeshMaterialSwatches: React.FC<MeshMaterialSwatchesProps> = ({ scene, mate
       </div>
 
       <div className="flex-1 min-h-0 overflow-y-auto p-3 space-y-2">
-        {markers.length === 0 && (
+        {isLoading && (
+          <div className="flex items-center justify-center py-6 text-gray-400 gap-2">
+            <div className="animate-spin w-4 h-4 border-2 border-cyan-500 border-t-transparent rounded-full" />
+            Loading swatch markers...
+          </div>
+        )}
+        {!isLoading && markers.length === 0 && (
           <div className="text-center text-gray-500 text-sm py-6">
             No swatch markers yet. Click "Add swatch marker" and pick a mesh.
           </div>

@@ -36,6 +36,36 @@ export interface SavedFloorPlan {
 // Estimation's manual overrides are the exception, see costEstimator below). Grouped under
 // one key so each panel's save only has to merge this one sub-object (see
 // savePartialSceneEdits) rather than the whole top-level record.
+export interface SavedSwatchOption {
+  id: string;
+  label: string;
+  kind: 'preset' | 'texture';
+  presetId?: string;
+  previewColor?: string;
+  textureDataUrl?: string;
+  tileWidthCm?: number;
+  tileHeightCm?: number;
+}
+
+// Per-mesh material-swap markers (components/MeshMaterialSwatches.tsx) - saved here
+// (instead of that component's own backend call) specifically so they're visible to
+// every client who opens this model, not just the browser that placed them. localStorage
+// was the first cut, but that's per-browser only - an admin's markers never reached
+// anyone viewing the model from a different device/account, which is the whole point of
+// the feature.
+export interface SavedSwatchMarker {
+  id: string;
+  meshId: string;
+  meshName: string;
+  position: { x: number; y: number; z: number };
+  options: SavedSwatchOption[];
+}
+
+// User-entered state for the analysis-tool panels that have real editable inputs (not the
+// ones that are pure live-computed reports/one-shot exports with nothing to save - Cost
+// Estimation's manual overrides are the exception, see costEstimator below). Grouped under
+// one key so each panel's save only has to merge this one sub-object (see
+// savePartialSceneEdits) rather than the whole top-level record.
 export interface SavedFeatureState {
   budgetTierOverrides?: Record<string, { materials: number; total: number }>;
   roiInputs?: { annualReturn: number; horizonYears: number };
@@ -46,6 +76,7 @@ export interface SavedFeatureState {
     budget: number;
     breakdownOverrides?: Record<string, { material: number; labor: number; equipment: number; overhead: number; total: number }>;
   };
+  swatches?: SavedSwatchMarker[];
 }
 
 export interface SceneEditsData {
