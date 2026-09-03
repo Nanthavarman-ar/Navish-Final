@@ -871,12 +871,19 @@ const CoreFeaturesSegment: React.FC<Pick<CustomPanelsSegmentProps, 'featureState
         />
       </Suspense>
     )}
-    {featureStates.showAnnotations && sceneRef.current && (
-      <Suspense fallback={<div className="fixed top-1/2 left-4 z-40 w-80 max-w-[90vw] h-48 bg-slate-900/95 rounded-xl animate-pulse border border-slate-600" />}>
+    {sceneRef.current && (
+      // Kept mounted (panel visibility toggled via CSS in AnnotationTool itself) instead of
+      // conditionally rendered on featureStates.showAnnotations - this owns the note pin
+      // meshes in the 3D scene, which its own unmount effect disposes. Gating the whole
+      // component on panel visibility meant closing the Annotations panel didn't just hide
+      // the list, it deleted every note marker from the model (same bug LightingPresets had,
+      // see its own comment above).
+      <Suspense fallback={featureStates.showAnnotations ? <div className="fixed top-1/2 left-4 z-40 w-80 max-w-[90vw] h-48 bg-slate-900/95 rounded-xl animate-pulse border border-slate-600" /> : null}>
         <AnnotationTool
           scene={sceneRef.current}
           roomId={selectedWorkspaceId || 'default-room'}
           onClose={() => disableFeature('showAnnotations')}
+          visible={!!featureStates.showAnnotations}
         />
       </Suspense>
     )}
