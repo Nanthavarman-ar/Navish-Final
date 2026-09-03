@@ -322,6 +322,25 @@ function attachSurfaceCollision(ps: ParticleSystem, heightmap: PrecipitationHeig
   };
 }
 
+// @babylonjs/loaders registers the glTF/OBJ/STL/etc format plugins as a side effect of
+// being imported, and every model load has to wait for that to finish (see the two
+// load-model call sites below). It used to be re-imported from scratch on every single
+// model load - the module itself was already cached by the bundler, but the dynamic
+// import() call, its promise machinery, and the registration side effect were all
+// redundantly paid for again each time. Caching the promise here means that cost is
+// only ever paid once per page load, and prewarmModelLoaders() (called on mount below)
+// moves it off the critical path of the very first model load too.
+let sceneLoaderModulePromise: Promise<[typeof import('@babylonjs/core/Loading/sceneLoader'), typeof import('@babylonjs/loaders')]> | null = null;
+function getSceneLoaderModule() {
+  if (!sceneLoaderModulePromise) {
+    sceneLoaderModulePromise = Promise.all([
+      import('@babylonjs/core/Loading/sceneLoader'),
+      import('@babylonjs/loaders')
+    ]);
+  }
+  return sceneLoaderModulePromise;
+}
+
 const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
   workspaceId,
   isAdmin = false,
@@ -370,6 +389,8 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
     showScanAnimal: false,
     showARScale: false,
     showAnnotations: false,
+    showHotspotNav: false,
+    showMeshMaterialSwatches: false,
     showBIMIntegration: false,
     // helpful overlay showing available input methods
     showMovementControlChecker: true,
@@ -662,10 +683,7 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
       // tried to JSON.parse the raw binary GLB bytes and failed with a confusing
       // "importScene ... has failed JSON parse" error instead of actually loading the
       // model.
-      Promise.all([
-        import('@babylonjs/core/Loading/sceneLoader'),
-        import('@babylonjs/loaders')
-      ]).then(([{ SceneLoader }]) => {
+      getSceneLoaderModule().then(([{ SceneLoader }]) => {
         const meshesBefore = new Set(scene.meshes);
         SceneLoader.Append('', url, scene, () => {
           if (cancelled) return;
@@ -1133,10 +1151,7 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
       // OBJ/STL/etc) before SceneLoader.Append runs - see the matching fix in the
       // selected-model load effect above for what goes wrong if that's only fired off
       // without being awaited.
-      Promise.all([
-        import('@babylonjs/core/Loading/sceneLoader'),
-        import('@babylonjs/loaders')
-      ]).then(([{ SceneLoader }]) => {
+      getSceneLoaderModule().then(([{ SceneLoader }]) => {
         const meshesBefore = new Set(sceneRef.current!.meshes);
         // Pass the File object directly rather than a blob: URL. A blob URL has no
         // file extension, so Babylon can't reliably pick the right loader plugin for
@@ -1390,6 +1405,12 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
 
     const initializeScene = async () => {
       try {
+        // Starts fetching/registering @babylonjs/loaders's format plugins now, in
+        // parallel with engine/scene setup below, instead of waiting for the user to
+        // pick a model first - by the time a model is actually selected, this has
+        // usually already resolved (see getSceneLoaderModule's cache above).
+        void getSceneLoaderModule();
+
         // Create engine with error handling
         engine = new Engine(canvasRef.current!, true, { preserveDrawingBuffer: true });
         engineRef.current = engine;
@@ -3780,6 +3801,8 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
       if (key === 'e' && !e.ctrlKey && !e.metaKey) { e.preventDefault(); handleFeatureToggle('showExport', true); }
       if (key === 'i' && !e.ctrlKey && !e.metaKey) { e.preventDefault(); handleFeatureToggle('showImport', true); }
       if (key === 'n' && !e.ctrlKey && !e.metaKey) { e.preventDefault(); handleFeatureToggle('showAnnotations', !featureStates.showAnnotations); }
+      if (key === 'j' && !e.ctrlKey && !e.metaKey) { e.preventDefault(); handleFeatureToggle('showHotspotNav', !featureStates.showHotspotNav); }
+      if (key === 'p' && !e.ctrlKey && !e.metaKey) { e.preventDefault(); handleFeatureToggle('showMeshMaterialSwatches', !featureStates.showMeshMaterialSwatches); }
       // 'v' toggles Voice Assistant per its own advertised hotkey (config/
       // featureCategories.tsx, shown on the button itself) - this used to toggle
       // showAICoDesigner instead, a feature with no category entry/button of its own,
@@ -4233,6 +4256,7 @@ const getCategoryDescription = (categoryName: string): string => {
               engineRef,
               cameraRef,
               bimManagerRef,
+              materialManagerRef,
               analyticsManagerRef,
               presentationManagerRef,
               iotManagerRef,

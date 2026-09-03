@@ -485,6 +485,8 @@ const CirculationFlowSimulation = React.lazy(() => import('../CirculationFlowSim
 const AICoDesigner = React.lazy(() => import('../AICoDesigner'));
 const VersionHistoryPanel = React.lazy(() => import('../VersionHistoryPanel'));
 const AnnotationTool = React.lazy(() => import('../AnnotationTool'));
+const HotspotNavigation = React.lazy(() => import('../HotspotNavigation'));
+const MeshMaterialSwatches = React.lazy(() => import('../MeshMaterialSwatches'));
 const SiteContextPanel = React.lazy(() => import('../SiteContextPanel'));
 const ROICalculatorPanel = React.lazy(() => import('../ROICalculatorPanel'));
 const DesignReportPanel = React.lazy(() => import('../DesignReportPanel'));
@@ -512,6 +514,7 @@ interface CustomPanelsSegmentProps {
   engineRef: React.RefObject<any>;
   cameraRef: React.RefObject<any>;
   bimManagerRef: React.RefObject<any>;
+  materialManagerRef: React.RefObject<any>;
   analyticsManagerRef: React.RefObject<any>;
   presentationManagerRef: React.RefObject<any>;
   iotManagerRef: React.RefObject<any>;
@@ -599,8 +602,8 @@ export const CustomPanelsSegment: React.FC<CustomPanelsSegmentProps> = (props) =
 );
 
 // Sub-segment components for CustomPanels
-const CoreFeaturesSegment: React.FC<Pick<CustomPanelsSegmentProps, 'featureStates' | 'sceneRef' | 'engineRef' | 'cameraRef' | 'bimManagerRef' | 'aiManagerRef' | 'workspaces' | 'selectedWorkspaceId' | 'handleWorkspaceSelect' | 'handleMaterialApplied' | 'handleAnimationCreate' | 'handleSequencePlay' | 'disableFeature' | 'workspaceState' | 'scenarioManagerRef' | 'moodSceneManagerRef' | 'animationManagerRef' | 'cloudAnchorManagerRef' | 'arCloudAnchorsRef' | 'gpsTransformUtilsRef' | 'xrManagerRef' | 'graphicsQuality' | 'setGraphicsQuality' | 'recommendedQuality' | 'gpuName' | 'deviceCapabilities' | 'simulationManagerRef' | 'currentModelId' | 'floorPlans' | 'onFloorPlansChange'>> = ({
-  featureStates, sceneRef, engineRef, cameraRef, bimManagerRef, aiManagerRef, workspaces, selectedWorkspaceId, handleWorkspaceSelect, handleMaterialApplied, handleAnimationCreate, handleSequencePlay, disableFeature, workspaceState, scenarioManagerRef, moodSceneManagerRef, animationManagerRef, cloudAnchorManagerRef, arCloudAnchorsRef, gpsTransformUtilsRef, xrManagerRef, graphicsQuality, setGraphicsQuality, recommendedQuality, gpuName, deviceCapabilities, simulationManagerRef, currentModelId, floorPlans, onFloorPlansChange
+const CoreFeaturesSegment: React.FC<Pick<CustomPanelsSegmentProps, 'featureStates' | 'sceneRef' | 'engineRef' | 'cameraRef' | 'bimManagerRef' | 'materialManagerRef' | 'aiManagerRef' | 'workspaces' | 'selectedWorkspaceId' | 'handleWorkspaceSelect' | 'handleMaterialApplied' | 'handleAnimationCreate' | 'handleSequencePlay' | 'disableFeature' | 'workspaceState' | 'scenarioManagerRef' | 'moodSceneManagerRef' | 'animationManagerRef' | 'cloudAnchorManagerRef' | 'arCloudAnchorsRef' | 'gpsTransformUtilsRef' | 'xrManagerRef' | 'graphicsQuality' | 'setGraphicsQuality' | 'recommendedQuality' | 'gpuName' | 'deviceCapabilities' | 'simulationManagerRef' | 'currentModelId' | 'floorPlans' | 'onFloorPlansChange'>> = ({
+  featureStates, sceneRef, engineRef, cameraRef, bimManagerRef, materialManagerRef, aiManagerRef, workspaces, selectedWorkspaceId, handleWorkspaceSelect, handleMaterialApplied, handleAnimationCreate, handleSequencePlay, disableFeature, workspaceState, scenarioManagerRef, moodSceneManagerRef, animationManagerRef, cloudAnchorManagerRef, arCloudAnchorsRef, gpsTransformUtilsRef, xrManagerRef, graphicsQuality, setGraphicsQuality, recommendedQuality, gpuName, deviceCapabilities, simulationManagerRef, currentModelId, floorPlans, onFloorPlansChange
 }) => {
   const lightingPanel = usePanelStack('top-left', !!featureStates.showLighting);
   const graphicsQualityPanel = usePanelStack('top-right');
@@ -891,6 +894,34 @@ const CoreFeaturesSegment: React.FC<Pick<CustomPanelsSegmentProps, 'featureState
           roomId={currentModelId}
           onClose={() => disableFeature('showAnnotations')}
           visible={!!featureStates.showAnnotations}
+        />
+      </Suspense>
+    )}
+    {sceneRef.current && (
+      // Same "kept mounted, visibility toggled via its own visible prop" pattern as
+      // AnnotationTool right above (see its comment) - the diamond hotspot markers must
+      // stay live and clickable in the 3D scene for anyone navigating the model, not only
+      // while the add/manage panel itself happens to be open.
+      <Suspense fallback={null}>
+        <HotspotNavigation
+          scene={sceneRef.current}
+          roomId={currentModelId}
+          onClose={() => disableFeature('showHotspotNav')}
+          visible={!!featureStates.showHotspotNav}
+        />
+      </Suspense>
+    )}
+    {sceneRef.current && materialManagerRef.current && (
+      // Same kept-mounted pattern as AnnotationTool/HotspotNavigation above - swatch
+      // markers must stay clickable in the 3D scene for any viewer, independent of
+      // whether the admin's marker-management panel is currently open.
+      <Suspense fallback={null}>
+        <MeshMaterialSwatches
+          scene={sceneRef.current}
+          materialManager={materialManagerRef.current}
+          roomId={currentModelId}
+          onClose={() => disableFeature('showMeshMaterialSwatches')}
+          visible={!!featureStates.showMeshMaterialSwatches}
         />
       </Suspense>
     )}
@@ -2083,6 +2114,7 @@ interface RenderCustomPanelsProps {
   engineRef: React.RefObject<any>;
   cameraRef: React.RefObject<any>;
   bimManagerRef: React.RefObject<any>;
+  materialManagerRef: React.RefObject<any>;
   analyticsManagerRef: React.RefObject<any>;
   presentationManagerRef: React.RefObject<any>;
   iotManagerRef: React.RefObject<any>;

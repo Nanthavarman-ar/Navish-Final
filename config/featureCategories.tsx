@@ -111,6 +111,8 @@ export const featureCategories: FeaturesByCategory = {
     { id: 'showExport', name: 'Export', description: 'Export scene data', hotkey: 'E', icon: Download, category: 'Tools and Editors', enabledByDefault: true },
     { id: 'showImport', name: 'Import', description: 'Import models and data', hotkey: 'I', icon: Upload, category: 'Tools and Editors', enabledByDefault: true },
     { id: 'showAnnotations', name: 'Annotations', description: 'Add and share annotations', hotkey: 'N', icon: Edit3, category: 'Tools and Editors', enabledByDefault: false },
+    { id: 'showHotspotNav', name: 'Hotspot Navigation', description: 'Place clickable hotspots that jump the camera between rooms/viewpoints', hotkey: 'J', icon: Navigation, category: 'Tools and Editors', enabledByDefault: false },
+    { id: 'showMeshMaterialSwatches', name: 'Material Swatches', description: 'Place a marker on a mesh with a few pickable material/color options for viewers', hotkey: 'P', icon: Palette, category: 'Tools and Editors', enabledByDefault: false },
     { id: 'showVersionHistory', name: 'Version History', description: 'View and restore previous saves', icon: History, category: 'Tools and Editors', enabledByDefault: false }
   ],
   "Auto Furnish & AR Anchor": [

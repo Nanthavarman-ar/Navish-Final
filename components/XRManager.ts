@@ -677,9 +677,17 @@ export class XRManager {
   // continuous scaling instead, the same interaction pattern as a camera zoom rocker.
   private createAROverlayUI(): HTMLDivElement {
     this.teardownAROverlayUI();
+    // Previously one tall column (hint, readout, move row, rotate row, scale row) all
+    // stacked bottom-up - on a phone-height viewport that stack's top edge climbed well
+    // into the middle of the screen, right over the model it's meant to be controlling.
+    // Split into two independent thumb-reach corners instead (the standard mobile
+    // game/AR-viewer control layout): move on the bottom-left, rotate+scale on the
+    // bottom-right. Each cluster is now only 2 rows tall at most, so both stay low and
+    // out of the model's way, and match how a phone is actually held (a thumb resting
+    // in each bottom corner) instead of both hands reaching for one center column.
     const container = document.createElement('div');
     container.id = 'naviz-ar-overlay';
-    container.style.cssText = 'position:fixed;left:0;right:0;bottom:32px;display:flex;flex-direction:column;align-items:center;gap:10px;pointer-events:none;z-index:999999;';
+    container.style.cssText = 'position:fixed;inset:0;pointer-events:none;z-index:999999;';
 
     // AR sessions (especially phone-based ones, the common case for AR - there's no
     // squeeze/grip controller to hold for the VR hold-to-exit gesture) had NO way to
@@ -746,10 +754,13 @@ export class XRManager {
     };
 
     row.appendChild(makeButton('−', 'Scale down (hold to keep shrinking)', () => this.scalePlacedModel(1 / 1.04)));
-    const resetBtn = makeButton('⟲', 'Reset scale', () => this.resetPlacedModelScale());
+    // Was '⟲' (identical glyph to the rotate-left button below) - reading as "this does
+    // the same thing as rotate" at a glance. '1:1' is the same reset-to-original
+    // convention used by photo/zoom apps, and reads as "scale", not "rotate".
+    const resetBtn = makeButton('1:1', 'Reset scale', () => this.resetPlacedModelScale());
     resetBtn.style.width = '56px';
     resetBtn.style.height = '56px';
-    resetBtn.style.fontSize = '22px';
+    resetBtn.style.fontSize = '16px';
     row.appendChild(resetBtn);
     row.appendChild(makeButton('+', 'Scale up (hold to keep growing)', () => this.scalePlacedModel(1.04)));
 
@@ -787,13 +798,24 @@ export class XRManager {
       return btn;
     };
 
-    const moveRow = document.createElement('div');
-    moveRow.style.cssText = 'display:flex;align-items:center;gap:10px;';
+    // Cross-shaped dpad (▲ above a ◀ ▶ row, ▼ below) rather than the previous single
+    // ◀▲▼▶ row - the plus-shape is the immediately-recognizable "this moves things"
+    // layout (game controllers, map apps), where a straight row of 4 arrows reads more
+    // ambiguously, and it's more compact vertically for the same button count.
     const MOVE_STEP = 0.03; // meters per repeat tick
-    moveRow.appendChild(smallButton('◀', 'Move left (hold)', () => this.nudgePlacedModel(0, -MOVE_STEP)));
-    moveRow.appendChild(smallButton('▲', 'Move forward (hold)', () => this.nudgePlacedModel(MOVE_STEP, 0)));
-    moveRow.appendChild(smallButton('▼', 'Move backward (hold)', () => this.nudgePlacedModel(-MOVE_STEP, 0)));
-    moveRow.appendChild(smallButton('▶', 'Move right (hold)', () => this.nudgePlacedModel(0, MOVE_STEP)));
+    const moveMidRow = document.createElement('div');
+    moveMidRow.style.cssText = 'display:flex;align-items:center;gap:6px;';
+    const moveSpacer = document.createElement('div');
+    moveSpacer.style.cssText = 'width:56px;height:56px;';
+    moveMidRow.appendChild(smallButton('◀', 'Move left (hold)', () => this.nudgePlacedModel(0, -MOVE_STEP)));
+    moveMidRow.appendChild(moveSpacer);
+    moveMidRow.appendChild(smallButton('▶', 'Move right (hold)', () => this.nudgePlacedModel(0, MOVE_STEP)));
+
+    const moveDpad = document.createElement('div');
+    moveDpad.style.cssText = 'display:flex;flex-direction:column;align-items:center;gap:6px;pointer-events:none;';
+    moveDpad.appendChild(smallButton('▲', 'Move forward (hold)', () => this.nudgePlacedModel(MOVE_STEP, 0)));
+    moveDpad.appendChild(moveMidRow);
+    moveDpad.appendChild(smallButton('▼', 'Move backward (hold)', () => this.nudgePlacedModel(-MOVE_STEP, 0)));
 
     const rotateRow = document.createElement('div');
     rotateRow.style.cssText = 'display:flex;align-items:center;gap:10px;';
@@ -802,11 +824,28 @@ export class XRManager {
     rotateRow.appendChild(tapButton('⇋', 'Mirror', () => this.mirrorPlacedModel()));
     rotateRow.appendChild(smallButton('⟳', 'Rotate right (hold)', () => this.rotatePlacedModel(ROTATE_STEP)));
 
-    container.appendChild(hint);
-    container.appendChild(readout);
-    container.appendChild(moveRow);
-    container.appendChild(rotateRow);
-    container.appendChild(row);
+    // Bottom-left thumb zone: repositioning the model.
+    const leftCluster = document.createElement('div');
+    leftCluster.style.cssText = 'position:absolute;left:max(16px,env(safe-area-inset-left));bottom:max(20px,env(safe-area-inset-bottom));pointer-events:none;';
+    leftCluster.appendChild(moveDpad);
+
+    // Bottom-right thumb zone: orientation (rotate/mirror) above size (scale), grouped
+    // together since both are "adjust the model" actions, separate from repositioning.
+    const rightCluster = document.createElement('div');
+    rightCluster.style.cssText = 'position:absolute;right:max(16px,env(safe-area-inset-right));bottom:max(20px,env(safe-area-inset-bottom));display:flex;flex-direction:column;align-items:center;gap:10px;pointer-events:none;';
+    rightCluster.appendChild(rotateRow);
+    rightCluster.appendChild(row);
+
+    // Hint + scale readout: centered, sitting just above both corner clusters so they
+    // stay clear of the buttons below and of the model in the middle of the screen.
+    const centerStack = document.createElement('div');
+    centerStack.style.cssText = 'position:absolute;left:50%;bottom:calc(150px + env(safe-area-inset-bottom));transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;gap:8px;pointer-events:none;max-width:80vw;';
+    centerStack.appendChild(hint);
+    centerStack.appendChild(readout);
+
+    container.appendChild(centerStack);
+    container.appendChild(leftCluster);
+    container.appendChild(rightCluster);
     document.body.appendChild(container);
     return container;
   }
