@@ -27,7 +27,7 @@ import { supabase, projectId } from '../supabase/client';
 
 // Import extracted modules
 import { useMeshSceneHandlers } from './BabylonWorkspace/meshSceneHandlers';
-import { LeftPanelSegment, TopBarSegment, BottomPanelSegment, FloatingToolbarSegment, ImmersiveControls, renderLeftPanel, renderTopBar, renderRightPanel, renderBottomPanel, renderFloatingToolbar, renderCustomPanels } from './BabylonWorkspace/uiSegments';
+import { LeftPanelSegment, TopBarSegment, BottomPanelSegment, ImmersiveControls, renderLeftPanel, renderTopBar, renderRightPanel, renderBottomPanel, renderCustomPanels } from './BabylonWorkspace/uiSegments';
 
 // Interfaces
 import * as AnimationInterfaces from './interfaces/AnimationInterfaces';
@@ -64,7 +64,6 @@ import { SustainabilityManager, SustainabilityReport } from './SustainabilityMan
 import { PresentationManager } from './PresentationManager';
 import { IoTManager } from './IoTManager';
 import { captureSceneEdits, applySceneEdits, saveSceneEdits, loadSceneEdits } from './utils/sceneEditsPersistence';
-import { usePanelStack } from '../hooks/usePanelStack';
 
 // UI Component imports
 import FeatureButton from './FeatureButton';
@@ -827,11 +826,6 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
   const [gpuName, setGpuName] = React.useState<string>('');
   const gizmoManagerRef = useRef<GizmoManager | null>(null);
   const [transformMode, setTransformMode] = React.useState<'none' | 'position' | 'rotation' | 'scale'>('none');
-  // Called unconditionally here (not inside renderFloatingToolbar itself, which is a plain
-  // function, not a component - calling a hook inside it after its own early `if
-  // (!showFloatingToolbar) return null` would violate the Rules of Hooks and desync this
-  // component's whole hook order whenever that flag toggles) and passed down as props.
-  const floatingToolbarStack = usePanelStack('top-left');
   type UndoEntry =
     | { kind: 'transform'; mesh: Mesh; position: Vector3; rotationQuaternion: Quaternion | null; rotation: Vector3; scaling: Vector3 }
     | { kind: 'material'; material: Material; snapshot: Record<string, any> }
@@ -1134,22 +1128,49 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
       cam.keysRight = [68, 39];
     };
 
+    // Frame the actual loaded model instead of a hardcoded point near the world origin -
+    // Walk/Dollhouse/Orbit all used to spawn at fixed coordinates regardless of where the
+    // uploaded model actually sits or how big it is, so Walk could drop the camera outside
+    // the building entirely and Dollhouse/Orbit showed an arbitrary empty view for any
+    // model not centered near (0,0,0). Mirrors the same exclusion list as runAutoZoom/Fit.
+    const exclude = (m: AbstractMesh) => m.name && (m.name.startsWith('measure_') || m.name.startsWith('preview_') || m.name.startsWith('measurement_') || /^ground$/i.test(m.name) || /^defaultBox$/i.test(m.name));
+    let minX = Infinity, minY = Infinity, minZ = Infinity;
+    let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
+    let meshCount = 0;
+    scene.meshes.forEach((m) => {
+      if (exclude(m) || !m.isVisible || m.getTotalVertices() === 0) return;
+      const bb = m.getBoundingInfo().boundingBox;
+      minX = Math.min(minX, bb.minimumWorld.x); minY = Math.min(minY, bb.minimumWorld.y); minZ = Math.min(minZ, bb.minimumWorld.z);
+      maxX = Math.max(maxX, bb.maximumWorld.x); maxY = Math.max(maxY, bb.maximumWorld.y); maxZ = Math.max(maxZ, bb.maximumWorld.z);
+      meshCount++;
+    });
+    const modelCenter = meshCount > 0 ? new Vector3((minX + maxX) / 2, (minY + maxY) / 2, (minZ + maxZ) / 2) : Vector3.Zero();
+    const floorY = meshCount > 0 ? minY : 0;
+    const modelSpan = meshCount > 0 ? Math.max(maxX - minX, maxZ - minZ, 1) : 20;
+
     let newCamera: ArcRotateCamera | FreeCamera | UniversalCamera;
 
     if (mode === 'fly') {
-      newCamera = new FreeCamera('camera', new Vector3(0, 5, -10), scene);
-      newCamera.speed = 0.5;
+      // Dollhouse: a tilted bird's-eye overview of the whole model, not a generic free-fly
+      // camera parked at a fixed spot - scaled to the model's actual footprint so a tiny
+      // room and a whole house both start framed rather than either lost in empty space
+      // or viewed from inside a wall.
+      newCamera = new FreeCamera('camera', new Vector3(modelCenter.x, floorY + modelSpan * 0.9, modelCenter.z - modelSpan * 0.9), scene);
+      (newCamera as FreeCamera).setTarget(modelCenter);
+      newCamera.speed = Math.max(modelSpan * 0.03, 0.3);
       newCamera.applyGravity = false;
     } else if (mode === 'walk') {
-      newCamera = new UniversalCamera('camera', new Vector3(0, 1.8, -10), scene);
+      // Walk: start standing at floor level, inside/near the actual model instead of at a
+      // fixed world-space offset that has no relation to where the model was placed.
+      newCamera = new UniversalCamera('camera', new Vector3(modelCenter.x, floorY + 1.8, modelCenter.z - modelSpan * 0.3), scene);
       newCamera.speed = 0.35;
       newCamera.checkCollisions = true;
       newCamera.applyGravity = true;
       (newCamera as UniversalCamera).ellipsoid = new Vector3(0.5, 1.7, 0.5);
     } else {
-      newCamera = new ArcRotateCamera('camera', -Math.PI / 2, Math.PI / 2.5, 10, Vector3.Zero(), scene);
+      newCamera = new ArcRotateCamera('camera', -Math.PI / 2, Math.PI / 2.5, Math.max(modelSpan * 1.5, 5), modelCenter, scene);
       (newCamera as ArcRotateCamera).lowerRadiusLimit = 2;
-      (newCamera as ArcRotateCamera).upperRadiusLimit = 30;
+      (newCamera as ArcRotateCamera).upperRadiusLimit = Math.max(modelSpan * 4, 30);
       // See the matching comment on the main scene-init camera for why percentage-based
       // zoom (not the fixed-step default) is what this project actually wants.
       (newCamera as ArcRotateCamera).wheelDeltaPercentage = 0.01;
@@ -4016,7 +4037,13 @@ const getCategoryDescription = (categoryName: string): string => {
               arcCam.setTarget(center);
               arcCam.radius = Math.max(size * 1.2, 2);
               showToast.success('Zoomed to fit');
-            }
+            },
+            transformMode,
+            setTransformMode,
+            cameraActive,
+            perspectiveActive,
+            onCameraActiveToggle: () => updateState({ cameraActive: !cameraActive }),
+            onPerspectiveToggle: () => updateState({ perspectiveActive: !perspectiveActive })
           })}
             </div>
           )}
@@ -4145,14 +4172,6 @@ const getCategoryDescription = (categoryName: string): string => {
               workspaceState,
               updateState
             })}
-            {renderFloatingToolbar({
-              workspaceState,
-              updateState,
-              transformMode,
-              setTransformMode,
-              panelRef: floatingToolbarStack.ref,
-              panelStyle: floatingToolbarStack.style
-            })}
             {layoutMode === 'immersive' && (
               <div className="absolute top-4 left-1/2 transform -translate-x-1/2 z-20">
                 <Card className="bg-background">
@@ -4197,9 +4216,6 @@ const getCategoryDescription = (categoryName: string): string => {
                     </Button>
                     <Button size="sm" variant="ghost" onClick={() => updateState({ leftPanelVisible: !workspaceState.leftPanelVisible })} title="Toggle Left Panel">
                       🎛️
-                    </Button>
-                    <Button size="sm" variant="ghost" onClick={() => updateState({ rightPanelVisible: !workspaceState.rightPanelVisible })} title="Toggle Right Panel">
-                      ⚙️
                     </Button>
                     <Button size="sm" variant="ghost" onClick={() => updateState({ topBarVisible: true, leftPanelVisible: true, rightPanelVisible: true, bottomPanelVisible: true })} title="Exit Immersive Mode">
                       🔙

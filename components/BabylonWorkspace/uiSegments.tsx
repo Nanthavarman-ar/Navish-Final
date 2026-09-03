@@ -19,7 +19,6 @@ const ControlPanel = React.lazy(() => import('../../src/components/UI/ControlPan
 const TopBar = React.lazy(() => import('../TopBar'));
 const SimpleWorkspaceTopBar = React.lazy(() => import('./SimpleWorkspaceTopBar').then(m => ({ default: m.SimpleWorkspaceTopBar })));
 const BottomPanel = React.lazy(() => import('../BottomPanel'));
-const FloatingToolbar = React.lazy(() => import('../FloatingToolbar'));
 const EnhancedWorkspaceLayout = React.lazy(() => import('../EnhancedWorkspaceLayout'));
 const EnhancedToolbar = React.lazy(() => import('../EnhancedToolbar'));
 
@@ -66,19 +65,6 @@ interface BottomPanelSegmentProps {
   suggestions: string[];
   onSequenceCreate: (sequence: any) => void;
   onSequencePlay: (sequenceId: string) => void;
-}
-
-interface FloatingToolbarSegmentProps {
-  onMoveToggle: () => void;
-  onRotateToggle: () => void;
-  onScaleToggle: () => void;
-  onCameraToggle: () => void;
-  onPerspectiveToggle: () => void;
-  isMoveActive: boolean;
-  isRotateActive: boolean;
-  isScaleActive: boolean;
-  isCameraActive: boolean;
-  isPerspectiveActive: boolean;
 }
 
 // Components
@@ -175,39 +161,6 @@ export const BottomPanelSegment: React.FC<BottomPanelSegmentProps> = ({
     />
   </Suspense>
 );
-
-export const FloatingToolbarSegment: React.FC<FloatingToolbarSegmentProps> = ({
-  onMoveToggle,
-  onRotateToggle,
-  onScaleToggle,
-  onCameraToggle,
-  onPerspectiveToggle,
-  isMoveActive,
-  isRotateActive,
-  isScaleActive,
-  isCameraActive,
-  isPerspectiveActive
-}) => {
-  const { ref: panelRef, style: panelStyle } = usePanelStack('top-left');
-  return (
-  <Suspense fallback={<div className="p-2">Loading Toolbar...</div>}>
-    <div ref={panelRef} style={panelStyle} className="fixed left-6 z-50 bg-gray-900 border border-gray-700 rounded-lg shadow-xl p-3">
-      <FloatingToolbar
-        onMoveToggle={onMoveToggle}
-        onRotateToggle={onRotateToggle}
-        onScaleToggle={onScaleToggle}
-        onCameraToggle={onCameraToggle}
-        onPerspectiveToggle={onPerspectiveToggle}
-        isMoveActive={isMoveActive}
-        isRotateActive={isRotateActive}
-        isScaleActive={isScaleActive}
-        isCameraActive={isCameraActive}
-        isPerspectiveActive={isPerspectiveActive}
-      />
-    </div>
-  </Suspense>
-  );
-};
 
 // Immersive mode controls component
 export const ImmersiveControls: React.FC<{
@@ -2083,6 +2036,16 @@ interface RenderTopBarProps {
   onAutoZoom?: () => void;
   onHelp?: () => void;
   onShare?: () => void;
+  // Transform tools (move/rotate/scale gizmo + camera controls/perspective) - these used to
+  // live in a separately-positioned FloatingToolbar (usePanelStack('top-left')) that landed
+  // directly on top of the left "My Models" panel, since both compete for the same top-left
+  // corner. Rendering them as part of the top bar itself removes that overlap entirely.
+  transformMode?: 'none' | 'position' | 'rotation' | 'scale';
+  setTransformMode?: (updater: (m: 'none' | 'position' | 'rotation' | 'scale') => 'none' | 'position' | 'rotation' | 'scale') => void;
+  cameraActive?: boolean;
+  perspectiveActive?: boolean;
+  onCameraActiveToggle?: () => void;
+  onPerspectiveToggle?: () => void;
 }
 
 interface RenderRightPanelProps {
@@ -2106,17 +2069,6 @@ interface RenderBottomPanelProps {
   // Timeline tab used to always get a hardcoded null here regardless of this being
   // available, leaving its play/sequence controls permanently non-functional.
   animationManagerRef?: React.RefObject<import('../AnimationManager').AnimationManager | null>;
-}
-
-interface RenderFloatingToolbarProps {
-  workspaceState: { showFloatingToolbar: boolean; cameraActive: boolean; perspectiveActive: boolean };
-  updateState: (updates: any) => void;
-  transformMode: 'none' | 'position' | 'rotation' | 'scale';
-  setTransformMode: (updater: (m: 'none' | 'position' | 'rotation' | 'scale') => 'none' | 'position' | 'rotation' | 'scale') => void;
-  // From usePanelStack('top-left'), called in BabylonWorkspace.tsx (this function isn't a
-  // component, so it can't call the hook itself - see the comment there).
-  panelRef: (el: HTMLElement | null) => void;
-  panelStyle: React.CSSProperties;
 }
 
 interface RenderCustomPanelsProps {
@@ -2219,63 +2171,21 @@ export const renderTopBar = (props: RenderTopBarProps) => (
       onScreenshot={props.onScreenshot}
       onAutoZoom={props.onAutoZoom}
       onHelp={props.onHelp}
+      transformMode={props.transformMode}
+      setTransformMode={props.setTransformMode}
+      cameraActive={props.cameraActive}
+      perspectiveActive={props.perspectiveActive}
+      onCameraActiveToggle={props.onCameraActiveToggle}
+      onPerspectiveToggle={props.onPerspectiveToggle}
     />
   </React.Suspense>
 );
 
-export const renderRightPanel = (props: RenderRightPanelProps) => {
-  if (!props.workspaceState.rightPanelVisible) return null;
-  return (
-    <div className="absolute inset-y-0 right-0 z-30 w-[85vw] max-w-[320px] sm:relative sm:z-auto sm:w-80 sm:max-w-none border-l border-gray-700 bg-gray-900 text-white h-full overflow-y-auto shadow-2xl sm:shadow-none">
-      <div className="p-4 border-b border-gray-700 flex items-center justify-between">
-        <h2 className="text-lg font-semibold">Inspector</h2>
-        <Button size="sm" variant="ghost" aria-label="Close Right Panel" onClick={() => props.updateState({ rightPanelVisible: false })}>
-          <Maximize className="w-4 h-4" />
-        </Button>
-      </div>
-      <Tabs defaultValue="properties" className="w-full">
-        <TabsList className="grid w-full grid-cols-3">
-          <TabsTrigger value="properties">Properties</TabsTrigger>
-          <TabsTrigger value="materials">Materials</TabsTrigger>
-          <TabsTrigger value="features">Features</TabsTrigger>
-        </TabsList>
-        <TabsContent value="properties" className="p-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Object Properties</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {props.workspaceState.selectedMesh ? (
-                <div className="space-y-2">
-                  <div><strong>Name:</strong> {props.workspaceState.selectedMesh.name}</div>
-                  <div><strong>Position:</strong> {props.workspaceState.selectedMesh.position.toString()}</div>
-                  <div><strong>Rotation:</strong> {props.workspaceState.selectedMesh.rotation.toString()}</div>
-                  <div><strong>Scale:</strong> {props.workspaceState.selectedMesh.scaling.toString()}</div>
-                </div>
-              ) : (
-                <p className="text-muted-foreground">No object selected</p>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-        <TabsContent value="features" className="p-4">
-          <div className="text-muted-foreground">
-            Feature management is handled through the left panel.
-          </div>
-        </TabsContent>
-        <TabsContent value="energy" className="p-4">
-          {props.bimManagerRef.current && props.simulationManagerRef.current && (
-            <EnergyDashboard
-              bimManager={props.bimManagerRef.current}
-              simulationManager={props.simulationManagerRef.current}
-              modelId={String(props.currentModelId)}
-            />
-          )}
-        </TabsContent>
-      </Tabs>
-    </div>
-  );
-};
+// Right sidebar removed - it only duplicated/stubbed what the left panel
+// already covers (Properties/Features), and its Materials tab had no
+// content behind it at all (no matching TabsContent), so it always
+// rendered blank.
+export const renderRightPanel = (_props: RenderRightPanelProps) => null;
 
 export const renderBottomPanel = (props: RenderBottomPanelProps) => {
   if (!props.workspaceState.bottomPanelVisible) return null;
@@ -2294,33 +2204,6 @@ export const renderBottomPanel = (props: RenderBottomPanelProps) => {
         onSequencePlay={props.handleTourSequencePlay}
         animationManager={props.animationManagerRef?.current ?? null}
       />
-    </React.Suspense>
-  );
-};
-
-export const renderFloatingToolbar = (props: RenderFloatingToolbarProps) => {
-  if (!props.workspaceState.showFloatingToolbar) return null;
-  // Move/Rotate/Scale here drive the same transformMode-based GizmoManager as the bottom
-  // selection toolbar and the g/r/s hotkeys - they used to drive a separate moveActive/
-  // rotateActive/scaleActive PointerDragBehavior system instead, which could be independently
-  // active on the same mesh at the same time as the gizmo (e.g. press 'g' for the gizmo, then
-  // also click Move here), producing two conflicting drag handlers on one mesh at once.
-  return (
-    <React.Suspense fallback={<div ref={props.panelRef} style={props.panelStyle} className="fixed left-4 z-40 bg-gray-900/95 border border-gray-700 rounded-lg shadow-xl p-2">Loading Toolbar...</div>}>
-      <div ref={props.panelRef} style={props.panelStyle} className="fixed left-4 z-40 bg-gray-900/95 border border-gray-700 rounded-lg shadow-xl p-2 pointer-events-auto">
-        <FloatingToolbar
-          onMoveToggle={() => props.setTransformMode((m) => m === 'position' ? 'none' : 'position')}
-          onRotateToggle={() => props.setTransformMode((m) => m === 'rotation' ? 'none' : 'rotation')}
-          onScaleToggle={() => props.setTransformMode((m) => m === 'scale' ? 'none' : 'scale')}
-          onCameraToggle={() => props.updateState({ cameraActive: !props.workspaceState.cameraActive })}
-          onPerspectiveToggle={() => props.updateState({ perspectiveActive: !props.workspaceState.perspectiveActive })}
-          isMoveActive={props.transformMode === 'position'}
-          isRotateActive={props.transformMode === 'rotation'}
-          isScaleActive={props.transformMode === 'scale'}
-          isCameraActive={props.workspaceState.cameraActive}
-          isPerspectiveActive={props.workspaceState.perspectiveActive}
-        />
-      </div>
     </React.Suspense>
   );
 };

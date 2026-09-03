@@ -417,10 +417,18 @@ export class ScenarioManager {
   // actually loaded. This rescales each scenario's relative viewing
   // angle/distance to frame whatever is actually in the scene.
   private getModelBoundsCenterAndRadius(): { center: Vector3; radius: number } {
-    const meshes = this.scene.meshes.filter(m =>
-      m.isEnabled() && m.getTotalVertices() > 0 && m.name &&
-      !/^(scenario_|__root__|measure_|preview_)/i.test(m.name)
-    );
+    // Keep this exclusion list in sync with the workspace's own "Fit" logic
+    // (runAutoZoom in BabylonWorkspace.tsx), which frames real uploaded models
+    // correctly. This used to only skip scenario_/__root__/measure_/preview_
+    // prefixed names, so the placeholder ground/defaultBox (and any invisible
+    // helper/gizmo mesh) got folded into the bounding box, pulling the computed
+    // center away from the actual model - the auto-rotate orbit then visibly
+    // circled a point off to the side of the model instead of the model itself.
+    const isExcluded = (m: (typeof this.scene.meshes)[number]) =>
+      !m.name || !m.isVisible ||
+      /^(scenario_|__root__|measure_|measurement_|preview_)/i.test(m.name) ||
+      /^ground$/i.test(m.name) || /^defaultBox$/i.test(m.name);
+    const meshes = this.scene.meshes.filter(m => m.isEnabled() && m.getTotalVertices() > 0 && !isExcluded(m));
     if (meshes.length === 0) return { center: Vector3.Zero(), radius: 5 };
     let min = meshes[0].getBoundingInfo().boundingBox.minimumWorld.clone();
     let max = meshes[0].getBoundingInfo().boundingBox.maximumWorld.clone();

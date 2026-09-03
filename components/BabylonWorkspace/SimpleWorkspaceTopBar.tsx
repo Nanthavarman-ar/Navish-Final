@@ -13,11 +13,13 @@ import {
   Share2,
   Maximize2,
   PanelLeftClose,
-  PanelRightClose,
   PanelLeftOpen,
-  PanelRightOpen,
   ChevronUp,
-  ChevronDown
+  ChevronDown,
+  RotateCw,
+  Scale,
+  Video,
+  Eye
 } from 'lucide-react';
 import { ViewModeSelector, type ViewMode } from '../ViewModeSelector';
 import { ShareEmbedPanel } from '../ShareEmbedPanel';
@@ -44,6 +46,15 @@ interface SimpleWorkspaceTopBarProps {
   onShare?: () => void;
   onChat?: () => void;
   onCollaborate?: () => void;
+  // Move/Rotate/Scale gizmo + camera controls/perspective toggles - previously a separate
+  // FloatingToolbar floating over the top-left corner, which is also where the "My Models"
+  // left panel lives, so the two visibly overlapped. Living in the top bar avoids that.
+  transformMode?: 'none' | 'position' | 'rotation' | 'scale';
+  setTransformMode?: (updater: (m: 'none' | 'position' | 'rotation' | 'scale') => 'none' | 'position' | 'rotation' | 'scale') => void;
+  cameraActive?: boolean;
+  perspectiveActive?: boolean;
+  onCameraActiveToggle?: () => void;
+  onPerspectiveToggle?: () => void;
 }
 
 export function SimpleWorkspaceTopBar({
@@ -64,7 +75,13 @@ export function SimpleWorkspaceTopBar({
   onExport,
   onScreenshot,
   onAutoZoom,
-  onHelp
+  onHelp,
+  transformMode = 'none',
+  setTransformMode,
+  cameraActive = false,
+  perspectiveActive = false,
+  onCameraActiveToggle,
+  onPerspectiveToggle
 }: SimpleWorkspaceTopBarProps) {
   const noop = () => {};
   const [showSharePanel, setShowSharePanel] = useState(false);
@@ -103,11 +120,6 @@ export function SimpleWorkspaceTopBar({
             >
               {leftPanelVisible ? <PanelLeftClose className="w-4 h-4 pointer-events-none" /> : <PanelLeftOpen className="w-4 h-4 pointer-events-none" />}
             </button>
-          )}
-          {onToggleRightPanel && (
-            <Button type="button" variant={rightPanelVisible ? 'default' : 'ghost'} size="sm" className="h-10 w-10 p-0" onClick={onToggleRightPanel} title={rightPanelVisible ? 'Hide right sidebar' : 'Show right sidebar'}>
-              {rightPanelVisible ? <PanelRightClose className="w-4 h-4" /> : <PanelRightOpen className="w-4 h-4" />}
-            </Button>
           )}
           <span className="w-px h-5 bg-gray-600 mx-1 shrink-0" />
           <Button variant="ghost" size="sm" className="h-10 w-10 p-0" onClick={onImport || noop} title="Import">
@@ -154,6 +166,30 @@ export function SimpleWorkspaceTopBar({
               <Button variant="ghost" size="sm" className="h-10 w-10 p-0 shrink-0" onClick={onAutoZoom} title="Fit to view (Auto Zoom)">
                 <Maximize2 className="w-4 h-4" />
               </Button>
+            </>
+          )}
+          {setTransformMode && (
+            <>
+              <span className="w-px h-5 bg-gray-600 mx-1 shrink-0" />
+              <Button variant={transformMode === 'position' ? 'default' : 'ghost'} size="sm" className="h-10 w-10 p-0 shrink-0" onClick={() => setTransformMode((m) => m === 'position' ? 'none' : 'position')} title="Move Tool">
+                <Move className="w-4 h-4" />
+              </Button>
+              <Button variant={transformMode === 'rotation' ? 'default' : 'ghost'} size="sm" className="h-10 w-10 p-0 shrink-0" onClick={() => setTransformMode((m) => m === 'rotation' ? 'none' : 'rotation')} title="Rotate Tool">
+                <RotateCw className="w-4 h-4" />
+              </Button>
+              <Button variant={transformMode === 'scale' ? 'default' : 'ghost'} size="sm" className="h-10 w-10 p-0 shrink-0" onClick={() => setTransformMode((m) => m === 'scale' ? 'none' : 'scale')} title="Scale Tool">
+                <Scale className="w-4 h-4" />
+              </Button>
+              {onCameraActiveToggle && (
+                <Button variant={cameraActive ? 'default' : 'ghost'} size="sm" className="h-10 w-10 p-0 shrink-0" onClick={onCameraActiveToggle} title="Camera Controls">
+                  <Video className="w-4 h-4" />
+                </Button>
+              )}
+              {onPerspectiveToggle && (
+                <Button variant={perspectiveActive ? 'default' : 'ghost'} size="sm" className="h-10 w-10 p-0 shrink-0" onClick={onPerspectiveToggle} title="Perspective View">
+                  <Eye className="w-4 h-4" />
+                </Button>
+              )}
             </>
           )}
         </div>

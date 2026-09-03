@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import * as BABYLON from '@babylonjs/core';
 import { GeoWorkspaceArea } from './types';
+import { showToast } from './utils/toast';
 
 interface MinimapProps {
   scene: BABYLON.Scene;
@@ -65,6 +66,65 @@ const Minimap: React.FC<MinimapProps> = ({
   useEffect(() => {
     saveToStorage(savedLocations);
   }, [savedLocations]);
+
+  // Saved PDFs (floor plans, reference docs): uploaded once, kept in localStorage
+  // as a data URL so they're still there next time the workspace is opened,
+  // and can be reopened/hidden on demand instead of re-uploading every visit.
+  interface SavedPdf {
+    id: string;
+    name: string;
+    dataUrl: string;
+  }
+  const PDF_STORAGE_KEY = 'naviz-saved-pdfs';
+  const loadPdfsFromStorage = (): SavedPdf[] => {
+    try {
+      const raw = localStorage.getItem(PDF_STORAGE_KEY);
+      return raw ? (JSON.parse(raw) as SavedPdf[]) : [];
+    } catch {
+      return [];
+    }
+  };
+  const savePdfsToStorage = (pdfs: SavedPdf[]) => {
+    try {
+      localStorage.setItem(PDF_STORAGE_KEY, JSON.stringify(pdfs));
+    } catch {
+      // Most likely a quota error from a large PDF data URL - the in-memory
+      // list still works for this session, just won't persist across reloads.
+      showToast.error('Could not save PDF', 'It may be too large to store in the browser.');
+    }
+  };
+
+  const [savedPdfs, setSavedPdfs] = useState<SavedPdf[]>(() => loadPdfsFromStorage());
+  const [openPdfId, setOpenPdfId] = useState<string | null>(null);
+  const pdfInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    savePdfsToStorage(savedPdfs);
+  }, [savedPdfs]);
+
+  const handlePdfUpload = (file: File | undefined) => {
+    if (!file) return;
+    if (file.type !== 'application/pdf') {
+      showToast.error('Not a PDF file', 'Please choose a .pdf file.');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = reader.result as string;
+      const id = `pdf-${Date.now()}`;
+      setSavedPdfs(prev => [...prev, { id, name: file.name, dataUrl }]);
+      setOpenPdfId(id);
+    };
+    reader.onerror = () => showToast.error('Could not read PDF file');
+    reader.readAsDataURL(file);
+  };
+
+  const removePdf = (id: string) => {
+    setSavedPdfs(prev => prev.filter(p => p.id !== id));
+    setOpenPdfId(prev => (prev === id ? null : prev));
+  };
+
+  const openPdf = savedPdfs.find(p => p.id === openPdfId) || null;
 
   // Save current camera position with a name
   const saveLocation = () => {
@@ -417,6 +477,122 @@ const Minimap: React.FC<MinimapProps> = ({
           </ul>
         </div>
       </div>
+
+      {/* Floor Plans - upload a PDF once, then reopen/hide it on demand instead
+          of re-uploading every visit */}
+      <div style={{
+        marginTop: '16px',
+        padding: '8px',
+        background: '#0f172a',
+        borderRadius: '6px',
+        color: '#f1f5f9'
+      }}>
+        <h4 style={{ marginBottom: '8px', fontSize: '14px' }}>Floor Plans</h4>
+        <input
+          ref={pdfInputRef}
+          type="file"
+          accept="application/pdf"
+          style={{ display: 'none' }}
+          onChange={e => {
+            handlePdfUpload(e.target.files?.[0]);
+            e.target.value = '';
+          }}
+        />
+        <button
+          type="button"
+          className="minimap-button"
+          onClick={() => pdfInputRef.current?.click()}
+          style={{ background: '#10b981', color: '#fff', border: 'none', padding: '4px 12px', borderRadius: '4px', cursor: 'pointer', fontSize: '12px', marginBottom: '8px' }}
+        >
+          Upload PDF
+        </button>
+        <div>
+          <span style={{ fontSize: '12px' }}>Saved: {savedPdfs.length}</span>
+          <ul style={{ maxHeight: '120px', overflowY: 'auto', margin: '8px 0 0', padding: 0, listStyle: 'none' }}>
+            {savedPdfs.map((pdf) => (
+              <li key={pdf.id} style={{
+                background: '#1e293b',
+                color: '#f1f5f9',
+                padding: '6px 8px',
+                borderRadius: '4px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: '8px',
+                marginBottom: '4px'
+              }}>
+                <span style={{ fontWeight: 500, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{pdf.name}</span>
+                <button
+                  type="button"
+                  style={{ fontSize: '11px', background: '#3b82f6', color: '#fff', borderRadius: '4px', border: 'none', padding: '4px 10px', cursor: 'pointer' }}
+                  onClick={() => setOpenPdfId(openPdfId === pdf.id ? null : pdf.id)}
+                >
+                  {openPdfId === pdf.id ? 'Hide' : 'Open'}
+                </button>
+                <button
+                  type="button"
+                  style={{ fontSize: '11px', background: '#64748b', color: '#fff', borderRadius: '4px', border: 'none', padding: '4px 8px', cursor: 'pointer' }}
+                  onClick={() => removePdf(pdf.id)}
+                >
+                  Delete
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </div>
+
+      {/* Centered PDF viewer overlay - opens in the middle of the screen rather
+          than tucked into the minimap panel, since a floor plan needs real space
+          to be readable */}
+      {openPdf && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0, 0, 0, 0.6)',
+            zIndex: 1000,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center'
+          }}
+          onClick={() => setOpenPdfId(null)}
+        >
+          <div
+            style={{
+              width: '80vw',
+              height: '85vh',
+              background: '#0f172a',
+              borderRadius: '8px',
+              boxShadow: '0 10px 40px rgba(0,0,0,0.5)',
+              display: 'flex',
+              flexDirection: 'column',
+              overflow: 'hidden'
+            }}
+            onClick={e => e.stopPropagation()}
+          >
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              padding: '8px 12px',
+              background: '#1e293b',
+              color: '#f1f5f9',
+              fontSize: '13px'
+            }}>
+              <span style={{ fontWeight: 500 }}>{openPdf.name}</span>
+              <button
+                type="button"
+                style={{ fontSize: '12px', background: '#64748b', color: '#fff', borderRadius: '4px', border: 'none', padding: '4px 10px', cursor: 'pointer' }}
+                onClick={() => setOpenPdfId(null)}
+              >
+                Hide
+              </button>
+            </div>
+            <iframe src={openPdf.dataUrl} title={openPdf.name} style={{ border: 'none', flex: 1, background: '#fff' }} />
+          </div>
+        </div>
+      )}
     </div>
   );
 };
