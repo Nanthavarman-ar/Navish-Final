@@ -1352,8 +1352,8 @@ const SceneBrowserPanel: React.FC<{ scene: any; selectedMesh: any; onSelect: (me
   );
 };
 
-const SimulationAnalysisSegment: React.FC<Pick<CustomPanelsSegmentProps, 'featureStates' | 'sceneRef' | 'engineRef' | 'disableFeature' | 'workspaceState' | 'updateState' | 'onFloodToggle' | 'floodOn' | 'onFloodLevelChange' | 'onFloodWaveSpeedChange' | 'sustainabilityReport' | 'siteContextManagerRef' | 'geoSyncManagerRef' | 'moodSceneManagerRef' | 'audioManagerRef'>> = ({
-  featureStates, sceneRef, engineRef, disableFeature, workspaceState, updateState, onFloodToggle, floodOn = false, onFloodLevelChange, onFloodWaveSpeedChange, sustainabilityReport, siteContextManagerRef, geoSyncManagerRef, moodSceneManagerRef, audioManagerRef
+const SimulationAnalysisSegment: React.FC<Pick<CustomPanelsSegmentProps, 'featureStates' | 'sceneRef' | 'engineRef' | 'disableFeature' | 'workspaceState' | 'updateState' | 'onFloodToggle' | 'floodOn' | 'onFloodLevelChange' | 'onFloodWaveSpeedChange' | 'sustainabilityReport' | 'siteContextManagerRef' | 'geoSyncManagerRef' | 'moodSceneManagerRef' | 'audioManagerRef' | 'currentModelId'>> = ({
+  featureStates, sceneRef, engineRef, disableFeature, workspaceState, updateState, onFloodToggle, floodOn = false, onFloodLevelChange, onFloodWaveSpeedChange, sustainabilityReport, siteContextManagerRef, geoSyncManagerRef, moodSceneManagerRef, audioManagerRef, currentModelId
 }) => {
   const floodFallbackPanel = usePanelStack('bottom-left');
   const windTunnelPanel = usePanelStack('top-right');

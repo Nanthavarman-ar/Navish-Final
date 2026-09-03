@@ -1,5 +1,5 @@
 
-import { Engine, Scene, WebXRDefaultExperience, WebXRFeaturesManager } from '@babylonjs/core';
+import { Engine, Scene, WebXRDefaultExperience, WebXRFeaturesManager, WebXRFeatureName } from '@babylonjs/core';
 import { FeatureManager } from './FeatureManager';
 
 export interface VRSessionConfig {
@@ -364,7 +364,7 @@ export class SessionManager {
     // Enable hand tracking if configured
     if (this.vrConfig.enableHandTracking) {
       this.xrExperience.baseExperience.featuresManager.enableFeature(
-        'hand-tracking',
+        WebXRFeatureName.HAND_TRACKING,
         'latest',
         { xrInput: this.xrExperience.input }
       );
@@ -373,7 +373,7 @@ export class SessionManager {
     // Enable hit testing for AR
     if (this.currentSession?.sessionType === 'AR') {
       this.xrExperience.baseExperience.featuresManager.enableFeature(
-        'hit-test',
+        WebXRFeatureName.HIT_TEST,
         'latest'
       );
     }

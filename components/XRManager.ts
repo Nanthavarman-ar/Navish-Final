@@ -1394,9 +1394,10 @@ export class XRManager {
 
   // Enable hand tracking
   private enableHandTracking(featuresManager: WebXRFeaturesManager): void {
+    if (!this.xrExperience) return;
     try {
       featuresManager.enableFeature(WebXRFeatureName.HAND_TRACKING, 'latest', {
-        xrInput: this.xrExperience?.input
+        xrInput: this.xrExperience.input
       }, true, false);
       console.log('Hand tracking enabled');
     } catch (error) {
