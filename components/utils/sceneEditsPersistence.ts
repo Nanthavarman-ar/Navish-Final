@@ -124,10 +124,12 @@ async function getAccessToken(): Promise<string | null> {
 // a hardcoded per-page literal ("workspace", "naviz-studio-main", ...) shared by every model
 // that ever loads on that page, so saving under it would let two unrelated models silently
 // clobber each other's saved edits. currentModelId is the one value that actually identifies
-// the loaded model across a reload (VersionHistoryPanel.tsx and friends use
-// selectedWorkspaceId for room-scoped collab data like annotations/approvals, which is a
-// different, legitimately page-scoped concept - not a bug to fix there, just not the right
-// key for per-model edits).
+// the loaded model across a reload. AnnotationTool, VersionHistoryPanel, and ApprovalPanel
+// (uiSegments.tsx) all now pass currentModelId as their roomId too, for the same reason -
+// they used to pass selectedWorkspaceId on the assumption that was the correct
+// "collaborative room" key, but nothing else in this app actually saves anything under
+// selectedWorkspaceId, so that just meant notes/versions/approvals from every model loaded
+// on the same page bled into each other.
 export async function saveSceneEdits(modelId: string, data: SceneEditsData): Promise<void> {
   const accessToken = await getAccessToken();
   if (!accessToken) return; // not signed in (or session expired) - silently skip, don't spam errors for a background autosave

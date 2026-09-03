@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Scene, Mesh, MeshBuilder, StandardMaterial, DynamicTexture, Color3, Vector3, PointerEventTypes, ArcRotateCamera, Animation } from '@babylonjs/core';
+import { AdvancedDynamicTexture, Rectangle, TextBlock } from '@babylonjs/gui';
 import { X, MapPin, Trash2, Plus } from 'lucide-react';
 import { Button } from './ui/button';
 import { supabase, projectId } from '../supabase/client';
@@ -36,6 +37,11 @@ const AnnotationTool: React.FC<AnnotationToolProps> = ({ scene, roomId, onClose,
   const [pendingPosition, setPendingPosition] = useState<Vector3 | null>(null);
   const [draftText, setDraftText] = useState('');
   const pinMeshesRef = useRef<Map<string, Mesh>>(new Map());
+  // Which note's text popup is currently shown in the 3D scene (click its pin to open,
+  // click again/click elsewhere to close) - separate from the side panel list.
+  const [openNoteId, setOpenNoteId] = useState<string | null>(null);
+  const guiTextureRef = useRef<AdvancedDynamicTexture | null>(null);
+  const popupControlRef = useRef<Rectangle | null>(null);
 
   const getAuthHeaders = useCallback(async () => {
     const { data: { session } } = await supabase.auth.getSession();
@@ -81,16 +87,16 @@ const AnnotationTool: React.FC<AnnotationToolProps> = ({ scene, roomId, onClose,
     // Add pins for new annotations - a billboarded "note" card (not an abstract cone/pin)
     // so it actually reads as a note at a glance, always facing the camera regardless of
     // view angle. renderingGroupId 1 (after the default opaque group 0) makes it draw on
-    // top of nearby glass/transparent surfaces instead of getting lost behind them, and
-    // isPickable=false keeps it out of the way of scene.pick() when placing a new note
-    // right next to an existing one.
+    // top of nearby glass/transparent surfaces instead of getting lost behind them. Pickable
+    // (clicking one opens its text popup, see the click-to-toggle effect below) - the
+    // placement click handler explicitly excludes annotation_pin_* meshes from its own pick
+    // so placing a new note right next to an existing one still hits the model, not the pin.
     annotations.forEach((annotation) => {
       if (pinMeshesRef.current.has(annotation.id)) return;
       const pin = MeshBuilder.CreatePlane(`annotation_pin_${annotation.id}`, { size: 0.4 }, scene);
       pin.position = new Vector3(annotation.position.x, annotation.position.y + 0.28, annotation.position.z);
       pin.billboardMode = Mesh.BILLBOARDMODE_ALL;
       pin.renderingGroupId = 1;
-      pin.isPickable = false;
 
       const texture = new DynamicTexture(`annotation_tex_${annotation.id}`, { width: 128, height: 128 }, scene, true);
       texture.hasAlpha = true;
@@ -140,13 +146,15 @@ const AnnotationTool: React.FC<AnnotationToolProps> = ({ scene, roomId, onClose,
     };
   }, []);
 
-  // Click-to-place: when placing mode is active, the next click on a mesh drops a pin there
+  // Click-to-place: when placing mode is active, the next click on a mesh drops a pin there.
+  // Excludes annotation_pin_* meshes from the pick so placing a note right next to an
+  // existing one still lands on the model surface behind it, not the pin.
   useEffect(() => {
     if (!isPlacing) return;
 
     const observer = scene.onPointerObservable.add((pointerInfo) => {
       if (pointerInfo.type !== PointerEventTypes.POINTERPICK) return;
-      const pickResult = scene.pick(scene.pointerX, scene.pointerY);
+      const pickResult = scene.pick(scene.pointerX, scene.pointerY, (m) => !m.name.startsWith('annotation_pin_'));
       if (pickResult?.hit && pickResult.pickedPoint) {
         setPendingPosition(pickResult.pickedPoint.clone());
         setIsPlacing(false);
@@ -157,6 +165,78 @@ const AnnotationTool: React.FC<AnnotationToolProps> = ({ scene, roomId, onClose,
 
     return () => { scene.onPointerObservable.remove(observer); };
   }, [isPlacing, scene]);
+
+  // Click a pin to open a small readable popup with its text right there in the scene;
+  // click it again (or click elsewhere) to close it. Skipped while placing a new note so the
+  // same click doesn't both toggle a nearby pin's popup and register as a placement miss.
+  useEffect(() => {
+    if (isPlacing) return;
+    const observer = scene.onPointerObservable.add((pointerInfo) => {
+      if (pointerInfo.type !== PointerEventTypes.POINTERPICK) return;
+      const mesh = pointerInfo.pickInfo?.pickedMesh;
+      if (mesh?.name.startsWith('annotation_pin_')) {
+        const id = mesh.name.slice('annotation_pin_'.length);
+        setOpenNoteId((prev) => (prev === id ? null : id));
+      } else {
+        setOpenNoteId(null);
+      }
+    });
+    return () => { scene.onPointerObservable.remove(observer); };
+  }, [isPlacing, scene]);
+
+  // Creates the shared GUI layer the popup card renders into, once.
+  useEffect(() => {
+    const texture = AdvancedDynamicTexture.CreateFullscreenUI('annotation_gui', true, scene);
+    guiTextureRef.current = texture;
+    return () => {
+      texture.dispose();
+      guiTextureRef.current = null;
+    };
+  }, [scene]);
+
+  // Shows/hides the actual popup card for whichever note is currently open, linked to its
+  // pin mesh so it stays positioned above it in screen space as the camera moves.
+  useEffect(() => {
+    const texture = guiTextureRef.current;
+    if (popupControlRef.current) {
+      texture?.removeControl(popupControlRef.current);
+      popupControlRef.current.dispose();
+      popupControlRef.current = null;
+    }
+    if (!openNoteId || !texture) return;
+    const pin = pinMeshesRef.current.get(openNoteId);
+    const annotation = annotations.find((a) => a.id === openNoteId);
+    if (!pin || !annotation) return;
+
+    const card = new Rectangle(`annotation_popup_${openNoteId}`);
+    card.widthInPixels = 190;
+    card.adaptHeightToChildren = true;
+    card.cornerRadius = 8;
+    card.color = '#b45309';
+    card.thickness = 2;
+    card.background = '#fef3c7';
+    card.paddingTopInPixels = 10;
+    card.paddingBottomInPixels = 10;
+    card.paddingLeftInPixels = 12;
+    card.paddingRightInPixels = 12;
+    card.isPointerBlocker = true;
+    // Clicking the card itself (not just its pin) also closes it - a natural "tap to
+    // dismiss" affordance once you're already looking right at the note.
+    card.onPointerClickObservable.add(() => setOpenNoteId(null));
+
+    const text = new TextBlock(`annotation_popup_text_${openNoteId}`, annotation.text);
+    text.color = '#78350f';
+    text.fontSize = 14;
+    text.textWrapping = true;
+    text.resizeToFit = true;
+    card.addControl(text);
+
+    card.linkWithMesh(pin);
+    card.linkOffsetYInPixels = -70;
+
+    texture.addControl(card);
+    popupControlRef.current = card;
+  }, [openNoteId, annotations]);
 
   const handleSaveAnnotation = async () => {
     if (!pendingPosition || !draftText.trim()) return;
@@ -211,11 +291,15 @@ const AnnotationTool: React.FC<AnnotationToolProps> = ({ scene, roomId, onClose,
   // out camera barely appeared to move at all, reading as "clicking a note does nothing".
   const focusAnnotation = (annotation: Annotation) => {
     const camera = scene.activeCamera;
-    if (!(camera instanceof ArcRotateCamera)) return;
-    const target = new Vector3(annotation.position.x, annotation.position.y, annotation.position.z);
-    const targetRadius = Math.min(camera.radius, 6);
-    Animation.CreateAndStartAnimation('annotationFocusTarget', camera, 'target', 30, 20, camera.target.clone(), target, Animation.ANIMATIONLOOPMODE_CONSTANT);
-    Animation.CreateAndStartAnimation('annotationFocusRadius', camera, 'radius', 30, 20, camera.radius, targetRadius, Animation.ANIMATIONLOOPMODE_CONSTANT);
+    if (camera instanceof ArcRotateCamera) {
+      const target = new Vector3(annotation.position.x, annotation.position.y, annotation.position.z);
+      const targetRadius = Math.min(camera.radius, 6);
+      Animation.CreateAndStartAnimation('annotationFocusTarget', camera, 'target', 30, 20, camera.target.clone(), target, Animation.ANIMATIONLOOPMODE_CONSTANT);
+      Animation.CreateAndStartAnimation('annotationFocusRadius', camera, 'radius', 30, 20, camera.radius, targetRadius, Animation.ANIMATIONLOOPMODE_CONSTANT);
+    }
+    // Also opens the note's popup, same as clicking its pin directly - jumping to a note
+    // from the list should let you actually read it, not just point the camera near it.
+    setOpenNoteId(annotation.id);
   };
 
   return (

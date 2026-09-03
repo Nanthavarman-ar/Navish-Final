@@ -807,7 +807,12 @@ const CoreFeaturesSegment: React.FC<Pick<CustomPanelsSegmentProps, 'featureState
     {featureStates.showVersionHistory && (
       <Suspense fallback={<div ref={versionHistoryFallbackPanel.ref} style={versionHistoryFallbackPanel.style} className="fixed right-4 z-40 w-96 max-w-[90vw] h-48 bg-slate-900/95 rounded-xl animate-pulse border border-slate-600" />}>
         <VersionHistoryPanel
-          roomId={selectedWorkspaceId || 'default-room'}
+          // currentModelId, not selectedWorkspaceId - scene saves themselves
+          // (sceneEditsPersistence.ts's saveSceneEdits) are keyed by modelId, so querying
+          // versions under the page-level workspace id here was looking in the wrong place
+          // entirely (and would collide across models sharing a workspace, same class of
+          // bug as AnnotationTool's roomId above).
+          roomId={currentModelId}
           onClose={() => disableFeature('showVersionHistory')}
         />
       </Suspense>
@@ -881,7 +886,11 @@ const CoreFeaturesSegment: React.FC<Pick<CustomPanelsSegmentProps, 'featureState
       <Suspense fallback={featureStates.showAnnotations ? <div className="fixed top-1/2 left-4 z-40 w-80 max-w-[90vw] h-48 bg-slate-900/95 rounded-xl animate-pulse border border-slate-600" /> : null}>
         <AnnotationTool
           scene={sceneRef.current}
-          roomId={selectedWorkspaceId || 'default-room'}
+          // Scoped to the loaded MODEL, not selectedWorkspaceId (a page-level id shared by
+          // every model that ever loads on this page) - notes placed on one model were
+          // showing up (and colliding on delete permissions) on every other model loaded on
+          // the same page/workspace.
+          roomId={currentModelId}
           onClose={() => disableFeature('showAnnotations')}
           visible={!!featureStates.showAnnotations}
         />
@@ -1676,14 +1685,16 @@ const AnalysisFeaturesSegment: React.FC<Pick<CustomPanelsSegmentProps, 'featureS
     )}
     {featureStates.showApproval && sceneRef.current && (
       <Suspense fallback={null}>
-        {/* Was roomId={currentModelId} - a per-loaded-MODEL id ('default-model', or a
-            local-<filename> slug), not the collaborative ROOM id the server's approval
-            storage is actually keyed on (server/index.tsx). Every sibling room-scoped
-            panel (VersionHistoryPanel, AnnotationTool above) uses selectedWorkspaceId;
-            this one didn't, so approval history never correlated with the room's real
-            saved scene/version history, and any two rooms happening to load the same
-            model (or no model at all) would collide/share approval state. */}
-        <ApprovalPanel roomId={selectedWorkspaceId || 'default-room'} onClose={() => disableFeature('showApproval')} />
+        {/* Back to roomId={currentModelId} - the previous fix here moved this to
+            selectedWorkspaceId on the assumption that scene/version history was keyed by
+            the page-level workspace id, but sceneEditsPersistence.ts's saveSceneEdits (the
+            actual scene-save call) has always saved under modelId, not
+            selectedWorkspaceId - so approval history was correlating with the wrong key
+            the whole time, and (per the same bug as AnnotationTool/VersionHistoryPanel
+            above) any two different models loaded on the same page/workspace shared one
+            approval state. currentModelId is what actually identifies the loaded model
+            across a reload. */}
+        <ApprovalPanel roomId={currentModelId} onClose={() => disableFeature('showApproval')} />
       </Suspense>
     )}
     {featureStates.showWalkthroughRecorder && engineRef.current && (
