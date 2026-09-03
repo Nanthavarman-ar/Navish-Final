@@ -4,8 +4,8 @@ import React from 'react';
 import {
   // Core/Essential (7 icons)
   Palette, MapPin, Ruler, Layers, RotateCw, Settings, Sun, ArrowLeftRight, Scale,
-  // UI/Tools (4 icons)
-  ChevronDown, Search, Key, Play,
+  // UI/Tools (3 icons)
+  ChevronDown, Search, Key,
   // AI/Automation (5 icons)
   Brain, Wand2, Hand, Mic, Camera,
   // AR/Spatial/Immersive (5 icons)
@@ -67,8 +67,7 @@ export const featureCategories: FeaturesByCategory = {
   ],
   "UI and Controls": [
     { id: 'showKeyboardShortcuts', name: 'Keyboard Shortcuts', description: 'View keyboard shortcuts', hotkey: '?', icon: Key, category: 'UI and Controls', enabledByDefault: false },
-    { id: 'showDomainSelector', name: 'Domain Selector', description: 'Scope the experience to a specific design domain', hotkey: 'D', icon: Map, category: 'UI and Controls', enabledByDefault: false },
-    { id: 'showPresentationManager', name: 'Presentation Mode', description: 'Enter presentation mode', hotkey: 'F5', icon: Play, category: 'UI and Controls', enabledByDefault: false }
+    { id: 'showDomainSelector', name: 'Domain Selector', description: 'Scope the experience to a specific design domain', hotkey: 'D', icon: Map, category: 'UI and Controls', enabledByDefault: false }
   ],
   "AI and Automation": [
     { id: 'showAIAdvisor', name: 'AI Advisor', description: 'Get AI design suggestions', icon: Brain, category: 'AI and Automation', enabledByDefault: false },

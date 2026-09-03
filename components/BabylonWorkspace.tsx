@@ -385,8 +385,6 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
     showWindTunnelSimulation: false,
     showPathTracing: false,
     showProgressiveLoader: false,
-    showPresentationManager: false,
-    showPresenterMode: false,
     showQuantumSimulationInterface: false,
     showWeather: false,
     showWind: false,
@@ -3773,14 +3771,12 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
       if (key === 'm') { e.preventDefault(); handleFeatureToggle('showMaterialEditor', !featureStates.showMaterialEditor); }
       if (key === 'a') { e.preventDefault(); handleFeatureToggle('showAIAdvisor', !featureStates.showAIAdvisor); }
       if (key === 'u') { e.preventDefault(); handleFeatureToggle('showAutoFurnish', !featureStates.showAutoFurnish); }
-      // The following six hotkeys are all declared on their buttons in
+      // The following hotkeys are all declared on their buttons in
       // config/featureCategories.tsx (and shown to the user via FeatureButton's
       // tooltip/badge) but were never actually bound anywhere - pressing them did
-      // nothing (or, for F5, triggered the browser's native page reload instead,
-      // losing all workspace state).
+      // nothing.
       if (key === '?') { e.preventDefault(); handleFeatureToggle('showKeyboardShortcuts', !featureStates.showKeyboardShortcuts); }
       if (key === 'd' && !e.ctrlKey && !e.metaKey) { e.preventDefault(); handleFeatureToggle('showDomainSelector', !featureStates.showDomainSelector); }
-      if (e.key === 'F5') { e.preventDefault(); handleFeatureToggle('showPresentationManager', !featureStates.showPresentationManager); }
       if (key === 'e' && !e.ctrlKey && !e.metaKey) { e.preventDefault(); handleFeatureToggle('showExport', true); }
       if (key === 'i' && !e.ctrlKey && !e.metaKey) { e.preventDefault(); handleFeatureToggle('showImport', true); }
       if (key === 'n' && !e.ctrlKey && !e.metaKey) { e.preventDefault(); handleFeatureToggle('showAnnotations', !featureStates.showAnnotations); }

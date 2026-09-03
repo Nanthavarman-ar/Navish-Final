@@ -496,7 +496,6 @@ const BeforeAfterPanel = React.lazy(() => import('../BeforeAfterPanel'));
 const SessionInsightsPanel = React.lazy(() => import('../SessionInsightsPanel'));
 const MoodLightingPanel = React.lazy(() => import('../MoodLightingPanel'));
 const IoTSensorsPanel = React.lazy(() => import('../IoTSensorsPanel'));
-const ScenarioTourPanel = React.lazy(() => import('../ScenarioTourPanel'));
 const ARScalePanel = React.lazy(() => import('../ARScalePanel'));
 const SpatialAudioPanel = React.lazy(() => import('../SpatialAudioPanel'));
 const AIAdvisorPanel = React.lazy(() => import('../AIAdvisorPanel'));
@@ -589,7 +588,6 @@ export const CustomPanelsSegment: React.FC<CustomPanelsSegmentProps> = (props) =
     <CoreFeaturesSegment {...props} />
     <NavigationControlsSegment {...props} />
     <SimulationAnalysisSegment {...props} />
-    <AdvancedFeaturesSegment {...props} />
     <AdditionalSimulationSegment {...props} />
     <AIFeaturesSegment {...props} />
     <AnalysisFeaturesSegment {...props} />
@@ -1484,33 +1482,10 @@ const SimulationAnalysisSegment: React.FC<Pick<CustomPanelsSegmentProps, 'featur
   );
 };
 
-// Additional sub-segment components for CustomPanels
-const AdvancedFeaturesSegment: React.FC<Pick<CustomPanelsSegmentProps, 'featureStates' | 'sceneRef' | 'disableFeature' | 'scenarioManagerRef'>> = ({
-  featureStates, sceneRef, disableFeature, scenarioManagerRef
-}) => (
-  <>
-    {featureStates.showPresentationManager && sceneRef.current && (
-      <Suspense fallback={null}>
-        <ScenarioTourPanel
-          scenarioManager={scenarioManagerRef?.current || null}
-          title="Presentation Mode"
-          autoStart
-          onClose={() => disableFeature('showPresentationManager')}
-        />
-      </Suspense>
-    )}
-    {featureStates.showPresenterMode && sceneRef.current && (
-      <Suspense fallback={null}>
-        <ScenarioTourPanel
-          scenarioManager={scenarioManagerRef?.current || null}
-          title="Presenter Mode"
-          autoStart
-          onClose={() => disableFeature('showPresenterMode')}
-        />
-      </Suspense>
-    )}
-  </>
-);
+// Presentation Mode / Presenter Mode (both drove the same ScenarioTourPanel auto-rotate
+// tour) removed at the user's request - the underlying camera transition had repeated
+// correctness issues (see ScenarioManager.ts history) that made it land away from the
+// model/show a blank view. Sub-segment intentionally deleted rather than left as a no-op.
 
 const AdditionalSimulationSegment: React.FC<Pick<CustomPanelsSegmentProps, 'featureStates' | 'sceneRef' | 'disableFeature' | 'onRainToggle' | 'rainOn' | 'rainIntensity' | 'onRainIntensityChange' | 'onSnowToggle' | 'snowOn' | 'particleSize' | 'onParticleSizeChange' | 'currentModelId'>> = ({
   featureStates, sceneRef, disableFeature, onRainToggle, rainOn = false, rainIntensity = 1, onRainIntensityChange,
