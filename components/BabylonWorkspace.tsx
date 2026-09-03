@@ -569,6 +569,7 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
     homeViewRef.current = null;
     scenarioManagerRef.current?.setHomeCenter(null);
     sceneEditsRef.current = { meshes: {} };
+    setFloorPlans([]);
 
     // Dispose whatever the previous model loaded before importing the next one,
     // otherwise this and the prior model's meshes both end up in the scene at
@@ -698,6 +699,9 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
               homeViewRef.current = { alpha: home.alpha, beta: home.beta, radius: home.radius, target };
               scenarioManagerRef.current?.setHomeCenter(target);
             }
+            // Restores the model's saved floor plan PDFs on this device too (see
+            // handleFloorPlansChange/Minimap.tsx) - previously localStorage-only.
+            setFloorPlans(savedEdits.floorPlans || []);
           });
           removePlaceholderGeometry(scene);
           // Some exported CAD/BIM files mark certain nodes hidden (e.g. glTF's
@@ -931,6 +935,16 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
   // pure bounds-only auto-zoom. Cleared whenever a new model is loaded (see the model-load
   // effect above) since a saved view only makes sense for the model it was captured on.
   const homeViewRef = React.useRef<{ alpha: number; beta: number; radius: number; target: Vector3 } | null>(null);
+
+  // PDF floor plans (Minimap panel) - real React state (not just sceneEditsRef) so Minimap
+  // re-renders with the model's saved plans once loadSceneEdits resolves, instead of only
+  // ever seeing whatever was in local state when it first mounted.
+  const [floorPlans, setFloorPlans] = React.useState<SceneEditsData['floorPlans']>([]);
+  const handleFloorPlansChange = React.useCallback((next: SceneEditsData['floorPlans']) => {
+    setFloorPlans(next);
+    sceneEditsRef.current = { ...sceneEditsRef.current, floorPlans: next };
+    saveSceneEdits(currentModelId, sceneEditsRef.current);
+  }, [currentModelId]);
 
   const setHomeView = React.useCallback(() => {
     const camera = cameraRef.current;
@@ -4273,7 +4287,9 @@ const getCategoryDescription = (categoryName: string): string => {
               onFloodLevelChange,
               onFloodWaveSpeedChange,
               workspaceState,
-              updateState
+              updateState,
+              floorPlans,
+              onFloorPlansChange: handleFloorPlansChange
             })}
             {layoutMode === 'immersive' && (
               <div className="absolute top-4 left-1/2 transform -translate-x-1/2 z-20">

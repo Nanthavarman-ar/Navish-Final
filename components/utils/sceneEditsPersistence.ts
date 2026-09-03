@@ -25,6 +25,12 @@ export interface SavedHomeView {
   target: { x: number; y: number; z: number };
 }
 
+export interface SavedFloorPlan {
+  id: string;
+  name: string;
+  previewImage: string; // rendered PNG data URL of the PDF's first page
+}
+
 export interface SceneEditsData {
   meshes: Record<string, SavedMeshEdit>;
   // The camera view captured by the workspace's "Set" button (BabylonWorkspace.tsx's
@@ -32,6 +38,9 @@ export interface SceneEditsData {
   // Presentation Mode's reference point are the same on every device, not just the browser
   // that clicked Set.
   homeView?: SavedHomeView;
+  // PDF floor plans uploaded via the Minimap panel - previously kept only in this browser's
+  // localStorage (per Minimap.tsx), so they didn't follow the model to another device.
+  floorPlans?: SavedFloorPlan[];
 }
 
 // Real model meshes only - loadedModelMeshesRef (BabylonWorkspace.tsx) already scopes this

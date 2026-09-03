@@ -3,6 +3,12 @@ import * as BABYLON from '@babylonjs/core';
 import { GeoWorkspaceArea } from './types';
 import { showToast } from './utils/toast';
 
+interface SavedPdf {
+  id: string;
+  name: string;
+  previewImage: string; // rendered PNG data URL of the PDF's first page
+}
+
 interface MinimapProps {
   scene: BABYLON.Scene;
   camera: BABYLON.Camera;
@@ -10,6 +16,12 @@ interface MinimapProps {
   selectedWorkspaceId?: string;
   onWorkspaceSelect?: (workspaceId: string) => void;
   onCameraMove?: (position: BABYLON.Vector3) => void;
+  // Floor plan PDFs - controlled by the parent (BabylonWorkspace.tsx), which persists them
+  // to the per-model backend record alongside mesh edits/Home view. Previously this
+  // component owned the list itself via localStorage, which meant plans didn't follow the
+  // model to another device and weren't scoped to which model they were uploaded for.
+  floorPlans?: SavedPdf[];
+  onFloorPlansChange?: (next: SavedPdf[]) => void;
 }
 
 const Minimap: React.FC<MinimapProps> = ({
@@ -18,7 +30,9 @@ const Minimap: React.FC<MinimapProps> = ({
   workspaces = [],
   selectedWorkspaceId,
   onWorkspaceSelect,
-  onCameraMove
+  onCameraMove,
+  floorPlans = [],
+  onFloorPlansChange
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [isVisible, setIsVisible] = useState(true);
@@ -67,50 +81,23 @@ const Minimap: React.FC<MinimapProps> = ({
     saveToStorage(savedLocations);
   }, [savedLocations]);
 
-  // Saved PDFs (floor plans, reference docs): uploaded once, kept in localStorage as a
-  // rendered preview image so they're still there next time the workspace is opened, and
-  // can be reopened/hidden on demand instead of re-uploading every visit.
+  // Saved PDFs (floor plans, reference docs): the list itself is controlled by the parent
+  // (floorPlans/onFloorPlansChange props - see MinimapProps) so it persists per-model on the
+  // backend and follows the model to any device, not just this browser. Only which one is
+  // currently open is local UI state.
   //
   // "Open" used to pop the full PDF up in a fixed inset-0 overlay covering the whole
   // screen - that blocked the 3D view behind it entirely. Now it draws the rendered page
   // directly onto the minimap's own small canvas (see the draw effect below) as a marked
   // underlay beneath the camera/object dots, so it stays contained to the minimap's own
   // footprint instead of taking over the view.
-  interface SavedPdf {
-    id: string;
-    name: string;
-    previewImage: string; // rendered PNG data URL of the PDF's first page
-  }
-  const PDF_STORAGE_KEY = 'naviz-saved-pdfs';
-  const loadPdfsFromStorage = (): SavedPdf[] => {
-    try {
-      const raw = localStorage.getItem(PDF_STORAGE_KEY);
-      return raw ? (JSON.parse(raw) as SavedPdf[]) : [];
-    } catch {
-      return [];
-    }
-  };
-  const savePdfsToStorage = (pdfs: SavedPdf[]) => {
-    try {
-      localStorage.setItem(PDF_STORAGE_KEY, JSON.stringify(pdfs));
-    } catch {
-      // Most likely a quota error from a large rendered image - the in-memory list still
-      // works for this session, just won't persist across reloads.
-      showToast.error('Could not save PDF', 'It may be too large to store in the browser.');
-    }
-  };
-
-  const [savedPdfs, setSavedPdfs] = useState<SavedPdf[]>(() => loadPdfsFromStorage());
+  const savedPdfs = floorPlans;
   const [openPdfId, setOpenPdfId] = useState<string | null>(null);
   const pdfInputRef = useRef<HTMLInputElement>(null);
   // Loaded <img> elements for the currently-open preview, keyed by pdf id - the draw
   // effect below reads from this cache each tick rather than re-decoding the data URL
   // every frame.
   const pdfImageCacheRef = useRef<Map<string, HTMLImageElement>>(new Map());
-
-  useEffect(() => {
-    savePdfsToStorage(savedPdfs);
-  }, [savedPdfs]);
 
   const handlePdfUpload = async (file: File | undefined) => {
     if (!file) return;
@@ -142,7 +129,7 @@ const Minimap: React.FC<MinimapProps> = ({
       await page.render({ canvas, canvasContext: context, viewport }).promise;
 
       const id = `pdf-${Date.now()}`;
-      setSavedPdfs(prev => [...prev, { id, name: file.name, previewImage: canvas.toDataURL('image/png') }]);
+      onFloorPlansChange?.([...savedPdfs, { id, name: file.name, previewImage: canvas.toDataURL('image/png') }]);
       setOpenPdfId(id);
     } catch (error) {
       showToast.error('Could not read PDF file', error instanceof Error ? error.message : undefined);
@@ -150,7 +137,7 @@ const Minimap: React.FC<MinimapProps> = ({
   };
 
   const removePdf = (id: string) => {
-    setSavedPdfs(prev => prev.filter(p => p.id !== id));
+    onFloorPlansChange?.(savedPdfs.filter(p => p.id !== id));
     setOpenPdfId(prev => (prev === id ? null : prev));
     pdfImageCacheRef.current.delete(id);
   };
