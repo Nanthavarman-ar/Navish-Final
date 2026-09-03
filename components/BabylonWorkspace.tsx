@@ -16,7 +16,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 import { Separator } from './ui/separator';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from './ui/dropdown-menu';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
-import { Maximize, MapPin, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Move, RotateCw, Maximize2, X, FlipHorizontal, Trash2 } from 'lucide-react';
+import { Maximize, MapPin, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Move, RotateCw, Maximize2, X, FlipHorizontal, Trash2, Home } from 'lucide-react';
 
 // Import proper hooks from hooks directory
 import { useFeatureStates, UseFeatureStatesReturn } from '../hooks/useFeatureStates';
@@ -562,6 +562,11 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
       return match ? `.${match[1].toLowerCase()}` : undefined;
     })();
 
+    // A saved Home view (see setHomeView/runAutoZoom further down) only makes sense for the
+    // model it was captured on - carrying it over to whatever loads next could frame empty
+    // space or the wrong object entirely.
+    homeViewRef.current = null;
+
     // Dispose whatever the previous model loaded before importing the next one,
     // otherwise this and the prior model's meshes both end up in the scene at
     // once with no way to remove the old one from the UI.
@@ -900,6 +905,30 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
   const weatherSnowRef = React.useRef<InstanceType<typeof ParticleSystem> | null>(null);
   const floodWaterRef = React.useRef<{ mesh: Mesh; material: any; bodyMesh: Mesh; bodyMaterial: any; floorY: number } | null>(null);
 
+  // "Home" camera view - captured on demand via the Set button next to Fit, so Fit can
+  // return to the exact same position/angle every time instead of recomputing bounds fresh
+  // on each click (which can land differently depending on what's currently visible/
+  // selected at that moment). Closer to a SketchUp-style "reset to a saved position" than a
+  // pure bounds-only auto-zoom. Cleared whenever a new model is loaded (see the model-load
+  // effect above) since a saved view only makes sense for the model it was captured on.
+  const homeViewRef = React.useRef<{ alpha: number; beta: number; radius: number; target: Vector3 } | null>(null);
+
+  const setHomeView = React.useCallback(() => {
+    const camera = cameraRef.current;
+    if (!camera || !(camera as any).setTarget) {
+      showToast.info('Switch to Orbit mode to set a home view');
+      return;
+    }
+    const arcCam = camera as ArcRotateCamera;
+    homeViewRef.current = {
+      alpha: arcCam.alpha,
+      beta: arcCam.beta,
+      radius: arcCam.radius,
+      target: arcCam.target.clone()
+    };
+    showToast.success('Home view saved', 'Fit will return here from now on');
+  }, []);
+
   // Auto zoom: frame whole model area (all meshes; prefer model, exclude ground/defaultBox when imported)
   const runAutoZoom = React.useCallback(() => {
     const scene = sceneRef.current;
@@ -910,6 +939,19 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
       return;
     }
     const arcCam = camera as ArcRotateCamera;
+
+    // A saved Home view always wins once one exists - Fit becomes "return to my saved
+    // position" instead of a fresh bounds computation (see homeViewRef above).
+    const home = homeViewRef.current;
+    if (home) {
+      arcCam.setTarget(home.target);
+      arcCam.alpha = home.alpha;
+      arcCam.beta = home.beta;
+      arcCam.radius = home.radius;
+      showToast.success('Returned to saved view');
+      return;
+    }
+
     const alwaysExclude = (m: AbstractMesh) => m.name && (m.name.startsWith('measure_') || m.name.startsWith('preview_') || m.name.startsWith('measurement_'));
     const defaultScene = (m: AbstractMesh) => m.name && (/^ground$/i.test(m.name) || /^defaultBox$/i.test(m.name));
     const getBounds = (skipDefault: boolean) => {
@@ -4064,16 +4106,28 @@ const getCategoryDescription = (categoryName: string): string => {
               role="img"
               aria-label="Babylon.js 3D Canvas"
             />
-            <Button
-              variant="secondary"
-              size="sm"
-              className="absolute bottom-3 left-3 h-8 px-2 gap-1 bg-gray-800/90 hover:bg-gray-700 border border-gray-600 text-white text-xs z-10"
-              title="Fit to view (Auto Zoom)"
-              onClick={runAutoZoom}
-            >
-              <Maximize className="w-4 h-4" />
-              Fit
-            </Button>
+            <div className="absolute bottom-3 left-3 flex items-center gap-2 z-10">
+              <Button
+                variant="secondary"
+                size="sm"
+                className="h-8 px-2 gap-1 bg-gray-800/90 hover:bg-gray-700 border border-gray-600 text-white text-xs"
+                title="Fit to view - returns to the saved Home view if one is set, otherwise frames the whole model"
+                onClick={runAutoZoom}
+              >
+                <Maximize className="w-4 h-4" />
+                Fit
+              </Button>
+              <Button
+                variant="secondary"
+                size="sm"
+                className="h-8 px-2 gap-1 bg-gray-800/90 hover:bg-gray-700 border border-gray-600 text-white text-xs"
+                title="Save the current camera position/angle as Home - Fit will return here every time"
+                onClick={setHomeView}
+              >
+                <Home className="w-4 h-4" />
+                Set
+              </Button>
+            </div>
             {workspaceState.selectedMesh && (
               <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-40 flex items-center gap-1 bg-gray-900/95 border border-cyan-500/20 rounded-lg shadow-2xl px-2 py-1.5 text-white">
                 <span className="text-xs text-gray-300 px-2 max-w-[140px] truncate" title={workspaceState.selectedMesh.name}>
