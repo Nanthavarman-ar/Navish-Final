@@ -1,8 +1,9 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { X, BarChart3, TrendingUp } from 'lucide-react';
 import type { CostEstimator, CostBreakdown } from './CostEstimator';
 import { usePanelStack } from '../hooks/usePanelStack';
 import { USD_TO_INR } from './utils/currency';
+import { loadSceneEdits, savePartialFeatureState } from './utils/sceneEditsPersistence';
 
 interface ROICalculatorPanelProps {
   costEstimator: CostEstimator | null;
@@ -14,6 +15,37 @@ const ROICalculatorPanel: React.FC<ROICalculatorPanelProps> = ({ costEstimator, 
   const { ref: panelRef, style: panelStyle } = usePanelStack('top-right');
   const [annualReturn, setAnnualReturn] = useState(0);
   const [horizonYears, setHorizonYears] = useState(10);
+  // Skips the very first save-triggering render (the one caused by loading saved values
+  // back in below) - without this, restoring a saved annualReturn/horizonYears would
+  // immediately re-save the exact same values right back, a harmless but pointless network
+  // round trip on every panel open.
+  const hasLoadedRef = useRef(false);
+
+  useEffect(() => {
+    hasLoadedRef.current = false;
+    let cancelled = false;
+    loadSceneEdits(modelId).then((data) => {
+      if (cancelled) return;
+      const saved = data?.features?.roiInputs;
+      if (saved) {
+        setAnnualReturn(saved.annualReturn);
+        setHorizonYears(saved.horizonYears);
+      }
+      hasLoadedRef.current = true;
+    });
+    return () => { cancelled = true; };
+  }, [modelId]);
+
+  // Debounced - these two inputs change continuously while dragging the slider/typing, and
+  // this model's saved record only needs to reflect where the user left it, not every
+  // intermediate value.
+  useEffect(() => {
+    if (!hasLoadedRef.current) return;
+    const timer = setTimeout(() => {
+      savePartialFeatureState(modelId, { roiInputs: { annualReturn, horizonYears } });
+    }, 800);
+    return () => clearTimeout(timer);
+  }, [modelId, annualReturn, horizonYears]);
 
   const costBreakdown: CostBreakdown | null = useMemo(() => {
     if (!costEstimator) return null;

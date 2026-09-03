@@ -1464,7 +1464,7 @@ const SimulationAnalysisSegment: React.FC<Pick<CustomPanelsSegmentProps, 'featur
       {featureStates.showWindTunnelSimulation && sceneRef.current && (
         <Suspense fallback={<div ref={windTunnelPanel.ref} style={windTunnelPanel.style} className="fixed right-4 z-50 w-80 max-w-[90vw] bg-slate-800 p-4 rounded">Loading Wind...</div>}>
           <div ref={windTunnelPanel.ref} style={windTunnelPanel.style} className="fixed right-4 z-50 w-96 max-w-[90vw] max-h-[80vh] overflow-y-auto bg-slate-800 border border-slate-600 rounded-lg shadow-xl p-4">
-            <WindTunnelSimulation scene={sceneRef.current} />
+            <WindTunnelSimulation scene={sceneRef.current} modelId={currentModelId} />
             <div className="mt-3 pt-3 border-t border-slate-600">
               <Button size="sm" variant="outline" onClick={() => disableFeature('showWindTunnelSimulation')} className="w-full">Close</Button>
             </div>
@@ -1503,9 +1503,9 @@ const AdvancedFeaturesSegment: React.FC<Pick<CustomPanelsSegmentProps, 'featureS
   </>
 );
 
-const AdditionalSimulationSegment: React.FC<Pick<CustomPanelsSegmentProps, 'featureStates' | 'sceneRef' | 'disableFeature' | 'onRainToggle' | 'rainOn' | 'rainIntensity' | 'onRainIntensityChange' | 'onSnowToggle' | 'snowOn' | 'particleSize' | 'onParticleSizeChange'>> = ({
+const AdditionalSimulationSegment: React.FC<Pick<CustomPanelsSegmentProps, 'featureStates' | 'sceneRef' | 'disableFeature' | 'onRainToggle' | 'rainOn' | 'rainIntensity' | 'onRainIntensityChange' | 'onSnowToggle' | 'snowOn' | 'particleSize' | 'onParticleSizeChange' | 'currentModelId'>> = ({
   featureStates, sceneRef, disableFeature, onRainToggle, rainOn = false, rainIntensity = 1, onRainIntensityChange,
-  onSnowToggle, snowOn = false, particleSize = 1, onParticleSizeChange
+  onSnowToggle, snowOn = false, particleSize = 1, onParticleSizeChange, currentModelId
 }) => {
   const weatherPanel = usePanelStack('bottom-right');
   return (
@@ -1633,6 +1633,7 @@ const AnalysisFeaturesSegment: React.FC<Pick<CustomPanelsSegmentProps, 'featureS
           selectedMesh={workspaceState.selectedMesh}
           bimManager={bimManagerRef?.current ?? undefined}
           simulationManager={simulationManagerRef?.current ?? undefined}
+          modelId={currentModelId}
         />
       </Suspense>
     )}
@@ -1642,6 +1643,7 @@ const AnalysisFeaturesSegment: React.FC<Pick<CustomPanelsSegmentProps, 'featureS
           scene={sceneRef.current}
           engine={engineRef.current}
           onClose={() => disableFeature('showBeforeAfter')}
+          modelId={currentModelId}
         />
       </Suspense>
     )}

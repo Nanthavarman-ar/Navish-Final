@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { Engine, Scene, Tools } from '@babylonjs/core';
 // Tools.CreateScreenshotUsingRenderTargetAsync is a stub that always throws
 // until this side-effect module patches the real implementation onto it -
@@ -9,14 +9,16 @@ import { X, Activity, Camera as CameraIcon, RotateCcw } from 'lucide-react';
 import { Button } from './ui/button';
 import { showToast } from './utils/toast';
 import { usePanelStack } from '../hooks/usePanelStack';
+import { loadSceneEdits, savePartialFeatureState } from './utils/sceneEditsPersistence';
 
 interface BeforeAfterPanelProps {
   scene: Scene;
   engine: Engine;
   onClose: () => void;
+  modelId?: string;
 }
 
-const BeforeAfterPanel: React.FC<BeforeAfterPanelProps> = ({ scene, engine, onClose }) => {
+const BeforeAfterPanel: React.FC<BeforeAfterPanelProps> = ({ scene, engine, onClose, modelId }) => {
   const { ref: panelRef, style: panelStyle } = usePanelStack('bottom-left');
   const [beforeImage, setBeforeImage] = useState<string | null>(null);
   const [afterImage, setAfterImage] = useState<string | null>(null);
@@ -24,6 +26,21 @@ const BeforeAfterPanel: React.FC<BeforeAfterPanelProps> = ({ scene, engine, onCl
   const [sliderPos, setSliderPos] = useState(50);
   const containerRef = useRef<HTMLDivElement>(null);
   const draggingRef = useRef(false);
+
+  // Restores this model's saved before/after snapshots - previously these were pure local
+  // state, gone the moment the panel closed or the page reloaded, let alone on another
+  // device.
+  useEffect(() => {
+    if (!modelId) return;
+    let cancelled = false;
+    loadSceneEdits(modelId).then((data) => {
+      if (cancelled) return;
+      const saved = data?.features?.beforeAfter;
+      if (saved?.beforeImage) setBeforeImage(saved.beforeImage);
+      if (saved?.afterImage) setAfterImage(saved.afterImage);
+    });
+    return () => { cancelled = true; };
+  }, [modelId]);
 
   const capture = useCallback(async (which: 'before' | 'after') => {
     const camera = scene.activeCamera;
@@ -48,6 +65,14 @@ const BeforeAfterPanel: React.FC<BeforeAfterPanelProps> = ({ scene, engine, onCl
       ]);
       if (which === 'before') setBeforeImage(dataUrl);
       else setAfterImage(dataUrl);
+      if (modelId) {
+        savePartialFeatureState(modelId, {
+          beforeAfter: {
+            beforeImage: which === 'before' ? dataUrl : beforeImage ?? undefined,
+            afterImage: which === 'after' ? dataUrl : afterImage ?? undefined,
+          },
+        });
+      }
       showToast.success(`${which === 'before' ? 'Before' : 'After'} snapshot captured`);
     } catch (error) {
       console.error(`Failed to capture ${which} screenshot:`, error);
@@ -55,7 +80,7 @@ const BeforeAfterPanel: React.FC<BeforeAfterPanelProps> = ({ scene, engine, onCl
     } finally {
       setIsCapturing(null);
     }
-  }, [scene, engine]);
+  }, [scene, engine, modelId, beforeImage, afterImage]);
 
   const handlePointerMove = useCallback((clientX: number) => {
     if (!draggingRef.current || !containerRef.current) return;
@@ -68,6 +93,7 @@ const BeforeAfterPanel: React.FC<BeforeAfterPanelProps> = ({ scene, engine, onCl
     setBeforeImage(null);
     setAfterImage(null);
     setSliderPos(50);
+    if (modelId) savePartialFeatureState(modelId, { beforeAfter: {} });
   };
 
   return (

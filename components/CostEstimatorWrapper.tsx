@@ -6,6 +6,7 @@ import { SimulationManager } from './SimulationManager';
 import { FeatureManager, DeviceCapabilities } from './FeatureManager';
 import { CostBreakdownSection } from './BabylonWorkspace/ui/CostBreakdownSection';
 import styles from './CostEstimatorWrapper.module.css';
+import { loadSceneEdits, savePartialFeatureState } from './utils/sceneEditsPersistence';
 
 interface CostEstimatorWrapperProps {
   scene: BABYLON.Scene;
@@ -13,6 +14,7 @@ interface CostEstimatorWrapperProps {
   onCostUpdate?: (totalCost: number, breakdown: any) => void;
   bimManager?: BIMManager;
   simulationManager?: SimulationManager;
+  modelId?: string;
 }
 
 interface CostState {
@@ -28,7 +30,8 @@ const CostEstimatorWrapper: React.FC<CostEstimatorWrapperProps> = ({
   selectedMesh,
   onCostUpdate,
   bimManager: externalBimManager,
-  simulationManager: externalSimulationManager
+  simulationManager: externalSimulationManager,
+  modelId
 }) => {
   // Helper functions for element type determination
   const determineElementTypeFallback = (name: string): BIMElement['type'] => {
@@ -100,6 +103,36 @@ const CostEstimatorWrapper: React.FC<CostEstimatorWrapperProps> = ({
 
   const [region, setRegion] = useState<string>('US_East');
   const [budget, setBudget] = useState<number>(100000);
+
+  // Restores this model's saved region/budget/manual breakdown overrides - previously all
+  // three reset to the hardcoded defaults every time this panel was reopened, let alone on
+  // another device.
+  useEffect(() => {
+    if (!modelId) return;
+    let cancelled = false;
+    loadSceneEdits(modelId).then((data) => {
+      if (cancelled) return;
+      const saved = data?.features?.costEstimator;
+      if (!saved) return;
+      setRegion(saved.region);
+      setBudget(saved.budget);
+      if (saved.breakdownOverrides) {
+        breakdownOverridesRef.current = new Map(Object.entries(saved.breakdownOverrides));
+      }
+    });
+    return () => { cancelled = true; };
+  }, [modelId]);
+
+  const persistCostEstimatorState = (nextRegion: string, nextBudget: number) => {
+    if (!modelId) return;
+    savePartialFeatureState(modelId, {
+      costEstimator: {
+        region: nextRegion,
+        budget: nextBudget,
+        breakdownOverrides: Object.fromEntries(breakdownOverridesRef.current),
+      },
+    });
+  };
 
   // The underlying CostEstimator database is USD-denominated; this only
   // converts for display when India is selected (indicative rate, not a
@@ -462,6 +495,7 @@ const CostEstimatorWrapper: React.FC<CostEstimatorWrapperProps> = ({
     const savedBreakdown = { ...breakdownDraft };
 
     breakdownOverridesRef.current.set(costState.selectedElement.id, savedBreakdown);
+    persistCostEstimatorState(region, budget);
 
     setCostState(prev => ({ ...prev, totalCost: savedBreakdown.total, breakdown: savedBreakdown }));
     setIsEditingBreakdown(false);
@@ -473,6 +507,7 @@ const CostEstimatorWrapper: React.FC<CostEstimatorWrapperProps> = ({
   // Handle budget changes
   const handleBudgetChange = (newBudget: number) => {
     setBudget(newBudget);
+    persistCostEstimatorState(region, newBudget);
     if (costEstimatorRef.current) {
       costEstimatorRef.current.setClientBudget(newBudget);
       // Recalculate if we have a selected element
@@ -485,6 +520,7 @@ const CostEstimatorWrapper: React.FC<CostEstimatorWrapperProps> = ({
   // Handle region changes
   const handleRegionChange = (newRegion: string) => {
     setRegion(newRegion);
+    persistCostEstimatorState(newRegion, budget);
     // Recalculate if we have a selected element
     if (selectedMesh) {
       calculateMeshCost(selectedMesh);

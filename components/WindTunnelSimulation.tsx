@@ -1,10 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
 import * as BABYLON from '@babylonjs/core';
 import './WindTunnelSimulation.css';
+import { loadSceneEdits, savePartialFeatureState } from './utils/sceneEditsPersistence';
 
 interface WindTunnelSimulationProps {
   scene: BABYLON.Scene;
   onWindChange?: (windData: WindData) => void;
+  modelId?: string;
 }
 
 interface WindData {
@@ -14,12 +16,41 @@ interface WindData {
   temperature: number; // celsius
 }
 
-const WindTunnelSimulation: React.FC<WindTunnelSimulationProps> = ({ scene, onWindChange }) => {
+const WindTunnelSimulation: React.FC<WindTunnelSimulationProps> = ({ scene, onWindChange, modelId }) => {
   const [windDirection, setWindDirection] = useState<number>(0); // 0 = North, 90 = East
   const [windSpeed, setWindSpeed] = useState<number>(5); // m/s
   const [turbulence, setTurbulence] = useState<number>(0.3);
   const [temperature, setTemperature] = useState<number>(20);
   const [isActive, setIsActive] = useState<boolean>(false);
+  // Restores this model's last wind settings instead of always resetting to the defaults
+  // above - see the debounced save effect further down for the other half of this.
+  const hasLoadedWindRef = useRef(false);
+
+  useEffect(() => {
+    if (!modelId) return;
+    hasLoadedWindRef.current = false;
+    let cancelled = false;
+    loadSceneEdits(modelId).then((data) => {
+      if (cancelled) return;
+      const saved = data?.features?.windTunnel;
+      if (saved) {
+        setWindDirection(saved.windDirection);
+        setWindSpeed(saved.windSpeed);
+        setTurbulence(saved.turbulence);
+        setTemperature(saved.temperature);
+      }
+      hasLoadedWindRef.current = true;
+    });
+    return () => { cancelled = true; };
+  }, [modelId]);
+
+  useEffect(() => {
+    if (!modelId || !hasLoadedWindRef.current) return;
+    const timer = setTimeout(() => {
+      savePartialFeatureState(modelId, { windTunnel: { windDirection, windSpeed, turbulence, temperature } });
+    }, 800);
+    return () => clearTimeout(timer);
+  }, [modelId, windDirection, windSpeed, turbulence, temperature]);
 
   const particleSystemRef = useRef<BABYLON.ParticleSystem | null>(null);
   const emitterRef = useRef<BABYLON.Mesh | null>(null);

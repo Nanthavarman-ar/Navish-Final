@@ -31,6 +31,23 @@ export interface SavedFloorPlan {
   previewImage: string; // rendered PNG data URL of the PDF's first page
 }
 
+// User-entered state for the analysis-tool panels that have real editable inputs (not the
+// ones that are pure live-computed reports/one-shot exports with nothing to save - Cost
+// Estimation's manual overrides are the exception, see costEstimator below). Grouped under
+// one key so each panel's save only has to merge this one sub-object (see
+// savePartialSceneEdits) rather than the whole top-level record.
+export interface SavedFeatureState {
+  budgetTierOverrides?: Record<string, { materials: number; total: number }>;
+  roiInputs?: { annualReturn: number; horizonYears: number };
+  beforeAfter?: { beforeImage?: string; afterImage?: string };
+  windTunnel?: { windDirection: number; windSpeed: number; turbulence: number; temperature: number };
+  costEstimator?: {
+    region: string;
+    budget: number;
+    breakdownOverrides?: Record<string, { material: number; labor: number; equipment: number; overhead: number; total: number }>;
+  };
+}
+
 export interface SceneEditsData {
   meshes: Record<string, SavedMeshEdit>;
   // The camera view captured by the workspace's "Set" button (BabylonWorkspace.tsx's
@@ -41,6 +58,7 @@ export interface SceneEditsData {
   // PDF floor plans uploaded via the Minimap panel - previously kept only in this browser's
   // localStorage (per Minimap.tsx), so they didn't follow the model to another device.
   floorPlans?: SavedFloorPlan[];
+  features?: SavedFeatureState;
 }
 
 // Real model meshes only - loadedModelMeshesRef (BabylonWorkspace.tsx) already scopes this
@@ -121,6 +139,37 @@ export async function saveSceneEdits(modelId: string, data: SceneEditsData): Pro
     });
   } catch (error) {
     console.error('Failed to auto-save scene edits:', error);
+  }
+}
+
+// Merge-and-save a single feature panel's own slice of `features` without needing every
+// panel to route through BabylonWorkspace.tsx's central sceneEditsRef (that ref only exists
+// there; the panels using this - CostEstimatorWrapper, ROICalculatorPanel, BudgetTierPanel,
+// BeforeAfterPanel, WindTunnelSimulation - are separate lazy-loaded components several
+// levels deep in uiSegments.tsx, and threading a shared merge target down to all of them
+// would mean plumbing new props through half a dozen intermediate segment components).
+// Read-modify-write instead: fetches the current record, merges `patch.features` one level
+// deep into the existing `features` (so saving ROI inputs doesn't wipe out an already-saved
+// Wind Tunnel setting), then saves the whole merged record. This has the same small
+// last-write-wins race a save-only approach would if two panels save within the same
+// instant, which is an acceptable trade-off for what's normally one person editing one
+// panel at a time - not worth a backend PATCH endpoint + server-side merge for.
+export async function savePartialFeatureState(modelId: string, patch: SavedFeatureState): Promise<void> {
+  const accessToken = await getAccessToken();
+  if (!accessToken) return;
+  try {
+    const current = await loadSceneEdits(modelId);
+    const merged: SceneEditsData = {
+      ...(current ?? { meshes: {} }),
+      features: { ...(current?.features ?? {}), ...patch },
+    };
+    await fetch(`${functionsBaseUrl}/api/scenes/${encodeURIComponent(modelId)}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${accessToken}` },
+      body: JSON.stringify({ sceneData: merged }),
+    });
+  } catch (error) {
+    console.error('Failed to save feature state:', error);
   }
 }
 

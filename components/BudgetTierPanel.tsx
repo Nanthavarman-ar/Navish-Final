@@ -1,8 +1,9 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { X, LayoutGrid, TrendingUp, Pencil } from 'lucide-react';
 import type { CostEstimator } from './CostEstimator';
 import type { SustainabilityManager } from './SustainabilityManager';
 import { USD_TO_INR } from './utils/currency';
+import { loadSceneEdits, savePartialFeatureState } from './utils/sceneEditsPersistence';
 
 interface BudgetTierPanelProps {
   costEstimator: CostEstimator | null;
@@ -75,6 +76,17 @@ const BudgetTierPanel: React.FC<BudgetTierPanelProps> = ({ costEstimator, sustai
   const [isEditing, setIsEditing] = useState(false);
   const [draft, setDraft] = useState<Record<string, { materials: number; total: number }> | null>(null);
 
+  // Restore this model's previously-saved tier overrides - previously these lived only in
+  // this browser's tab (reset on every reload/reopen, and never followed the model to
+  // another device).
+  useEffect(() => {
+    let cancelled = false;
+    loadSceneEdits(modelId).then((data) => {
+      if (!cancelled && data?.features?.budgetTierOverrides) setSavedOverrides(data.features.budgetTierOverrides);
+    });
+    return () => { cancelled = true; };
+  }, [modelId]);
+
   const rows: TierRow[] = computedRows.map((row) => {
     const override = savedOverrides[row.label];
     return override ? { ...row, materials: override.materials, total: override.total } : row;
@@ -97,6 +109,7 @@ const BudgetTierPanel: React.FC<BudgetTierPanelProps> = ({ costEstimator, sustai
   const saveEditing = () => {
     if (!draft) return;
     setSavedOverrides(draft);
+    savePartialFeatureState(modelId, { budgetTierOverrides: draft });
     setIsEditing(false);
     setDraft(null);
   };
