@@ -566,6 +566,7 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
     // model it was captured on - carrying it over to whatever loads next could frame empty
     // space or the wrong object entirely.
     homeViewRef.current = null;
+    scenarioManagerRef.current?.setHomeCenter(null);
 
     // Dispose whatever the previous model loaded before importing the next one,
     // otherwise this and the prior model's meshes both end up in the scene at
@@ -926,7 +927,10 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
       radius: arcCam.radius,
       target: arcCam.target.clone()
     };
-    showToast.success('Home view saved', 'Fit will return here from now on');
+    // Presentation Mode's auto-rotate (ScenarioManager) should circle this same identified
+    // point too, not a separately-computed bounds center - see setHomeCenter's own comment.
+    scenarioManagerRef.current?.setHomeCenter(arcCam.target);
+    showToast.success('Home view saved', 'Fit and Presentation Mode will use this point from now on');
   }, []);
 
   // Auto zoom: frame whole model area (all meshes; prefer model, exclude ground/defaultBox when imported)

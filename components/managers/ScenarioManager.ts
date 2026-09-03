@@ -43,6 +43,12 @@ export class ScenarioManager {
   private scenarioLights: Light[] = [];
   private transitionAnimations: AnimationGroup[] = [];
   private autoRotateObserver: Observer<Scene> | null = null;
+  // The "zero"/Home point set via the workspace's Set button (BabylonWorkspace.tsx's
+  // setHomeView) - when present, this is the point every scenario orbits/frames around
+  // instead of the auto-computed mesh-bounds center below, so Presentation Mode's
+  // auto-rotate circles the exact spot the user identified as the model's reference point
+  // rather than a freshly recomputed bounding-box center.
+  private homeCenter: Vector3 | null = null;
 
   constructor(engine: Engine, scene: Scene) {
     this.engine = engine;
@@ -429,7 +435,7 @@ export class ScenarioManager {
       /^(scenario_|__root__|measure_|measurement_|preview_)/i.test(m.name) ||
       /^ground$/i.test(m.name) || /^defaultBox$/i.test(m.name);
     const meshes = this.scene.meshes.filter(m => m.isEnabled() && m.getTotalVertices() > 0 && !isExcluded(m));
-    if (meshes.length === 0) return { center: Vector3.Zero(), radius: 5 };
+    if (meshes.length === 0) return { center: this.homeCenter ? this.homeCenter.clone() : Vector3.Zero(), radius: 5 };
     let min = meshes[0].getBoundingInfo().boundingBox.minimumWorld.clone();
     let max = meshes[0].getBoundingInfo().boundingBox.maximumWorld.clone();
     meshes.forEach(m => {
@@ -437,9 +443,22 @@ export class ScenarioManager {
       min = Vector3.Minimize(min, bb.minimumWorld);
       max = Vector3.Maximize(max, bb.maximumWorld);
     });
-    const center = min.add(max).scale(0.5);
+    // Radius still comes from the real mesh bounds (how far back the camera needs to stand
+    // to fit the model) - only the orbit/frame CENTER is overridden by the user's saved
+    // Home point when one is set, so scenarios still frame the whole model but circle the
+    // point the user actually identified as "zero" rather than a geometric bounding-box
+    // midpoint that may not match where they consider the model's reference point to be.
+    const center = this.homeCenter ? this.homeCenter.clone() : min.add(max).scale(0.5);
     const radius = Math.max(Vector3.Distance(min, max) / 2, 1);
     return { center, radius };
+  }
+
+  /**
+   * Sets (or clears, with null) the "zero"/Home point every scenario orbits/frames around.
+   * Called from BabylonWorkspace.tsx whenever the user sets or clears their saved Home view.
+   */
+  setHomeCenter(center: Vector3 | null): void {
+    this.homeCenter = center ? center.clone() : null;
   }
 
   private async transitionCamera(scenario: PresentationScenario): Promise<void> {
