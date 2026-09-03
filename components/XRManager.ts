@@ -1307,14 +1307,30 @@ export class XRManager {
     // Set up controller events
     this.setupControllerEvents();
 
-    // Capture the reset-position gesture's target once the headset has actually
-    // reported a real pose - camera.position right after enterXRAsync resolves can
-    // still be whatever it was before entering (the first real device pose only lands
-    // on the session's first XR frame), so grabbing it immediately here risks resetting
-    // the player into a stale/default spot instead of back to where they actually began.
+    // The WebXR session's 'local-floor' reference space places the headset at its own
+    // runtime-chosen origin (typically near world (0,0,0)) with no awareness of where the
+    // actual model is - entering VR/AR previously just accepted wherever that landed, which
+    // could put the player facing empty space with nothing but the background visible if
+    // the model wasn't already sitting right at the origin. Nudging the X/Z to match
+    // wherever the desktop camera (originalCamera, captured in enterVR/enterAR) was already
+    // looking from - which is itself wherever Fit/the saved Home view left it - means VR/AR
+    // starts at the same "zero position" the desktop view uses, not a runtime-arbitrary
+    // spot. Y is left alone: it's the headset's own tracked real-world height above the
+    // physical floor, not something to override.
     const sessionManager = this.xrExperience.baseExperience.sessionManager;
     sessionManager.onXRFrameObservable.addOnce(() => {
-      if (this.xrCamera) this.vrSpawnPosition = this.xrCamera.position.clone();
+      if (!this.xrCamera) return;
+      const deskPos = this.originalCamera?.position;
+      if (deskPos && (Math.abs(deskPos.x) > 0.001 || Math.abs(deskPos.z) > 0.001)) {
+        this.xrCamera.position.x = deskPos.x;
+        this.xrCamera.position.z = deskPos.z;
+      }
+      // Capture the reset-position gesture's target once the headset has actually
+      // reported a real pose - camera.position right after enterXRAsync resolves can
+      // still be whatever it was before entering (the first real device pose only lands
+      // on the session's first XR frame), so grabbing it immediately here risks resetting
+      // the player into a stale/default spot instead of back to where they actually began.
+      this.vrSpawnPosition = this.xrCamera.position.clone();
     });
   }
 
