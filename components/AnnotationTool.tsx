@@ -208,13 +208,18 @@ const AnnotationTool: React.FC<AnnotationToolProps> = ({ scene, roomId, onClose,
     const annotation = annotations.find((a) => a.id === openNoteId);
     if (!pin || !annotation) return;
 
+    // Dark card + light text, not the pin's bright amber - a near-white/pale-yellow GUI
+    // background blooms very strongly under this scene's post-processing (reads as an
+    // overexposed glowing pill instead of a readable note), and a dark card is consistent
+    // with the rest of this app's panel chrome (gray-900/slate-800) anyway.
     const card = new Rectangle(`annotation_popup_${openNoteId}`);
     card.widthInPixels = 190;
     card.adaptHeightToChildren = true;
     card.cornerRadius = 8;
-    card.color = '#b45309';
+    card.color = '#d97706';
     card.thickness = 2;
-    card.background = '#fef3c7';
+    card.background = '#1c1917';
+    card.alpha = 0.96;
     card.paddingTopInPixels = 10;
     card.paddingBottomInPixels = 10;
     card.paddingLeftInPixels = 12;
@@ -225,7 +230,7 @@ const AnnotationTool: React.FC<AnnotationToolProps> = ({ scene, roomId, onClose,
     card.onPointerClickObservable.add(() => setOpenNoteId(null));
 
     const text = new TextBlock(`annotation_popup_text_${openNoteId}`, annotation.text);
-    text.color = '#78350f';
+    text.color = '#fde68a';
     text.fontSize = 14;
     text.textWrapping = true;
     text.resizeToFit = true;
