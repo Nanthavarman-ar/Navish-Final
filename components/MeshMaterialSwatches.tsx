@@ -326,6 +326,16 @@ const MeshMaterialSwatches: React.FC<MeshMaterialSwatchesProps> = ({ scene, mate
   }, [scene]);
 
   const applyOption = useCallback((mesh: AbstractMesh, option: SwatchOption) => {
+    // A thin architectural wall/panel is very often modeled single-sided but with
+    // backFaceCulling explicitly turned off so it's still visible from both directions.
+    // applySceneMaterialOption's clone() already carries that over, but a brand new
+    // material (the texture and preset paths) starts from Babylon's own default
+    // (culling ON) - losing it made a previously-both-sides-visible mesh "go black"
+    // (really: culled/invisible, showing whatever's behind) the moment you rotated
+    // around to its far side. Defaults to double-sided (false) if there was no
+    // previous material at all - a stray extra backface rendered is a far smaller
+    // problem than an invisible wall.
+    const previousBackFaceCulling = mesh.material?.backFaceCulling ?? false;
     if (option.kind === 'texture') {
       applyTextureOption(mesh, option);
     } else if (option.kind === 'scene-material') {
@@ -334,6 +344,7 @@ const MeshMaterialSwatches: React.FC<MeshMaterialSwatchesProps> = ({ scene, mate
       const material = materialManager.createMaterialFromPreset(option.presetId);
       if (material) materialManager.applyMaterialToMesh(material.name, mesh);
     }
+    if (mesh.material) mesh.material.backFaceCulling = previousBackFaceCulling;
     showToast.success(`Applied ${option.label}`);
     closeSwatchPopup();
   }, [applyTextureOption, applySceneMaterialOption, materialManager, closeSwatchPopup]);
