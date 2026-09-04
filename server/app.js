@@ -37,9 +37,6 @@ const io = socketIo(server, {
   pingTimeout: 30000,
 });
 
-// Import routes
-const uploadRoutes = require('./routes/upload');
-
 // Middleware
 app.use(cors());
 app.use(helmet());
@@ -275,7 +272,6 @@ io.on('connection', (socket) => {
 });
 
 // Routes
-app.use('/api/upload', uploadRoutes);
 const skp2gltfRoutes = require('./routes/skp2gltf');
 app.use('/api/convert/skp2gltf', skp2gltfRoutes);
 

@@ -15,10 +15,6 @@
       "dest": "https://naviz-backend-staging.up.railway.app/$1"
     },
     {
-      "src": "/socket.io/(.*)",
-      "dest": "https://naviz-backend-staging.up.railway.app/socket.io/$1"
-    },
-    {
       "src": "/(.*\\.[a-zA-Z0-9]+)",
       "dest": "/$1"
     },
