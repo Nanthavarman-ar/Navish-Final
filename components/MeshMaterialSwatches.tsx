@@ -77,11 +77,25 @@ function getSceneMaterials(scene: Scene): Material[] {
   });
 }
 
+// Bakes the material's actual alpha into the swatch preview so a translucent material
+// (glass presets like Clear/Tinted Glass, or an actual glass material already in the
+// scene) visibly looks faded/see-through in the picker and in the applied-options list -
+// previously every preview showed as a fully solid color regardless of alpha, so picking
+// one of those for an ordinary opaque surface (a fence, a wall) made it look "invisible"
+// with no warning at all beforehand.
 function materialPreviewColor(mat: Material): string {
   const anyMat = mat as any;
   const c = anyMat.albedoColor || anyMat.diffuseColor;
-  if (c) return `rgb(${Math.round(c.r * 255)}, ${Math.round(c.g * 255)}, ${Math.round(c.b * 255)})`;
+  const alpha = typeof anyMat.alpha === 'number' ? anyMat.alpha : 1;
+  if (c) return `rgba(${Math.round(c.r * 255)}, ${Math.round(c.g * 255)}, ${Math.round(c.b * 255)}, ${alpha})`;
   return '#475569';
+}
+
+function hexToRgba(hex: string, alpha: number): string {
+  const match = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex);
+  if (!match) return hex;
+  const [, r, g, b] = match;
+  return `rgba(${parseInt(r, 16)}, ${parseInt(g, 16)}, ${parseInt(b, 16)}, ${alpha})`;
 }
 
 function downscaleImageFile(file: File, maxDimension: number): Promise<string> {
@@ -418,7 +432,7 @@ const MeshMaterialSwatches: React.FC<MeshMaterialSwatchesProps> = ({ scene, mate
       label: preset.name,
       kind: 'preset',
       presetId: preset.id,
-      previewColor: preset.preview,
+      previewColor: hexToRgba(preset.preview, preset.properties?.alpha ?? 1),
     }]);
   };
 
@@ -566,13 +580,14 @@ const MeshMaterialSwatches: React.FC<MeshMaterialSwatchesProps> = ({ scene, mate
             <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto">
               {presets.map((preset) => {
                 const isTexture = preset.preview.startsWith('data:image');
+                const alpha = preset.properties?.alpha ?? 1;
                 return (
                   <button
                     key={preset.id}
                     onClick={() => addPresetOption(preset)}
                     className="w-7 h-7 rounded-full border border-slate-600 hover:border-cyan-400 transition-colors bg-cover bg-center"
-                    style={isTexture ? { backgroundImage: `url(${preset.preview})` } : { background: preset.preview }}
-                    title={preset.name}
+                    style={isTexture ? { backgroundImage: `url(${preset.preview})` } : { background: hexToRgba(preset.preview, alpha) }}
+                    title={alpha < 1 ? `${preset.name} (${Math.round(alpha * 100)}% opacity)` : preset.name}
                   />
                 );
               })}
