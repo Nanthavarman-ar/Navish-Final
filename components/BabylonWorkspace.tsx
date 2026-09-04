@@ -932,7 +932,15 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
   const [enableGrain, setEnableGrain] = React.useState(false);
   const [enableVignette, setEnableVignette] = React.useState(false);
   const [viewMode, setViewMode] = React.useState<'walk' | 'orbit' | 'dollhouse' | 'vr' | 'ar'>('orbit');
-  const [bloomIntensity, setBloomIntensity] = React.useState(1.0);
+  // Babylon's DefaultRenderingPipeline.bloomWeight isn't a gentle 0-1 fraction the way
+  // it reads - at 1.0 (this state's previous default, with no UI slider anywhere ever
+  // calling setBloomIntensity to bring it down) it aggressively blooms everything past
+  // the 0.8 threshold, and combined with the large bloomKernel already configured below,
+  // that's exactly what produced the sun and any bright sunlit surface "bleaching" out
+  // to a huge soft white glow. 0.3 matches the bloomWeight this same codebase already
+  // uses elsewhere (src/scenes/sceneManager.ts) for a normal, realistic amount of bloom
+  // rather than an overexposed one.
+  const [bloomIntensity, setBloomIntensity] = React.useState(0.3);
   const [depthOfFieldFocusDistance, setDepthOfFieldFocusDistance] = React.useState(10.0);
   const [motionBlurIntensity, setMotionBlurIntensity] = React.useState(1.0);
   const [ssaoIntensity, setSsaoIntensity] = React.useState(1.0);
@@ -969,13 +977,20 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
   // re-renders with the model's saved plans once loadSceneEdits resolves, instead of only
   // ever seeing whatever was in local state when it first mounted.
   const [floorPlans, setFloorPlans] = React.useState<SceneEditsData['floorPlans']>([]);
-  const handleFloorPlansChange = React.useCallback((next: SceneEditsData['floorPlans']) => {
+  const handleFloorPlansChange = React.useCallback(async (next: SceneEditsData['floorPlans']) => {
     setFloorPlans(next);
     sceneEditsRef.current = { ...sceneEditsRef.current, floorPlans: next };
-    saveSceneEdits(currentModelId, sceneEditsRef.current);
+    // Was fire-and-forget with the result ignored - a save the backend rejected (a PDF
+    // preview image can make this record large) failed completely silently, so it
+    // looked saved in this browser but was never actually on the server: gone on
+    // reload, never visible on a different device.
+    const saved = await saveSceneEdits(currentModelId, sceneEditsRef.current);
+    if (!saved) {
+      showToast.error('Could not save floor plan', 'It will disappear on reload - try again or use a smaller PDF');
+    }
   }, [currentModelId]);
 
-  const setHomeView = React.useCallback(() => {
+  const setHomeView = React.useCallback(async () => {
     const camera = cameraRef.current;
     if (!camera || !(camera as any).setTarget) {
       showToast.info('Switch to Orbit mode to set a home view');
@@ -994,8 +1009,14 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
       ...sceneEditsRef.current,
       homeView: { alpha: arcCam.alpha, beta: arcCam.beta, radius: arcCam.radius, target: { x: target.x, y: target.y, z: target.z } }
     };
-    saveSceneEdits(currentModelId, sceneEditsRef.current);
-    showToast.success('Home view saved', 'Fit and Presentation Mode will use this point on every device from now on');
+    // Used to show "saved" unconditionally regardless of whether the request actually
+    // succeeded - now only claims that once the backend has confirmed it.
+    const saved = await saveSceneEdits(currentModelId, sceneEditsRef.current);
+    if (saved) {
+      showToast.success('Home view saved', 'Fit and Presentation Mode will use this point on every device from now on');
+    } else {
+      showToast.error('Could not save home view', 'It will reset on reload - try again');
+    }
   }, [currentModelId]);
 
   // Auto zoom: frame whole model area (all meshes; prefer model, exclude ground/defaultBox when imported)
@@ -1089,7 +1110,12 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
       // replaces, that would silently wipe out a previously-saved Home view every time a
       // mesh gets moved/recolored.
       sceneEditsRef.current = { ...sceneEditsRef.current, meshes: captureSceneEdits(loadedModelMeshesRef.current).meshes };
-      saveSceneEdits(currentModelId, sceneEditsRef.current);
+      // Quiet on success (this fires after every drag/edit - a toast each time would be
+      // noisy), but a failed save here means the edit that was just made is NOT actually
+      // persisted anywhere, which is worth surfacing rather than staying silent about.
+      saveSceneEdits(currentModelId, sceneEditsRef.current).then((saved) => {
+        if (!saved) showToast.error('Could not save your changes', 'They will be lost on reload - try again');
+      });
     }, 1500);
   }, [currentModelId]);
 
@@ -3372,10 +3398,18 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
             if (enabled) {
               showToast.success('Haptic feedback enabled');
             } else {
+              // Without this, featureStates.showHaptic stayed true (handleFeatureToggle
+              // already flipped it on before this ran) even though no controller was
+              // actually found - the panel kept reading "Haptic feedback active" at the
+              // exact same moment this error toast said the opposite, on any desktop
+              // demo with no VR controller connected. Same fix already applied to
+              // showVR/showAR/showGeoSync above.
+              disableFeature('showHaptic');
               showToast.error('No VR controller detected', 'Haptic feedback needs an active VR session with a controller that supports vibration');
             }
           } catch (error) {
             console.error('Error enabling haptic feedback:', error);
+            disableFeature('showHaptic');
             showToast.error('Failed to enable haptic feedback');
           }
         }
@@ -4132,8 +4166,14 @@ const getCategoryDescription = (categoryName: string): string => {
               if (mode === 'walk') handleCameraModeChange('walk');
               else if (mode === 'orbit') handleCameraModeChange('orbit');
               else if (mode === 'dollhouse') handleCameraModeChange('fly');
-              else if (mode === 'vr') { handleCameraModeChange('orbit'); showToast.info('VR mode - use VR headset to enter'); }
-              else if (mode === 'ar') { handleCameraModeChange('orbit'); showToast.info('AR mode - use mobile device on-site'); }
+              // Previously just showed a toast telling the user to go find a DIFFERENT
+              // control instead - the sidebar's separate "VR Mode"/"AR Mode" feature
+              // toggle was the only thing that actually called xrManagerRef.enterVR()/
+              // enterAR(). A user reasonably expects the view-mode selector's own VR/AR
+              // option to enter VR/AR, so it now does exactly that (same handler the
+              // sidebar toggle uses, with the same real success/failure toast+recovery).
+              else if (mode === 'vr') { handleFeatureToggle('showVR', true); }
+              else if (mode === 'ar') { handleFeatureToggle('showAR', true); }
             },
             onHelp: () => {
               if (featureStates.showKeyboardShortcuts) {
@@ -4512,7 +4552,3 @@ const getCategoryDescription = (categoryName: string): string => {
 };
 
 export default React.memo(BabylonWorkspace);
-
-// TODO: Extract mesh/scene event handlers to BabylonWorkspace/meshSceneHandlers.ts
-// TODO: Extract inspector logic to BabylonWorkspace/inspectorLogic.ts
-// TODO: Extract major UI segments (e.g., renderLeftPanel, renderTopBar, renderRightPanel) to BabylonWorkspace/uiSegments.tsx

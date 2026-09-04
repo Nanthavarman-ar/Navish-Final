@@ -178,6 +178,15 @@ const SustainabilityCompliancePanel: React.FC<SustainabilityCompliancePanelProps
                 <div className="green-score-label">
                   LEED/BREEAM Certification Score
                 </div>
+                {/* Water efficiency and renewable energy % are currently fixed estimates
+                    (not measured from this specific model's actual fixtures/systems),
+                    and Predicted Usage below assumes a fixed building volume rather than
+                    this model's real size - together these drive a meaningful share of
+                    the score above. Flagged here rather than silently presented as fully
+                    measured, until those are wired to real per-model data. */}
+                <div className="green-score-label" style={{ fontSize: '11px', opacity: 0.75, marginTop: '2px' }}>
+                  Water efficiency, renewable energy %, and predicted usage below are estimated, not measured for this specific model
+                </div>
               </div>
 
               {/* Energy Dashboard */}
@@ -194,13 +203,13 @@ const SustainabilityCompliancePanel: React.FC<SustainabilityCompliancePanelProps
                     <div className="energy-value renewable-energy">
                       {sustainabilityReport.renewableEnergyUsage.toFixed(1)}%
                     </div>
-                    <div className="energy-label">Renewable Energy</div>
+                    <div className="energy-label">Renewable Energy (estimated)</div>
                   </div>
                   <div className="energy-item">
                     <div className="energy-value predicted-usage">
                       {Math.round(sustainabilityReport.energyUsage)} kWh
                     </div>
-                    <div className="energy-label">Predicted Usage</div>
+                    <div className="energy-label">Predicted Usage (estimated)</div>
                   </div>
                   <div className="energy-item">
                     <div className="energy-value carbon-footprint">

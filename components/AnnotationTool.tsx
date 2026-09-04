@@ -40,8 +40,11 @@ const AnnotationTool: React.FC<AnnotationToolProps> = ({ scene, roomId, onClose,
   // Which note's text popup is currently shown in the 3D scene (click its pin to open,
   // click again/click elsewhere to close) - separate from the side panel list.
   const [openNoteId, setOpenNoteId] = useState<string | null>(null);
-  const guiTextureRef = useRef<AdvancedDynamicTexture | null>(null);
-  const popupControlRef = useRef<Rectangle | null>(null);
+  // A world-space plane, not AdvancedDynamicTexture.CreateFullscreenUI (a flat 2D layer
+  // composited onto the regular canvas) - a WebXR immersive session never draws that
+  // canvas at all, so the note popup was invisible in VR even though the pin itself (a
+  // real 3D mesh) showed up fine. Same fix as MeshMaterialSwatches' own swatch popup.
+  const popupPlaneRef = useRef<Mesh | null>(null);
 
   const getAuthHeaders = useCallback(async () => {
     const { data: { session } } = await supabase.auth.getSession();
@@ -79,7 +82,10 @@ const AnnotationTool: React.FC<AnnotationToolProps> = ({ scene, roomId, onClose,
     // Remove pins for annotations that no longer exist
     pinMeshesRef.current.forEach((mesh, id) => {
       if (!currentIds.has(id)) {
-        mesh.dispose();
+        // dispose()'s disposeMaterialAndTextures arg defaults to false - each pin has
+        // its own DynamicTexture baked just for it, so leaving it out would leak a
+        // texture every time a note is deleted.
+        mesh.dispose(false, true);
         pinMeshesRef.current.delete(id);
       }
     });
@@ -141,11 +147,13 @@ const AnnotationTool: React.FC<AnnotationToolProps> = ({ scene, roomId, onClose,
     };
   }, [annotations, scene]);
 
-  // Dispose all pins on unmount
+  // Dispose all pins (and any open popup) on unmount
   useEffect(() => {
     return () => {
-      pinMeshesRef.current.forEach((mesh) => mesh.dispose());
+      pinMeshesRef.current.forEach((mesh) => mesh.dispose(false, true));
       pinMeshesRef.current.clear();
+      popupPlaneRef.current?.dispose(false, true);
+      popupPlaneRef.current = null;
     };
   }, []);
 
@@ -157,7 +165,7 @@ const AnnotationTool: React.FC<AnnotationToolProps> = ({ scene, roomId, onClose,
 
     const observer = scene.onPointerObservable.add((pointerInfo) => {
       if (pointerInfo.type !== PointerEventTypes.POINTERPICK) return;
-      const pickResult = scene.pick(scene.pointerX, scene.pointerY, (m) => !m.name.startsWith('annotation_pin_'));
+      const pickResult = scene.pick(scene.pointerX, scene.pointerY, (m) => !m.name.startsWith('annotation_pin_') && !m.name.startsWith('annotation_popup_panel_'));
       if (pickResult?.hit && pickResult.pickedPoint) {
         setPendingPosition(pickResult.pickedPoint.clone());
         setIsPlacing(false);
@@ -177,6 +185,10 @@ const AnnotationTool: React.FC<AnnotationToolProps> = ({ scene, roomId, onClose,
     const observer = scene.onPointerObservable.add((pointerInfo) => {
       if (pointerInfo.type !== PointerEventTypes.POINTERPICK) return;
       const mesh = pointerInfo.pickInfo?.pickedMesh;
+      // A click on the popup panel itself also produces a real pick against that plane -
+      // it already closes itself via its own onPointerClickObservable (see the "tap to
+      // dismiss" comment below), so this outer handler doesn't need to also react to it.
+      if (mesh?.name.startsWith('annotation_popup_panel_')) return;
       if (mesh?.name.startsWith('annotation_pin_')) {
         const id = mesh.name.slice('annotation_pin_'.length);
         setOpenNoteId((prev) => (prev === id ? null : id));
@@ -187,64 +199,68 @@ const AnnotationTool: React.FC<AnnotationToolProps> = ({ scene, roomId, onClose,
     return () => { scene.onPointerObservable.remove(observer); };
   }, [isPlacing, scene]);
 
-  // Creates the shared GUI layer the popup card renders into, once.
+  // Shows/hides the actual popup for whichever note is currently open, as a world-space
+  // plane positioned near its pin - not linked-with-mesh screen-space GUI (which is what
+  // this was before), since that's exactly the technique that doesn't render in VR.
+  // Repositioned real toward-camera distance (not just a render-time depth bias) so it
+  // clears whatever surface the pin happens to be mounted near instead of clipping into
+  // it, same fix as MeshMaterialSwatches' popup.
   useEffect(() => {
-    const texture = AdvancedDynamicTexture.CreateFullscreenUI('annotation_gui', true, scene);
-    guiTextureRef.current = texture;
-    return () => {
-      texture.dispose();
-      guiTextureRef.current = null;
-    };
-  }, [scene]);
-
-  // Shows/hides the actual popup card for whichever note is currently open, linked to its
-  // pin mesh so it stays positioned above it in screen space as the camera moves.
-  useEffect(() => {
-    const texture = guiTextureRef.current;
-    if (popupControlRef.current) {
-      texture?.removeControl(popupControlRef.current);
-      popupControlRef.current.dispose();
-      popupControlRef.current = null;
+    if (popupPlaneRef.current) {
+      // dispose()'s disposeMaterialAndTextures arg defaults to false - a popup gets a
+      // fresh CreateForMesh material/texture every time it opens, so leaving this out
+      // would leak one on every close (and every reopen).
+      popupPlaneRef.current.dispose(false, true);
+      popupPlaneRef.current = null;
     }
-    if (!openNoteId || !texture) return;
+    if (!openNoteId) return;
     const pin = pinMeshesRef.current.get(openNoteId);
     const annotation = annotations.find((a) => a.id === openNoteId);
     if (!pin || !annotation) return;
+
+    const planeWidth = 0.5;
+    const planeHeight = 0.35;
+    const texWidth = 380;
+    const texHeight = 266;
+    const plane = MeshBuilder.CreatePlane(`annotation_popup_panel_${openNoteId}`, { width: planeWidth, height: planeHeight }, scene);
+    const camera = scene.activeCamera;
+    const towardCamera = camera ? camera.position.subtract(pin.position).normalize() : new Vector3(0, 0, 1);
+    plane.position = pin.position.add(new Vector3(0, 0.3, 0)).add(towardCamera.scale(0.35));
+    plane.billboardMode = Mesh.BILLBOARDMODE_ALL;
+    plane.renderingGroupId = 1;
+
+    const texture = AdvancedDynamicTexture.CreateForMesh(plane, texWidth, texHeight, true);
 
     // Dark card + light text, not the pin's bright amber - a near-white/pale-yellow GUI
     // background blooms very strongly under this scene's post-processing (reads as an
     // overexposed glowing pill instead of a readable note), and a dark card is consistent
     // with the rest of this app's panel chrome (gray-900/slate-800) anyway.
     const card = new Rectangle(`annotation_popup_${openNoteId}`);
-    card.widthInPixels = 190;
-    card.adaptHeightToChildren = true;
-    card.cornerRadius = 8;
+    card.width = '100%';
+    card.height = '100%';
+    card.cornerRadius = 16;
     card.color = '#d97706';
-    card.thickness = 2;
+    card.thickness = 3;
     card.background = '#1c1917';
     card.alpha = 0.96;
-    card.paddingTopInPixels = 10;
-    card.paddingBottomInPixels = 10;
-    card.paddingLeftInPixels = 12;
-    card.paddingRightInPixels = 12;
-    card.isPointerBlocker = true;
+    card.paddingTopInPixels = 16;
+    card.paddingBottomInPixels = 16;
+    card.paddingLeftInPixels = 18;
+    card.paddingRightInPixels = 18;
     // Clicking the card itself (not just its pin) also closes it - a natural "tap to
     // dismiss" affordance once you're already looking right at the note.
     card.onPointerClickObservable.add(() => setOpenNoteId(null));
 
     const text = new TextBlock(`annotation_popup_text_${openNoteId}`, annotation.text);
     text.color = '#fde68a';
-    text.fontSize = 14;
+    text.fontSize = 26;
     text.textWrapping = true;
     text.resizeToFit = true;
     card.addControl(text);
 
-    card.linkWithMesh(pin);
-    card.linkOffsetYInPixels = -70;
-
     texture.addControl(card);
-    popupControlRef.current = card;
-  }, [openNoteId, annotations]);
+    popupPlaneRef.current = plane;
+  }, [openNoteId, annotations, scene]);
 
   const handleSaveAnnotation = async () => {
     if (!pendingPosition || !draftText.trim()) return;

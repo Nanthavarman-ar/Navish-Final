@@ -732,11 +732,6 @@ jest.mock('../../components/VoiceChat', () => ({
   default: ({ children }: { children: React.ReactNode }) => <div data-testid="voice-chat">{children}</div>,
 }));
 
-jest.mock('../../components/VRARMode', () => ({
-  __esModule: true,
-  default: ({ children }: { children: React.ReactNode }) => <div data-testid="vrar-mode">{children}</div>,
-}));
-
 // Mock the custom hooks
 jest.mock('../../components/BabylonWorkspace/workspaceHooks', () => ({
   useWorkspaceState: jest.fn(() => ({

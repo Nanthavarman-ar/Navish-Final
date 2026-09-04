@@ -11,7 +11,7 @@ import { Scene, ArcRotateCamera, AbstractMesh, Mesh, Vector3, PointerEventTypes,
 // out of sync - a single shared predicate can't drift again.
 export const isSelectableMesh = (mesh: AbstractMesh): boolean =>
   mesh.isEnabled() && mesh.isVisible && mesh.isPickable &&
-  !/^(ground|ceiling_light|measure_|annotation_pin_|hotspot_marker_|swatch_marker_|swatch_popup_panel_|cursor_|collab_|sound_privacy_marker_|__root__)/i.test(mesh.name || '');
+  !/^(ground|ceiling_light|measure_|annotation_pin_|annotation_popup_panel_|hotspot_marker_|swatch_marker_|swatch_popup_panel_|cursor_|collab_|sound_privacy_marker_|__root__)/i.test(mesh.name || '');
 
 export interface UseMeshSceneHandlersProps {
   sceneRef: React.RefObject<Scene | null>;

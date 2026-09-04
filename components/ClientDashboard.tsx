@@ -14,7 +14,6 @@ import {
   List,
   Eye,
   User,
-  Upload,
   LogOut,
   Filter,
   Calendar
@@ -25,7 +24,7 @@ const ImageWithFallback = lazy(() => import('./figma/ImageWithFallback').then(mo
 
 export function ClientDashboard() {
   const { user, logout } = useAuth();
-  const { subscription, canUpload, refreshSubscription } = useSubscription();
+  const { refreshSubscription } = useSubscription();
   const navigate = useNavigate();
   const { setSelectedModel } = useApp();
   const [searchTerm, setSearchTerm] = useState('');
@@ -245,14 +244,6 @@ export function ClientDashboard() {
           <div className="flex items-center gap-4">
             <Button
               variant="outline"
-              className="border-cyan-500 text-cyan-400 hover:bg-cyan-500 hover:text-white"
-              onClick={() => navigate('/client/upload')}
-            >
-              <Upload className="w-4 h-4 mr-2" />
-              Upload Model
-            </Button>
-            <Button
-              variant="outline"
               className="border-gray-600 text-gray-400 hover:text-white"
               disabled
               title="Coming soon"
@@ -274,31 +265,6 @@ export function ClientDashboard() {
 
       {/* Main Content - relative z-10 so it stacks above the ambient-glow layer */}
       <main className="relative z-10 p-6">
-        <Card className="mb-6 bg-slate-800/50 border-slate-700">
-          <CardContent className="pt-6">
-            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-              <div>
-                <h2 className="text-white font-semibold">Payment Plan</h2>
-                {subscription ? (
-                  <p className="text-gray-300 text-sm">
-                    Active: <span className="text-cyan-300">{subscription.planId}</span> · Uploads used: {subscription.uploadsUsed}
-                    {subscription.uploadLimit === -1 ? ' / unlimited' : ` / ${subscription.uploadLimit}`}
-                  </p>
-                ) : (
-                  <p className="text-amber-300 text-sm">No active upload plan. Buy one-time or subscription plan to upload models.</p>
-                )}
-              </div>
-              <Button
-                variant="outline"
-                className="border-cyan-500 text-cyan-400 hover:bg-cyan-500 hover:text-white"
-                onClick={() => navigate('/client/upload')}
-              >
-                {canUpload ? 'Manage Uploads' : 'Choose Plan'}
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-
         {/* Search and Filters */}
         <div className="mb-8 space-y-4">
           <div className="flex flex-col sm:flex-row gap-4 items-center justify-between">

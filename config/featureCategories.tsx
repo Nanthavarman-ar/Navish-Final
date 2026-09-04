@@ -20,8 +20,6 @@ import {
   Users, MessageCircle, Share2,
   // Geo/Location (3 icons)
   Map, Anchor,
-  // IoT/Smart (2 icons)
-  Zap,
   // Missing icons with aliases
   RotateCcw as RotateLeft,
   RotateCw as RotateRight,
@@ -104,7 +102,10 @@ export const featureCategories: FeaturesByCategory = {
     { id: 'showClashDetection', name: 'Clash Detection', description: 'Detect model clashes', icon: AlertTriangle, category: 'Simulations and Analysis', enabledByDefault: false },
     { id: 'showSustainabilityCompliancePanel', name: 'Sustainability Analysis', description: 'Analyze sustainability compliance', icon: Leaf, category: 'Simulations and Analysis', enabledByDefault: false },
     { id: 'showSessionInsights', name: 'Session Insights', description: 'See which tools you\'ve used most this session', icon: Activity, category: 'Simulations and Analysis', enabledByDefault: false },
-    { id: 'showIoTPanel', name: 'IoT Sensors', description: 'View live sensor readings and control connected devices', icon: Zap, category: 'Simulations and Analysis', enabledByDefault: false },
+    // IoT Sensors is hidden for now - its data is entirely fake (one hardcoded 22°C
+    // sensor, server/iot_service.tsx generates the rest via Math.random()), not derived
+    // from the loaded model at all, despite advertising "live sensor readings". Re-add
+    // this entry once it's backed by something real.
     { id: 'showMoodLighting', name: 'Mood Lighting', description: 'Preview Romantic, Energetic, Calm, and Dramatic lighting presets', icon: Sun, category: 'Simulations and Analysis', enabledByDefault: false }
   ],
   "Tools and Editors": [
