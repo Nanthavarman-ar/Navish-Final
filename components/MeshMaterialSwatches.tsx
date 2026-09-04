@@ -36,8 +36,29 @@ type SwatchMarker = SavedSwatchMarker;
 // tile size is wasted anyway.
 const MAX_TEXTURE_DIMENSION = 512;
 
-function resolveMeshRef(scene: Scene, meshId: string, meshName: string): AbstractMesh | null {
-  return scene.getMeshById(meshId) || scene.meshes.find((m) => m.name === meshName) || null;
+// A fence/railing/tiled surface is very often many repeated slat/panel meshes that all
+// share the exact same source name (and sometimes the same id) - a plain
+// scene.getMeshById/name match then resolves to whichever one happens to appear first in
+// scene.meshes, not necessarily the one the marker was actually placed on, so applying a
+// swatch changed some OTHER slat instead of the marked one. Disambiguates by picking
+// whichever same-named mesh's bounding box is actually closest to where the marker was
+// placed, which is stable across a reload (unlike mesh.uniqueId, reassigned fresh every
+// load) since it's the model's own real-world geometry, not a runtime-only id.
+function resolveMeshRef(scene: Scene, meshId: string, meshName: string, position: { x: number; y: number; z: number }): AbstractMesh | null {
+  const candidates = scene.meshes.filter((m) => m.id === meshId || m.name === meshName);
+  if (candidates.length <= 1) return candidates[0] ?? null;
+  const target = new Vector3(position.x, position.y, position.z);
+  let best = candidates[0];
+  let bestDistSq = Vector3.DistanceSquared(best.getBoundingInfo().boundingBox.centerWorld, target);
+  for (let i = 1; i < candidates.length; i++) {
+    const candidate = candidates[i];
+    const distSq = Vector3.DistanceSquared(candidate.getBoundingInfo().boundingBox.centerWorld, target);
+    if (distSq < bestDistSq) {
+      best = candidate;
+      bestDistSq = distSq;
+    }
+  }
+  return best;
 }
 
 // Same enumeration MaterialEditor.tsx's own "Materials" list uses (scene.materials plus
@@ -293,7 +314,7 @@ const MeshMaterialSwatches: React.FC<MeshMaterialSwatchesProps> = ({ scene, mate
       }
       const marker = markers.find((m) => m.id === id);
       if (!marker || marker.options.length === 0) return;
-      const targetMesh = resolveMeshRef(scene, marker.meshId, marker.meshName);
+      const targetMesh = resolveMeshRef(scene, marker.meshId, marker.meshName, marker.position);
       if (!targetMesh) {
         showToast.error('The mesh this swatch was placed on is no longer in the scene');
         return;
