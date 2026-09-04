@@ -1,5 +1,17 @@
 import { useEffect, useCallback } from 'react';
-import { Scene, ArcRotateCamera, Mesh, Vector3, PointerEventTypes, PointerInfo, Color3, Quaternion } from '@babylonjs/core';
+import { Scene, ArcRotateCamera, AbstractMesh, Mesh, Vector3, PointerEventTypes, PointerInfo, Color3, Quaternion } from '@babylonjs/core';
+
+// Exported so BabylonWorkspace.tsx's OWN separate selection listener (its "click-to-
+// select" effect, further down the file) uses this exact same definition rather than
+// its own copy - two independent scene.onPointerObservable listeners both used to write
+// to the same workspaceState.selectedMesh, one correctly excluding helper/marker meshes
+// and one (this hook, previously) not excluding anything at all. Clicking a swatch/
+// hotspot/annotation marker still got it selected (and shown in the Move/Rotate/Delete
+// toolbar) via THIS hook even after the other listener was fixed, since they'd drifted
+// out of sync - a single shared predicate can't drift again.
+export const isSelectableMesh = (mesh: AbstractMesh): boolean =>
+  mesh.isEnabled() && mesh.isVisible && mesh.isPickable &&
+  !/^(ground|ceiling_light|measure_|annotation_pin_|hotspot_marker_|swatch_marker_|swatch_popup_panel_|cursor_|collab_|sound_privacy_marker_|__root__)/i.test(mesh.name || '');
 
 export interface UseMeshSceneHandlersProps {
   sceneRef: React.RefObject<Scene | null>;
@@ -123,7 +135,12 @@ export const useMeshSceneHandlers = ({
       if (pointerInfo.type === PointerEventTypes.POINTERPICK || pointerInfo.type === PointerEventTypes.POINTERDOWN) {
         if (pointerInfo.pickInfo?.hit && pointerInfo.pickInfo.pickedMesh) {
           const mesh = pointerInfo.pickInfo.pickedMesh as Mesh;
-          internalHandleMeshSelect(mesh);
+          // Previously selected ANY picked mesh with no filtering at all, so clicking a
+          // marker/pin (meant to open its own popup, not become "the selected model
+          // object") also populated the Move/Rotate/Delete toolbar with it.
+          if (isSelectableMesh(mesh)) {
+            internalHandleMeshSelect(mesh);
+          }
         } else {
           internalHandleMeshDeselect();
         }

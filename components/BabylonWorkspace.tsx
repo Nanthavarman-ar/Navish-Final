@@ -26,7 +26,7 @@ import { useApp, LAST_MODEL_ID_KEY } from '../contexts/AppContext';
 import { supabase, projectId } from '../supabase/client';
 
 // Import extracted modules
-import { useMeshSceneHandlers } from './BabylonWorkspace/meshSceneHandlers';
+import { useMeshSceneHandlers, isSelectableMesh } from './BabylonWorkspace/meshSceneHandlers';
 import { LeftPanelSegment, TopBarSegment, BottomPanelSegment, ImmersiveControls, renderLeftPanel, renderTopBar, renderRightPanel, renderBottomPanel, renderCustomPanels } from './BabylonWorkspace/uiSegments';
 
 // Interfaces
@@ -2550,16 +2550,13 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
     const scene = sceneRef.current;
     if (!scene) return;
 
-    // Exclude helper/UI geometry (measurement lines, cursor markers, annotation pins,
-    // hotspot-navigation and material-swatch markers, teleport/AR-scale helper meshes)
-    // so clicking a tool's own visual aid doesn't accidentally "select" it as if it were
-    // part of the design - hotspot_marker_/swatch_marker_ were missing here (only
-    // annotation_pin_ was ever added), so clicking either of those two newer marker
-    // types was hijacking selection (and, through it, the Move/Rotate/Scale gizmos)
-    // instead of leaving whatever real mesh was actually meant to be selected alone.
-    const isSelectableMesh = (mesh: AbstractMesh) =>
-      mesh.isEnabled() && mesh.isVisible && mesh.isPickable &&
-      !/^(ground|ceiling_light|measure_|annotation_pin_|hotspot_marker_|swatch_marker_|swatch_popup_panel_|cursor_|collab_|sound_privacy_marker_|__root__)/i.test(mesh.name || '');
+    // isSelectableMesh (excludes measurement lines, cursor markers, annotation pins,
+    // hotspot-navigation/material-swatch markers, teleport/AR-scale helper meshes) is
+    // imported from meshSceneHandlers.ts - useMeshSceneHandlers' own pointer listener
+    // below writes to this same workspaceState.selectedMesh and used to have no
+    // filtering of its own at all, so keeping two independently-maintained copies of
+    // this predicate was exactly how that drifted out of sync before; importing the one
+    // definition here instead of redeclaring it can't drift again.
 
     const observer = scene.onPointerObservable.add((pointerInfo) => {
       if (pointerInfo.type !== PointerEventTypes.POINTERPICK) return;
