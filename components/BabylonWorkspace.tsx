@@ -1484,6 +1484,20 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
         // actually feel like walking inside a real building instead of a ghost floating
         // through solid geometry. scene.gravity already defaults to real-world (0,-9.807,0).
         scene.collisionsEnabled = true;
+
+        // Babylon clears the depth buffer between rendering groups by default, so
+        // renderingGroupId 1 (used by every marker/pin overlay - AnnotationTool,
+        // HotspotNavigation, MeshMaterialSwatches, MeasureTool - specifically so they
+        // draw on top of nearby glass/transparent surfaces instead of getting lost
+        // behind them) was, as a side effect, ALSO ignoring the real building's own
+        // depth entirely: a marker behind a wall rendered as if the wall wasn't there,
+        // visible right through solid opaque geometry. Turning off the auto-clear for
+        // group 1 keeps it drawing after group 0 (still wins against non-depth-writing
+        // transparent surfaces) while now correctly testing against group 0's real
+        // depth buffer, so an actually-occluded marker is hidden like anything else
+        // behind a wall.
+        scene.setRenderingAutoClearDepthStencil(1, false);
+
         setSceneReadyForLoad(true);
         onSceneReady?.();
 
