@@ -988,6 +988,7 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
   // ever seeing whatever was in local state when it first mounted.
   const [floorPlans, setFloorPlans] = React.useState<SceneEditsData['floorPlans']>([]);
   const handleFloorPlansChange = React.useCallback(async (next: SceneEditsData['floorPlans']) => {
+    const wasAdded = (next?.length ?? 0) > (floorPlans?.length ?? 0);
     setFloorPlans(next);
     sceneEditsRef.current = { ...sceneEditsRef.current, floorPlans: next };
     // Was fire-and-forget with the result ignored - a save the backend rejected (a PDF
@@ -997,8 +998,14 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
     const saved = await saveSceneEdits(currentModelId, sceneEditsRef.current);
     if (!saved) {
       showToast.error('Could not save floor plan', 'It will disappear on reload - try again or use a smaller PDF');
+    } else if (wasAdded) {
+      // Uploading is a deliberate, occasional action (unlike the mesh-edit autosave, which
+      // stays quiet on success because it fires on every drag) - confirming this actually
+      // reached the server is what makes a real failure elsewhere distinguishable from
+      // this just silently working, both for the user and for diagnosing future reports.
+      showToast.success('Floor plan saved', 'Visible on every device that opens this model');
     }
-  }, [currentModelId]);
+  }, [currentModelId, floorPlans]);
 
   const setHomeView = React.useCallback(async () => {
     const camera = cameraRef.current;

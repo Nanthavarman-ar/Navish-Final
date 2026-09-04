@@ -182,11 +182,20 @@ export async function saveSceneEdits(modelId: string, data: SceneEditsData): Pro
   const accessToken = await getAccessToken();
   if (!accessToken) return false; // not signed in (or session expired) - silently skip, don't spam errors for a background autosave
   try {
+    const body = JSON.stringify({ sceneData: data });
     const response = await fetch(`${functionsBaseUrl}/api/scenes/${encodeURIComponent(modelId)}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${accessToken}` },
-      body: JSON.stringify({ sceneData: data }),
+      body,
     });
+    if (!response.ok) {
+      // The caller only gets a boolean back, so log the server's actual reason here -
+      // e.g. a request-too-large rejection from an accumulated record (floor plan preview
+      // images, before/after photos, etc. all live in this same per-model JSON blob) looks
+      // identical to any other failure without this.
+      const errorText = await response.text().catch(() => '');
+      console.error(`Failed to save scene edits for ${modelId}: ${response.status} ${errorText} (payload ${body.length} bytes)`);
+    }
     return response.ok;
   } catch (error) {
     console.error('Failed to auto-save scene edits:', error);
@@ -234,7 +243,18 @@ export async function loadSceneEdits(modelId: string): Promise<SceneEditsData | 
     const response = await fetch(`${functionsBaseUrl}/api/scenes/${encodeURIComponent(modelId)}`, {
       headers: { 'Authorization': `Bearer ${accessToken}` },
     });
-    if (!response.ok) return null; // 404 (no saved edits yet) or any other failure - just start fresh
+    if (!response.ok) {
+      // 404 just means nothing has been saved for this model yet - expected and silent.
+      // Anything else (network hiccup, auth glitch, server error) means saved edits DO
+      // exist but failed to load, which the caller (and every panel restoring from them -
+      // floor plans, home view, mesh edits) would otherwise treat identically to "nothing
+      // saved", quietly showing an empty/default state instead of what was actually saved.
+      if (response.status !== 404) {
+        const errorText = await response.text().catch(() => '');
+        console.error(`Failed to load saved scene edits for ${modelId}: ${response.status} ${errorText}`);
+      }
+      return null;
+    }
     const data = await response.json();
     return data?.scene?.data ?? null;
   } catch (error) {

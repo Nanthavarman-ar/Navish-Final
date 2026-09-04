@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Engine, Scene, Mesh, AbstractMesh, Vector3, MeshBuilder, StandardMaterial, Color3, LinesMesh, VertexBuffer, DynamicTexture } from '@babylonjs/core';
+import { isSelectableMesh } from './BabylonWorkspace/meshSceneHandlers';
 
 interface MeasureToolProps {
   scene: Scene;
@@ -124,6 +125,32 @@ const MeasureTool: React.FC<MeasureToolProps> = ({
     };
   }, [isActive, measurementMode]);
 
+  // Misclicking a point (wrong spot, wrong mesh) previously had no way to undo short of
+  // "Clear All", which threw away every point placed so far even for a multi-point mode
+  // (area/volume). Escape now removes just the most recently placed point, matching how
+  // SketchUp/CAD-style measuring tools let you back out of a bad click.
+  useEffect(() => {
+    if (!isActive) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      const pts = currentPointsRef.current;
+      if (pts.length === 0) return;
+      const last = pts[pts.length - 1];
+      try { last.mesh.dispose(); } catch (_) { /* ignore dispose errors */ }
+      const remaining = pts.slice(0, -1);
+      setCurrentPoints(remaining);
+      if (remaining.length >= 1) {
+        updatePreviewLine(remaining);
+      } else {
+        clearPreview();
+      }
+      setLivePreview(null);
+      if (measurementMode === 'area' && remaining.length < 3) setIsMeasuring(false);
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isActive, measurementMode]);
+
   // The panel this renders in (uiSegments.tsx) conditionally mounts/unmounts this
   // component on close, rather than keeping it mounted and CSS-hiding it the way
   // AnnotationTool/HotspotNavigation/MeshMaterialSwatches do - so every measurement
@@ -179,7 +206,15 @@ const MeasureTool: React.FC<MeasureToolProps> = ({
     });
   }, [unit, measurements, scene]);
 
-  const meshFilter = (m: AbstractMesh) => !m.name || (!m.name.startsWith('measure_') && !m.name.startsWith('preview_') && !m.name.startsWith('measurement_'));
+  // scene.pick()'s own default "must be enabled/visible/pickable" check only applies when
+  // no predicate is passed - once a custom predicate is used (as here), Babylon leaves
+  // isPickable/isVisible/isEnabled entirely up to it. This used to only filter by name
+  // prefix, so it could pick straight through non-pickable system meshes - e.g. the HDRI
+  // skybox (infinite-distance, far outside the real model) - and report a nonsensical
+  // hundreds-of-metres distance. isSelectableMesh is the same enabled/visible/pickable +
+  // name-exclusion check the main scene click-to-select uses; measure_/preview_/
+  // measurement_ are this tool's own point/line/label meshes on top of that.
+  const meshFilter = (m: AbstractMesh) => isSelectableMesh(m) && !/^(preview_|measurement_)/i.test(m.name || '');
 
   const setupMouseEvents = () => {
     const canvas = engine.getRenderingCanvas();
@@ -787,6 +822,9 @@ const MeasureTool: React.FC<MeasureToolProps> = ({
         )}
         {measurementMode === 'volume' && (
           <div>Click 8 points to define bounding box volume, then complete</div>
+        )}
+        {currentPoints.length > 0 && (
+          <div className="mt-1 text-amber-400">Press Esc to undo the last point</div>
         )}
       </div>
 
