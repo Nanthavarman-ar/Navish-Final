@@ -382,8 +382,16 @@ const MeshMaterialSwatches: React.FC<MeshMaterialSwatchesProps> = ({ scene, mate
       const planeHeight = 0.22;
       const planeWidth = planeHeight * (texWidth / texHeight);
       const plane = MeshBuilder.CreatePlane(`swatch_popup_panel_${id}`, { width: planeWidth, height: planeHeight }, scene);
-      plane.position = mesh.position.clone();
-      plane.position.y += 0.42;
+      // zOffset alone (below) wasn't enough to stop this clipping into nearby geometry -
+      // it's only a small render-time depth bias for fixing z-fighting/precision, not a
+      // real position change, so it can't help when the popup is genuinely positioned
+      // behind/inside actual geometry (a tall panel extending well above the marker).
+      // Actually moving it a real distance toward wherever the camera currently is -
+      // not just "up" - guarantees it ends up between the camera and the wall no matter
+      // how tall the marked surface is or which angle it's viewed from.
+      const camera = scene.activeCamera;
+      const towardCamera = camera ? camera.position.subtract(mesh.position).normalize() : new Vector3(0, 0, 1);
+      plane.position = mesh.position.add(new Vector3(0, 0.3, 0)).add(towardCamera.scale(0.35));
       plane.billboardMode = Mesh.BILLBOARDMODE_ALL;
       plane.renderingGroupId = 1;
 
