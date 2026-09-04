@@ -29,7 +29,6 @@ interface MeshMaterialSwatchesProps {
 type SwatchOption = SavedSwatchOption;
 type SwatchMarker = SavedSwatchMarker;
 
-const MAX_OPTIONS = 4;
 // Longest side an uploaded texture is downscaled to before being embedded as a data URL
 // in the shared scene-edits record - keeps a handful of markers' worth of textures from
 // bloating a record that also carries every mesh's position/rotation/scale for the whole
@@ -385,7 +384,6 @@ const MeshMaterialSwatches: React.FC<MeshMaterialSwatchesProps> = ({ scene, mate
   // texture preset through the 'preset' kind would silently apply a plain grey material
   // with the image lost.
   const addPresetOption = (preset: MaterialPreset) => {
-    if (draftOptions.length >= MAX_OPTIONS) return;
     const textureDataUrl = preset.properties?.textureDataUrl as string | undefined;
     setDraftOptions((prev) => [...prev, textureDataUrl ? {
       id: `opt_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
@@ -404,7 +402,6 @@ const MeshMaterialSwatches: React.FC<MeshMaterialSwatchesProps> = ({ scene, mate
   };
 
   const addSceneMaterialOption = (mat: Material) => {
-    if (draftOptions.length >= MAX_OPTIONS) return;
     setDraftOptions((prev) => [...prev, {
       id: `opt_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
       label: mat.name,
@@ -415,7 +412,6 @@ const MeshMaterialSwatches: React.FC<MeshMaterialSwatchesProps> = ({ scene, mate
   };
 
   const addTextureOption = async (file: File) => {
-    if (draftOptions.length >= MAX_OPTIONS) return;
     let dataUrl: string;
     try {
       dataUrl = await downscaleImageFile(file, MAX_TEXTURE_DIMENSION);
@@ -506,7 +502,7 @@ const MeshMaterialSwatches: React.FC<MeshMaterialSwatchesProps> = ({ scene, mate
         {draftMarker && (
           <div className="space-y-2">
             <div className="text-xs text-gray-400">On: <span className="text-gray-200">{draftMarker.meshName}</span></div>
-            <div className="text-xs text-gray-400">Choose up to {MAX_OPTIONS} options ({draftOptions.length}/{MAX_OPTIONS}):</div>
+            <div className="text-xs text-gray-400">Add as many material options as you want ({draftOptions.length} so far):</div>
 
             {draftOptions.length > 0 && (
               <div className="flex flex-wrap gap-2">
@@ -529,45 +525,41 @@ const MeshMaterialSwatches: React.FC<MeshMaterialSwatchesProps> = ({ scene, mate
               </div>
             )}
 
-            {draftOptions.length < MAX_OPTIONS && (
+            {getSceneMaterials(scene).length > 0 && (
               <>
-                {getSceneMaterials(scene).length > 0 && (
-                  <>
-                    <div className="text-[10px] text-gray-500 uppercase tracking-wide">From materials already on this model</div>
-                    <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto">
-                      {getSceneMaterials(scene).map((mat) => (
-                        <button
-                          key={mat.uniqueId}
-                          onClick={() => addSceneMaterialOption(mat)}
-                          className="w-7 h-7 rounded-full border border-slate-600 hover:border-cyan-400 transition-colors"
-                          style={{ background: materialPreviewColor(mat) }}
-                          title={mat.name}
-                        />
-                      ))}
-                    </div>
-                  </>
-                )}
-                <div className="text-[10px] text-gray-500 uppercase tracking-wide">From existing material slots</div>
+                <div className="text-[10px] text-gray-500 uppercase tracking-wide">From materials already on this model</div>
                 <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto">
-                  {presets.map((preset) => {
-                    const isTexture = preset.preview.startsWith('data:image');
-                    return (
-                      <button
-                        key={preset.id}
-                        onClick={() => addPresetOption(preset)}
-                        className="w-7 h-7 rounded-full border border-slate-600 hover:border-cyan-400 transition-colors bg-cover bg-center"
-                        style={isTexture ? { backgroundImage: `url(${preset.preview})` } : { background: preset.preview }}
-                        title={preset.name}
-                      />
-                    );
-                  })}
+                  {getSceneMaterials(scene).map((mat) => (
+                    <button
+                      key={mat.uniqueId}
+                      onClick={() => addSceneMaterialOption(mat)}
+                      className="w-7 h-7 rounded-full border border-slate-600 hover:border-cyan-400 transition-colors"
+                      style={{ background: materialPreviewColor(mat) }}
+                      title={mat.name}
+                    />
+                  ))}
                 </div>
-                <label className="flex items-center justify-center gap-1.5 text-xs text-gray-300 border border-dashed border-slate-600 rounded py-1.5 cursor-pointer hover:border-cyan-500 transition-colors">
-                  <Upload className="w-3 h-3" /> Upload a texture (real-world tile size)
-                  <input type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) addTextureOption(f); e.target.value = ''; }} />
-                </label>
               </>
             )}
+            <div className="text-[10px] text-gray-500 uppercase tracking-wide">From existing material slots</div>
+            <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto">
+              {presets.map((preset) => {
+                const isTexture = preset.preview.startsWith('data:image');
+                return (
+                  <button
+                    key={preset.id}
+                    onClick={() => addPresetOption(preset)}
+                    className="w-7 h-7 rounded-full border border-slate-600 hover:border-cyan-400 transition-colors bg-cover bg-center"
+                    style={isTexture ? { backgroundImage: `url(${preset.preview})` } : { background: preset.preview }}
+                    title={preset.name}
+                  />
+                );
+              })}
+            </div>
+            <label className="flex items-center justify-center gap-1.5 text-xs text-gray-300 border border-dashed border-slate-600 rounded py-1.5 cursor-pointer hover:border-cyan-500 transition-colors">
+              <Upload className="w-3 h-3" /> Upload a texture (real-world tile size)
+              <input type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) addTextureOption(f); e.target.value = ''; }} />
+            </label>
 
             <div className="flex gap-2 pt-1">
               <Button size="sm" className="flex-1" disabled={draftOptions.length === 0} onClick={handleSaveMarker}>Save marker</Button>
