@@ -100,26 +100,51 @@ const MaterialEditor: React.FC<MaterialEditorProps> = ({ sceneManager, selectedM
     }));
   };
 
-  // The material actually worth editing for a mesh - unwraps MultiMaterial down to its
-  // first real subMaterial, since editing/texturing that object in place is what shows
-  // up on the mesh (MultiMaterial itself has no diffuseColor/texture of its own).
+  // Which sub-material slot actually covers the most of this mesh's surface (by summed
+  // index count across its subMeshes) - a multi-material mesh like a fence or railing
+  // (a frame/bracket in one material, the visible slats/panels in another) previously
+  // always used slot 0 regardless of which one that was. If slot 0 happened to be a small
+  // hidden part rather than the visible one, editing/applying a color there was correct
+  // code doing exactly what it was told, but produced no visible change at all - reading
+  // as "color change doesn't work" on meshes like that.
+  const resolveDominantSubMaterialIndex = (mesh: BABYLON.AbstractMesh, multiMat: BABYLON.MultiMaterial): number => {
+    const totals = new Map<number, number>();
+    mesh.subMeshes?.forEach((sm) => {
+      totals.set(sm.materialIndex, (totals.get(sm.materialIndex) ?? 0) + sm.indexCount);
+    });
+    let bestIndex = 0;
+    let bestCount = -1;
+    totals.forEach((count, index) => {
+      if (multiMat.subMaterials[index] && count > bestCount) {
+        bestCount = count;
+        bestIndex = index;
+      }
+    });
+    return bestIndex;
+  };
+
+  // The material actually worth editing for a mesh - unwraps MultiMaterial down to
+  // whichever real subMaterial actually covers the most of the mesh, since editing/
+  // texturing that object in place is what shows up as the visible change on the mesh
+  // (MultiMaterial itself has no diffuseColor/texture of its own).
   const resolveEditableMaterial = (mesh: BABYLON.AbstractMesh | null | undefined): BABYLON.Material | null => {
     const mat = mesh?.material;
     if (!mat) return null;
     if (mat instanceof BABYLON.MultiMaterial) {
-      return mat.subMaterials.find((m): m is BABYLON.Material => !!m) || null;
+      const idx = resolveDominantSubMaterialIndex(mesh!, mat);
+      return mat.subMaterials[idx] || mat.subMaterials.find((m): m is BABYLON.Material => !!m) || null;
     }
     return mat;
   };
 
-  // Puts a material on a mesh - for a MultiMaterial mesh this replaces its first
-  // sub-material slot in place rather than clobbering the whole multi-material
-  // assignment (which would silently collapse every part of the mesh onto one material).
+  // Puts a material on a mesh - for a MultiMaterial mesh this replaces its dominant
+  // sub-material slot in place rather than clobbering the whole multi-material assignment
+  // (which would silently collapse every part of the mesh onto one material).
   const applyMaterialToMesh = (mesh: BABYLON.AbstractMesh, material: BABYLON.Material) => {
     const current = mesh.material;
     if (current instanceof BABYLON.MultiMaterial) {
-      const idx = current.subMaterials.findIndex(m => !!m);
-      current.subMaterials[idx >= 0 ? idx : 0] = material;
+      const idx = resolveDominantSubMaterialIndex(mesh, current);
+      current.subMaterials[idx] = material;
     } else {
       mesh.material = material;
     }
