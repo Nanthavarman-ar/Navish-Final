@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Scene, Mesh, AbstractMesh, Material, MultiMaterial, MeshBuilder, StandardMaterial, PBRMaterial, DynamicTexture, Texture, Color3, Vector3, PointerEventTypes } from '@babylonjs/core';
+import { Scene, Mesh, AbstractMesh, Material, MultiMaterial, MeshBuilder, StandardMaterial, PBRMaterial, DynamicTexture, Texture, Color3, Vector3, PointerEventTypes, VertexBuffer } from '@babylonjs/core';
 import { AdvancedDynamicTexture, Rectangle, StackPanel, Image as GuiImage } from '@babylonjs/gui';
 import { X, Palette, Trash2, Plus, Upload } from 'lucide-react';
 import { Button } from './ui/button';
@@ -239,15 +239,16 @@ const MeshMaterialSwatches: React.FC<MeshMaterialSwatchesProps> = ({ scene, mate
 
   // Real-world-accurate texture tiling, the same "set the texture's true physical size
   // once" workflow as SketchUp's Fixed Pins - a tile/plank image repeats at its authored
-  // real-world size across the mesh's actual footprint instead of stretching exactly once
-  // across however big that mesh happens to be. Uses the two LARGEST of the mesh's three
-  // bounding-box extents as its "surface width/height", which works for any flat-ish panel
-  // (a floor, wall, tabletop) regardless of which way it's oriented - it assumes the
-  // mesh's own UVs already span 0..1 across that footprint (true for simple architectural
-  // planes exported by most tools). A mesh with a complex, non-uniform UV atlas (e.g. a
-  // multi-part piece of furniture baked into one texture sheet) won't tile accurately this
-  // way - the existing MaterialEditor uScale/vScale sliders remain the manual fallback for
-  // those cases.
+  // real-world size across the mesh's actual footprint instead of stretching once across
+  // however big the mesh happens to be. This used to just multiply the mesh's EXISTING
+  // UV coordinates via texture.uScale/vScale, which only tiles correctly if those UVs
+  // already span a clean 0..1 across the surface - many real architectural exports
+  // (a fence with a frame + repeated slats, multi-part furniture baked into one texture
+  // atlas) have nothing like that, so the tiling came out wrong or the applied look
+  // seemed broken/absent. This instead throws away whatever UVs the mesh came with and
+  // generates fresh ones directly from real vertex world positions (a planar projection
+  // onto the mesh's two dominant axes), so the tiling is correct regardless of the
+  // source file's own UV layout.
   const applyTextureOption = useCallback((mesh: AbstractMesh, option: SwatchOption) => {
     if (!option.textureDataUrl) return;
     const material = new PBRMaterial(`swatch_tex_${option.id}_${Date.now()}`, scene);
@@ -256,16 +257,36 @@ const MeshMaterialSwatches: React.FC<MeshMaterialSwatchesProps> = ({ scene, mate
     texture.wrapV = Texture.WRAP_ADDRESSMODE;
 
     const bb = mesh.getBoundingInfo().boundingBox;
-    const extents = [
-      bb.maximumWorld.x - bb.minimumWorld.x,
-      bb.maximumWorld.y - bb.minimumWorld.y,
-      bb.maximumWorld.z - bb.minimumWorld.z,
-    ].sort((a, b) => b - a);
-    const [surfaceWidthM, surfaceHeightM] = extents;
+    const axes: Array<'x' | 'y' | 'z'> = ['x', 'y', 'z'];
+    const extentsByAxis = axes
+      .map((axis) => ({ axis, size: bb.maximumWorld[axis] - bb.minimumWorld[axis] }))
+      .sort((a, b) => b.size - a.size);
+    const uAxis = extentsByAxis[0].axis;
+    const vAxis = extentsByAxis[1].axis;
     const tileWidthM = (option.tileWidthCm ?? 30) / 100;
     const tileHeightM = (option.tileHeightCm ?? 30) / 100;
-    texture.uScale = Math.max(surfaceWidthM / tileWidthM, 0.01);
-    texture.vScale = Math.max(surfaceHeightM / tileHeightM, 0.01);
+
+    // A thin instance/InstancedMesh has no vertex data of its own (it shares its source
+    // mesh's), so getVerticesData returns null - fall back to scaling whatever UVs it
+    // already has rather than silently doing nothing.
+    const positions = mesh.getVerticesData(VertexBuffer.PositionKind);
+    const worldMatrix = mesh.computeWorldMatrix(true);
+    if (positions) {
+      const vertexCount = positions.length / 3;
+      const newUVs = new Float32Array(vertexCount * 2);
+      const worldPos = new Vector3();
+      for (let i = 0; i < vertexCount; i++) {
+        Vector3.TransformCoordinatesFromFloatsToRef(positions[i * 3], positions[i * 3 + 1], positions[i * 3 + 2], worldMatrix, worldPos);
+        newUVs[i * 2] = (worldPos[uAxis] - bb.minimumWorld[uAxis]) / tileWidthM;
+        newUVs[i * 2 + 1] = (worldPos[vAxis] - bb.minimumWorld[vAxis]) / tileHeightM;
+      }
+      mesh.setVerticesData(VertexBuffer.UVKind, newUVs, true);
+    } else {
+      const surfaceWidthM = extentsByAxis[0].size;
+      const surfaceHeightM = extentsByAxis[1].size;
+      texture.uScale = Math.max(surfaceWidthM / tileWidthM, 0.01);
+      texture.vScale = Math.max(surfaceHeightM / tileHeightM, 0.01);
+    }
 
     material.albedoTexture = texture;
     material.roughness = 0.85;
@@ -488,7 +509,7 @@ const MeshMaterialSwatches: React.FC<MeshMaterialSwatchesProps> = ({ scene, mate
     setDraftOptions((prev) => prev.filter((o) => o.id !== optionId));
   };
 
-  const handleSaveMarker = () => {
+  const handleSaveMarker = async () => {
     if (!draftMarker || draftOptions.length === 0) return;
     const marker: SwatchMarker = {
       id: `sw_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
@@ -499,16 +520,29 @@ const MeshMaterialSwatches: React.FC<MeshMaterialSwatchesProps> = ({ scene, mate
     };
     const next = [...markers, marker];
     setMarkers(next);
-    savePartialFeatureState(roomId, { swatches: next });
-    showToast.success('Material swatch marker added');
-    setDraftMarker(null);
-    setDraftOptions([]);
+    // Actually wait for and check this - a payload the backend rejects (uploaded
+    // textures can make this record large) used to fail completely silently, so the
+    // marker looked saved in this browser but was never on the server at all: gone on
+    // reload, never visible to any other client.
+    const saved = await savePartialFeatureState(roomId, { swatches: next });
+    if (saved) {
+      showToast.success('Material swatch marker added');
+      setDraftMarker(null);
+      setDraftOptions([]);
+    } else {
+      showToast.error('Could not save this marker', 'It will disappear on reload - try again or use a smaller texture image');
+    }
   };
 
-  const handleDeleteMarker = (id: string) => {
+  const handleDeleteMarker = async (id: string) => {
+    const previous = markers;
     const next = markers.filter((m) => m.id !== id);
     setMarkers(next);
-    savePartialFeatureState(roomId, { swatches: next });
+    const saved = await savePartialFeatureState(roomId, { swatches: next });
+    if (!saved) {
+      setMarkers(previous); // undo the optimistic removal - it never actually left the server
+      showToast.error('Could not delete this marker', 'Try again');
+    }
   };
 
   return (

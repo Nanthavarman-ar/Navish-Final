@@ -173,17 +173,24 @@ async function getAccessToken(): Promise<string | null> {
 // "collaborative room" key, but nothing else in this app actually saves anything under
 // selectedWorkspaceId, so that just meant notes/versions/approvals from every model loaded
 // on the same page bled into each other.
-export async function saveSceneEdits(modelId: string, data: SceneEditsData): Promise<void> {
+// Returns whether the save actually reached storage - callers that only ever fire this
+// off without checking (most of them, historically) keep working unchanged, but anything
+// that needs to know if it silently failed (e.g. a large payload getting rejected by the
+// backend with a non-2xx status - a fetch() promise resolves normally for that, it never
+// rejects on its own) can now find out instead of wrongly assuming success.
+export async function saveSceneEdits(modelId: string, data: SceneEditsData): Promise<boolean> {
   const accessToken = await getAccessToken();
-  if (!accessToken) return; // not signed in (or session expired) - silently skip, don't spam errors for a background autosave
+  if (!accessToken) return false; // not signed in (or session expired) - silently skip, don't spam errors for a background autosave
   try {
-    await fetch(`${functionsBaseUrl}/api/scenes/${encodeURIComponent(modelId)}`, {
+    const response = await fetch(`${functionsBaseUrl}/api/scenes/${encodeURIComponent(modelId)}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${accessToken}` },
       body: JSON.stringify({ sceneData: data }),
     });
+    return response.ok;
   } catch (error) {
     console.error('Failed to auto-save scene edits:', error);
+    return false;
   }
 }
 
@@ -199,22 +206,24 @@ export async function saveSceneEdits(modelId: string, data: SceneEditsData): Pro
 // last-write-wins race a save-only approach would if two panels save within the same
 // instant, which is an acceptable trade-off for what's normally one person editing one
 // panel at a time - not worth a backend PATCH endpoint + server-side merge for.
-export async function savePartialFeatureState(modelId: string, patch: SavedFeatureState): Promise<void> {
+export async function savePartialFeatureState(modelId: string, patch: SavedFeatureState): Promise<boolean> {
   const accessToken = await getAccessToken();
-  if (!accessToken) return;
+  if (!accessToken) return false;
   try {
     const current = await loadSceneEdits(modelId);
     const merged: SceneEditsData = {
       ...(current ?? { meshes: {} }),
       features: { ...(current?.features ?? {}), ...patch },
     };
-    await fetch(`${functionsBaseUrl}/api/scenes/${encodeURIComponent(modelId)}`, {
+    const response = await fetch(`${functionsBaseUrl}/api/scenes/${encodeURIComponent(modelId)}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${accessToken}` },
       body: JSON.stringify({ sceneData: merged }),
     });
+    return response.ok;
   } catch (error) {
     console.error('Failed to save feature state:', error);
+    return false;
   }
 }
 
