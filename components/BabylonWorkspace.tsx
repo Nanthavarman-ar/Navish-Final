@@ -2570,9 +2570,18 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
       // underneath, popping the Move/Rotate/Scale toolbar and Property Inspector mid-measurement).
       if (featureStates.showTeleportManager || featureStates.showMeasurementTool) return;
 
-      const pickResult = scene.pick(scene.pointerX, scene.pointerY, isSelectableMesh);
-      if (pickResult?.hit && pickResult.pickedMesh) {
-        setSelectedMesh(pickResult.pickedMesh as Mesh);
+      // Was a fresh scene.pick(...) with isSelectableMesh as the predicate - a predicate
+      // makes Babylon skip any mesh that fails it and keep raycasting for the NEXT hit
+      // along the same ray, so clicking directly on a marker/pin (excluded by name here)
+      // "saw through" it to whatever real mesh happened to be right behind, selecting
+      // and highlighting THAT instead - clicking a swatch/hotspot/annotation marker to
+      // open its own popup was, as a side effect, also selecting the wall/fence right
+      // behind it for Move/Rotate. Checking the actual clicked mesh (Babylon's own
+      // default nearest-hit for this event, no predicate) fixes that: clicking a marker
+      // now selects nothing instead of whatever's behind it.
+      const pickedMesh = pointerInfo.pickInfo?.pickedMesh;
+      if (pickedMesh && isSelectableMesh(pickedMesh)) {
+        setSelectedMesh(pickedMesh as Mesh);
       }
     });
 
