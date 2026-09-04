@@ -40,14 +40,22 @@ const MAX_TEXTURE_DIMENSION = 512;
 // share the exact same source name (and sometimes the same id) - a plain
 // scene.getMeshById/name match then resolves to whichever one happens to appear first in
 // scene.meshes, not necessarily the one the marker was actually placed on, so applying a
-// swatch changed some OTHER slat instead of the marked one. Disambiguates by picking
-// whichever same-named mesh's bounding box is actually closest to where the marker was
-// placed, which is stable across a reload (unlike mesh.uniqueId, reassigned fresh every
-// load) since it's the model's own real-world geometry, not a runtime-only id.
+// swatch changed some OTHER slat instead of the marked one. Disambiguates by preferring
+// whichever same-named candidate's bounding box actually CONTAINS the marker's placement
+// point - nearest-bounding-box-CENTER (the first cut of this fix) looks like the right
+// idea but isn't: a click near the edge of one large panel can easily be numerically
+// closer to a smaller adjacent panel's center than to the correct (large) panel's own
+// center, silently picking the wrong neighbor. Containment is what actually answers
+// "which mesh is this point on", stable across a reload the same way center-distance
+// was (real geometry, not a runtime-only id). Falls back to nearest-center only if no
+// candidate's bounds actually contain the point (e.g. floating-point edge cases on
+// razor-thin geometry).
 function resolveMeshRef(scene: Scene, meshId: string, meshName: string, position: { x: number; y: number; z: number }): AbstractMesh | null {
   const candidates = scene.meshes.filter((m) => m.id === meshId || m.name === meshName);
   if (candidates.length <= 1) return candidates[0] ?? null;
   const target = new Vector3(position.x, position.y, position.z);
+  const containing = candidates.find((c) => c.getBoundingInfo().boundingBox.intersectsPoint(target));
+  if (containing) return containing;
   let best = candidates[0];
   let bestDistSq = Vector3.DistanceSquared(best.getBoundingInfo().boundingBox.centerWorld, target);
   for (let i = 1; i < candidates.length; i++) {
@@ -198,6 +206,11 @@ const MeshMaterialSwatches: React.FC<MeshMaterialSwatchesProps> = ({ scene, mate
       mat.useAlphaFromDiffuseTexture = true;
       mat.emissiveColor = new Color3(1, 1, 1);
       mat.backFaceCulling = false;
+      // Sits only 0.05 units off the surface it was placed on - now that markers
+      // correctly respect real depth (an earlier fix), that's thin enough to clip into
+      // the surface itself from some angles. Same small camera-ward bias as the popup
+      // plane, for the same reason.
+      mat.zOffset = -2;
       pin.material = mat;
       markerMeshesRef.current.set(marker.id, pin);
     });
@@ -375,6 +388,15 @@ const MeshMaterialSwatches: React.FC<MeshMaterialSwatchesProps> = ({ scene, mate
       plane.renderingGroupId = 1;
 
       const texture = AdvancedDynamicTexture.CreateForMesh(plane, texWidth, texHeight, true);
+      // Since markers now correctly respect real depth (an earlier fix - they used to
+      // render straight through walls), this popup can end up clipping INTO whatever
+      // surface/structure it happens to be positioned close to (a header beam, an
+      // adjacent panel) instead of clearing it, since 0.42 units of vertical offset
+      // isn't always enough room. A small negative zOffset biases it a touch closer to
+      // the camera in the depth comparison without moving it - enough to clear the
+      // surface it's mounted near, not enough to ignore real occlusion from something
+      // genuinely separate further away.
+      if (plane.material) plane.material.zOffset = -2;
 
       const card = new Rectangle(`swatch_popup_${id}`);
       card.width = '100%';
