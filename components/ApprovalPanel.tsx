@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { X, CheckCircle2, MessageSquareWarning, ClipboardCheck } from 'lucide-react';
+import { X, CheckCircle2, MessageSquareWarning, ClipboardCheck, Trash2 } from 'lucide-react';
 import { Button } from './ui/button';
 import { supabase, projectId } from '../supabase/client';
 import { showToast } from './utils/toast';
@@ -74,6 +74,27 @@ const ApprovalPanel: React.FC<ApprovalPanelProps> = ({ roomId, onClose }) => {
     }
   };
 
+  const deleteApproval = async (id: string) => {
+    try {
+      const headers = await getAuthHeaders();
+      const response = await fetch(`${functionsBaseUrl}/api/scenes/${encodeURIComponent(roomId)}/approval/${encodeURIComponent(id)}`, {
+        method: 'DELETE',
+        headers,
+      });
+      if (!response.ok) {
+        // Surface the server's actual reason (e.g. only the original approver or an
+        // admin can delete it) instead of a generic failure with no explanation.
+        const body = await response.json().catch(() => null);
+        throw new Error(body?.error || `Failed to delete (${response.status})`);
+      }
+      setHistory((prev) => prev.filter((a) => a.id !== id));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      console.error('Failed to delete approval:', message);
+      showToast.error('Failed to delete approval', message);
+    }
+  };
+
   const latest = history[0];
 
   return (
@@ -122,12 +143,21 @@ const ApprovalPanel: React.FC<ApprovalPanelProps> = ({ roomId, onClose }) => {
           <div className="text-center text-gray-500 text-xs py-4">No approval history yet.</div>
         )}
         {!isLoading && history.map((a) => (
-          <div key={a.id} className="text-xs p-2 rounded bg-slate-800/50 border border-slate-700/80">
+          <div key={a.id} className="text-xs p-2 rounded bg-slate-800/50 border border-slate-700/80 group">
             <div className="flex items-center justify-between">
               <span className={a.decision === 'approved' ? 'text-green-400' : 'text-amber-400'}>
                 {a.decision === 'approved' ? 'Approved' : 'Changes requested'}
               </span>
-              <span className="text-gray-500 font-technical">{new Date(a.createdAt).toLocaleDateString()}</span>
+              <div className="flex items-center gap-2">
+                <span className="text-gray-500 font-technical">{new Date(a.createdAt).toLocaleDateString()}</span>
+                <button
+                  onClick={() => deleteApproval(a.id)}
+                  className="text-gray-500 hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100 shrink-0"
+                  aria-label="Delete this approval entry"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              </div>
             </div>
             <div className="text-gray-400 mt-0.5">{a.byUsername}</div>
             {a.comment && <div className="text-gray-300 mt-1">{a.comment}</div>}

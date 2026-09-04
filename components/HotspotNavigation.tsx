@@ -59,8 +59,11 @@ const HotspotNavigation: React.FC<HotspotNavigationProps> = ({ scene, roomId, on
   const { ref: panelRef, style: panelStyle } = usePanelStack('top-right');
   const [hotspots, setHotspots] = useState<Hotspot[]>(() => loadHotspots(roomId));
   const [isPlacing, setIsPlacing] = useState(false);
-  const [pendingSpot, setPendingSpot] = useState<{ position: Vector3; pose: CameraPose } | null>(null);
+  const [pendingSpot, setPendingSpot] = useState<{ position: Vector3 } | null>(null);
   const [draftLabel, setDraftLabel] = useState('');
+  // Which marker was clicked once already, awaiting a confirming second click before it
+  // actually teleports - see the marker-click effect below.
+  const [pendingJumpId, setPendingJumpId] = useState<string | null>(null);
   const markerMeshesRef = useRef<Map<string, Mesh>>(new Map());
 
   // Reload from storage whenever the loaded model changes (roomId), same as AnnotationTool
@@ -143,12 +146,14 @@ const HotspotNavigation: React.FC<HotspotNavigationProps> = ({ scene, roomId, on
     };
   }, []);
 
-  // Click-to-place: captures both where the marker should sit (the picked point on the
-  // model) and the CURRENT camera framing (alpha/beta/radius/target) as the "arrival
-  // view" a viewer lands on when they click this hotspot later - the same mechanism a
-  // real Matterport-style tour uses (an editor stands where/how they want the next view
-  // to look, then drops the marker), captured in one click rather than a separate pose-
-  // editing step.
+  // Click-to-place: only captures WHERE the marker should sit (the picked point on the
+  // model) - NOT the camera framing. The camera pose is captured later, at Save time
+  // (see handleSaveHotspot), specifically so placing the marker and framing the
+  // "arrival view" can happen in either order/any number of navigation steps apart:
+  // click a convenient spot to drop the marker, THEN freely orbit/travel to wherever you
+  // actually want people to land, THEN hit Save - whatever the camera's doing at that
+  // final moment is what gets saved, not whatever it happened to be mid-navigation when
+  // the marker was placed.
   useEffect(() => {
     if (!isPlacing) return;
 
@@ -159,30 +164,18 @@ const HotspotNavigation: React.FC<HotspotNavigationProps> = ({ scene, roomId, on
         showToast.info('Click directly on the model to place a hotspot');
         return;
       }
-      const camera = scene.activeCamera;
-      if (!(camera instanceof ArcRotateCamera)) {
-        showToast.error('Switch to Orbit view to place hotspots', 'Hotspots need an orbit camera to save a jump-to view');
-        setIsPlacing(false);
-        return;
-      }
-      setPendingSpot({
-        position: pickResult.pickedPoint.clone(),
-        pose: {
-          alpha: camera.alpha,
-          beta: camera.beta,
-          radius: camera.radius,
-          targetX: camera.target.x,
-          targetY: camera.target.y,
-          targetZ: camera.target.z,
-        },
-      });
+      setPendingSpot({ position: pickResult.pickedPoint.clone() });
       setIsPlacing(false);
     });
 
     return () => { scene.onPointerObservable.remove(observer); };
   }, [isPlacing, scene]);
 
-  // Click a marker (outside placing mode) to jump the camera there.
+  // Click a marker (outside placing mode) - the FIRST click on a given marker just
+  // announces its name (a toast, no camera movement) rather than immediately
+  // teleporting; a SECOND click on that SAME marker actually jumps. Clicking a
+  // different marker resets back to "announce" for that new one rather than carrying
+  // the confirmed state over.
   useEffect(() => {
     if (isPlacing) return;
     const observer = scene.onPointerObservable.add((pointerInfo) => {
@@ -191,11 +184,18 @@ const HotspotNavigation: React.FC<HotspotNavigationProps> = ({ scene, roomId, on
       if (!mesh?.name.startsWith('hotspot_marker_')) return;
       const id = mesh.name.slice('hotspot_marker_'.length);
       const hotspot = hotspots.find((h) => h.id === id);
-      if (hotspot) jumpToHotspot(hotspot);
+      if (!hotspot) return;
+      if (pendingJumpId === id) {
+        jumpToHotspot(hotspot);
+        setPendingJumpId(null);
+      } else {
+        showToast.info(hotspot.label, 'Click again to jump here');
+        setPendingJumpId(id);
+      }
     });
     return () => { scene.onPointerObservable.remove(observer); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isPlacing, scene, hotspots]);
+  }, [isPlacing, scene, hotspots, pendingJumpId]);
 
   const jumpToHotspot = useCallback((hotspot: Hotspot) => {
     const camera = scene.activeCamera;
@@ -218,11 +218,26 @@ const HotspotNavigation: React.FC<HotspotNavigationProps> = ({ scene, roomId, on
 
   const handleSaveHotspot = () => {
     if (!pendingSpot || !draftLabel.trim()) return;
+    // Captured HERE, not at placement-click time - see the placement effect's own
+    // comment for why. Whatever the camera is framing right now, at the moment Save is
+    // actually clicked, is what gets saved as the "arrival view".
+    const camera = scene.activeCamera;
+    if (!(camera instanceof ArcRotateCamera)) {
+      showToast.error('Switch to Orbit view to save a hotspot', 'Hotspots need an orbit camera to save a jump-to view');
+      return;
+    }
     const hotspot: Hotspot = {
       id: `hs_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
       label: draftLabel.trim(),
       position: { x: pendingSpot.position.x, y: pendingSpot.position.y, z: pendingSpot.position.z },
-      pose: pendingSpot.pose,
+      pose: {
+        alpha: camera.alpha,
+        beta: camera.beta,
+        radius: camera.radius,
+        targetX: camera.target.x,
+        targetY: camera.target.y,
+        targetZ: camera.target.z,
+      },
     };
     setHotspots((prev) => {
       const next = [...prev, hotspot];
@@ -262,11 +277,14 @@ const HotspotNavigation: React.FC<HotspotNavigationProps> = ({ scene, roomId, on
         )}
         {isPlacing && (
           <div className="text-xs text-cyan-300 text-center py-1.5 bg-cyan-500/10 border border-cyan-500/30 rounded">
-            Frame the view you want people to land on, then click a spot on the model...
+            Click a spot on the model to drop the marker there...
           </div>
         )}
         {pendingSpot && (
           <div className="space-y-2">
+            <div className="text-xs text-cyan-300 text-center py-1.5 bg-cyan-500/10 border border-cyan-500/30 rounded">
+              Now orbit/zoom to the view you want people to land on, then hit Save - whatever the camera shows right when you click Save is what gets saved.
+            </div>
             <input
               autoFocus
               value={draftLabel}

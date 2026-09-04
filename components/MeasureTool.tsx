@@ -124,6 +124,27 @@ const MeasureTool: React.FC<MeasureToolProps> = ({
     };
   }, [isActive, measurementMode]);
 
+  // The panel this renders in (uiSegments.tsx) conditionally mounts/unmounts this
+  // component on close, rather than keeping it mounted and CSS-hiding it the way
+  // AnnotationTool/HotspotNavigation/MeshMaterialSwatches do - so every measurement
+  // line/label mesh this tool creates has to be disposed here, on unmount, or it's
+  // permanently orphaned in the scene: gone from this component's own state (a fresh
+  // instance starts with empty refs the next time the tool is opened), but still
+  // physically sitting in the 3D view with no way left to select or remove it.
+  useEffect(() => {
+    return () => {
+      measurementMeshesRef.current.forEach((meshes) => {
+        meshes.forEach((m) => { try { m.dispose(); } catch (_) { /* ignore dispose errors */ } });
+      });
+      measurementMeshesRef.current.clear();
+      labelMeshesRef.current.forEach((m) => { try { m.dispose(); } catch (_) { /* ignore dispose errors */ } });
+      labelMeshesRef.current = [];
+      currentPointsRef.current.forEach((point) => { try { point.mesh.dispose(); } catch (_) { /* ignore dispose errors */ } });
+      const line = previewLineRef.current;
+      if (line) { try { line.dispose(); } catch (_) { /* ignore dispose errors */ } }
+    };
+  }, []);
+
   useEffect(() => {
     if (measurements.length === 0) return;
     const M_TO: Record<UnitType, number> = { meters: 1, feet: 3.28084, inches: 39.3701, mm: 1000 };

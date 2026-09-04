@@ -647,6 +647,38 @@ app.get('/make-server-cf230d31/api/scenes/:roomId/approval', async (c) => {
   }
 });
 
+// Delete one approval history entry - same author-or-admin ownership check as the
+// matching annotations delete endpoint above.
+app.delete('/make-server-cf230d31/api/scenes/:roomId/approval/:approvalId', async (c) => {
+  const { error, user } = await verifyUser(c.req.raw);
+
+  if (error) {
+    return c.json({ error }, 401);
+  }
+
+  try {
+    const roomId = c.req.param('roomId');
+    const approvalId = c.req.param('approvalId');
+    const key = `approval:${roomId}:${approvalId}`;
+    const approval = await kv.get(key);
+
+    if (!approval) {
+      return c.json({ error: 'Approval not found' }, 404);
+    }
+    // Only the person who recorded the decision or an admin can delete it
+    const userRole = user.user_metadata?.role || 'client';
+    if (approval.byUserId !== user.id && userRole !== 'admin') {
+      return c.json({ error: 'Access denied' }, 403);
+    }
+
+    await kv.del(key);
+    return c.json({ message: 'Approval deleted' });
+  } catch (error) {
+    console.error('Approval delete error:', error);
+    return c.json({ error: 'Failed to delete approval' }, 500);
+  }
+});
+
 // Authentication routes
 
 // Resolves a plain username to its account email so the login form can

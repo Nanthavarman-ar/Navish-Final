@@ -86,6 +86,29 @@ export class CollabManager {
   }
 
   /**
+   * Updates which room this manager is scoped to. Needed because this manager is
+   * constructed once at scene init - before any model is necessarily selected yet - and
+   * every room-scoped socket event (join/leave/transform/cursor/chat/object-sync) reads
+   * this.options.roomId. Without ever calling this, every session defaulted to the one
+   * hardcoded 'default-room' regardless of which model was actually loaded - so two
+   * people looking at completely different models who both happened to enable Multi-
+   * User Collaboration would land in the same room together, instead of being scoped
+   * per model the way every other collaborative feature in this app (annotations,
+   * hotspots, material swatches, approvals) already is.
+   */
+  setRoomId(roomId: string): void {
+    if (!roomId || roomId === this.options.roomId) return;
+    const wasConnectedToOldRoom = this.isConnected && !!this.socket;
+    if (wasConnectedToOldRoom) {
+      this.socket!.emit('leave', { room: this.options.roomId });
+    }
+    this.options.roomId = roomId;
+    if (wasConnectedToOldRoom) {
+      this.joinRoom();
+    }
+  }
+
+  /**
    * Register a function that returns the local camera's current position/rotation.
    * Needed so the manager can actually broadcast where this user is looking/standing -
    * without this, other participants would connect but never see this user move.

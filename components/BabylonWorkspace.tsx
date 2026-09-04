@@ -670,6 +670,16 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
         plane.material = material;
         plane.isPickable = true;
 
+        // Missing here (unlike the regular 3D model load path a little further down, and
+        // the file-upload path) was exactly the bug removePlaceholderGeometry itself was
+        // written to fix (see its own comment above): selectedModel is still null the
+        // instant the scene first initializes on a fresh page load/refresh, since
+        // restoring the last-opened model is an async fetch that hasn't resolved yet -
+        // so the placeholder ground+box get created regardless, and nothing ever
+        // removed them once a PDF floor plan (as opposed to a regular 3D model)
+        // subsequently loaded successfully. They stayed stuck floating in the scene
+        // forever, sitting right on top of the real floor plan.
+        removePlaceholderGeometry(scene);
         loadedModelMeshesRef.current = [plane];
         showToast.dismiss(toastId);
         showToast.success(`Floor plan loaded: ${selectedModel?.name || 'Floor plan'}`);
@@ -1390,6 +1400,14 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
   const comprehensiveSimulationRef = useRef<any>(null);
   const constructionOverlayRef = useRef<any>(null);
 
+  // Keeps Multi-User Collaboration scoped to whichever model is actually loaded - see
+  // CollabManager.setRoomId's own comment for why this was needed (it's constructed once
+  // at scene init, before any model is necessarily selected, and defaulted every session
+  // to one hardcoded global room otherwise).
+  useEffect(() => {
+    collabManagerRef.current?.setRoomId?.(currentModelId);
+  }, [currentModelId]);
+
   // XR Manager ref
   const xrManagerRef = useRef<XRManager | null>(null);
   // Remembers the desktop SSAO preference (auto-detected or user-toggled) across a VR/AR
@@ -1908,7 +1926,10 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
           const { data: { user: authUser } } = await supabase.auth.getUser();
           const realUserId = authUser?.id || `guest_${Math.random().toString(36).substr(2, 9)}`;
           const realUserName = authUser?.user_metadata?.username || authUser?.email || 'Guest';
-          collabManager = new CollabManager(scene, { userId: realUserId, userName: realUserName });
+          // roomId scoped to the loaded model (kept in sync afterward by the
+          // setRoomId effect above) rather than left on CollabManager's own generic
+          // 'default-room' fallback - see setRoomId's comment for why that mattered.
+          collabManager = new CollabManager(scene, { userId: realUserId, userName: realUserName, roomId: currentModelId });
           collabManager.setLocalCameraProvider(() => {
             const cam = cameraRef.current;
             if (!cam) return null;
