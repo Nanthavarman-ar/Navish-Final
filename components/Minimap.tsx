@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useRef } from 'react';
 import * as BABYLON from '@babylonjs/core';
 import { GeoWorkspaceArea } from './types';
 import { showToast } from './utils/toast';
@@ -24,80 +24,23 @@ interface MinimapProps {
   onFloorPlansChange?: (next: SavedPdf[]) => void;
 }
 
+// This panel used to also render a live top-down minimap (camera/object/light dots,
+// zoom/hide controls, a legend) and a "Teleporter" saved-camera-position list. Both were
+// removed at the user's request - only the Floor Plans (PDF) feature stays. scene/camera/
+// workspaces/onWorkspaceSelect/onCameraMove are kept in the prop signature so the parent
+// (BabylonWorkspace.tsx) doesn't need to change how it renders this component, even
+// though nothing in this simplified version reads them anymore.
 const Minimap: React.FC<MinimapProps> = ({
-  scene,
-  camera,
-  workspaces = [],
-  selectedWorkspaceId,
-  onWorkspaceSelect,
-  onCameraMove,
   floorPlans = [],
   onFloorPlansChange
 }) => {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [isVisible, setIsVisible] = useState(true);
-  const [zoom, setZoom] = useState(1);
-  const [objects, setObjects] = useState<any[]>([]);
-  const [sceneBounds, setSceneBounds] = useState({
-    min: new BABYLON.Vector3(-50, -50, -50),
-    max: new BABYLON.Vector3(50, 50, 50)
-  });
-  // Teleporter: saved named locations for direct jump
-  interface SavedLocation {
-    id: string;
-    name: string;
-    position: BABYLON.Vector3;
-  }
-  const STORAGE_KEY = 'naviz-saved-locations';
-  const loadFromStorage = (): SavedLocation[] => {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (!raw) return [];
-      const arr = JSON.parse(raw) as { id: string; name: string; position: { x: number; y: number; z: number } }[];
-      return arr.map(({ id, name, position }) => ({
-        id,
-        name,
-        position: new BABYLON.Vector3(position.x, position.y, position.z)
-      }));
-    } catch {
-      return [];
-    }
-  };
-  const saveToStorage = (locs: SavedLocation[]) => {
-    try {
-      const arr = locs.map(l => ({
-        id: l.id,
-        name: l.name,
-        position: { x: l.position.x, y: l.position.y, z: l.position.z }
-      }));
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(arr));
-    } catch { /* ignore */ }
-  };
-
-  const [savedLocations, setSavedLocations] = useState<SavedLocation[]>(() => loadFromStorage());
-  const [locationName, setLocationName] = useState('');
-
-  useEffect(() => {
-    saveToStorage(savedLocations);
-  }, [savedLocations]);
-
-  // Saved PDFs (floor plans, reference docs): the list itself is controlled by the parent
-  // (floorPlans/onFloorPlansChange props - see MinimapProps) so it persists per-model on the
-  // backend and follows the model to any device, not just this browser. Only which one is
-  // currently open is local UI state.
-  //
-  // "Open" used to pop the full PDF up in a fixed inset-0 overlay covering the whole
-  // screen - that blocked the 3D view behind it entirely. Now it draws the rendered page
-  // directly onto the minimap's own small canvas (see the draw effect below) as a marked
-  // underlay beneath the camera/object dots, so it stays contained to the minimap's own
-  // footprint instead of taking over the view.
+  // Saved PDFs (floor plans): the list itself is controlled by the parent
+  // (floorPlans/onFloorPlansChange props - see MinimapProps) so it persists per-model on
+  // the backend and follows the model to any device, not just this browser. Only which
+  // one is currently open (showing its preview thumbnail below) is local UI state.
   const savedPdfs = floorPlans;
   const [openPdfId, setOpenPdfId] = useState<string | null>(null);
   const pdfInputRef = useRef<HTMLInputElement>(null);
-  // Loaded <img> elements for the currently-open preview, keyed by pdf id - the draw
-  // effect below reads from this cache each tick rather than re-decoding the data URL
-  // every frame.
-  const pdfImageCacheRef = useRef<Map<string, HTMLImageElement>>(new Map());
 
   const handlePdfUpload = async (file: File | undefined) => {
     if (!file) return;
@@ -116,7 +59,7 @@ const Minimap: React.FC<MinimapProps> = ({
       const pdfDocument = await pdfjsLib.getDocument({ data: bytes }).promise;
       const page = await pdfDocument.getPage(1);
       // Rendered as a small thumbnail, not full resolution - this only ever needs to be
-      // legible as a marked area on a ~200px minimap, not as a readable document.
+      // legible as a small preview image, not as a readable document.
       const rawViewport = page.getViewport({ scale: 1 });
       const scale = 480 / Math.max(rawViewport.width, rawViewport.height);
       const viewport = page.getViewport({ scale });
@@ -139,392 +82,23 @@ const Minimap: React.FC<MinimapProps> = ({
   const removePdf = (id: string) => {
     onFloorPlansChange?.(savedPdfs.filter(p => p.id !== id));
     setOpenPdfId(prev => (prev === id ? null : prev));
-    pdfImageCacheRef.current.delete(id);
   };
 
-  // Save current camera position with a name
-  const saveLocation = () => {
-    const name = locationName.trim() || `Location ${savedLocations.length + 1}`;
-    const id = `loc-${Date.now()}`;
-    setSavedLocations(prev => [...prev, {
-      id,
-      name,
-      position: camera.position.clone()
-    }]);
-    setLocationName('');
-  };
-
-  // Teleport directly to a saved location
-  const teleportTo = (loc: SavedLocation) => {
-    camera.position.copyFrom(loc.position);
-    if (onCameraMove) onCameraMove(loc.position);
-  };
-
-  // Remove a saved location
-  const removeLocation = (id: string) => {
-    setSavedLocations(prev => prev.filter(l => l.id !== id));
-  };
-
-  // Meshes actually worth showing on the minimap - excludes the ground plane,
-  // internal root node, and transient tool helpers (measurement/preview gizmos).
-  const getRelevantMeshes = (s: BABYLON.Scene) =>
-    s.meshes.filter((m) => m.name && m.name !== '__root__' && m.name !== 'ground' && m.isVisible && !/^(measure_|preview_|measurement_)/i.test(m.name));
-
-  // Real bounds from the actual loaded content, falling back to a small
-  // default box when the scene is empty so the map doesn't divide by zero.
-  const computeBounds = (meshes: BABYLON.AbstractMesh[]) => {
-    if (meshes.length === 0) {
-      return { min: new BABYLON.Vector3(-10, -10, -10), max: new BABYLON.Vector3(10, 10, 10) };
-    }
-    const min = new BABYLON.Vector3(Infinity, Infinity, Infinity);
-    const max = new BABYLON.Vector3(-Infinity, -Infinity, -Infinity);
-    meshes.forEach((m) => {
-      const info = m.getBoundingInfo?.();
-      if (!info) return;
-      min.minimizeInPlace(info.boundingBox.minimumWorld);
-      max.maximizeInPlace(info.boundingBox.maximumWorld);
-    });
-    return { min, max };
-  };
-
-  type FootprintPoint = { x: number; z: number };
-
-  // 2D convex hull (Andrew's monotone chain) over each mesh's real world-space
-  // bounding box corners (BoundingBox.vectorsWorld already accounts for the mesh's
-  // actual position/rotation/scale, unlike a plain min/max AABB merge).
-  const convexHull = (points: FootprintPoint[]): FootprintPoint[] => {
-    const pts = [...points].sort((a, b) => (a.x - b.x) || (a.z - b.z));
-    if (pts.length < 3) return pts;
-    const cross = (o: FootprintPoint, a: FootprintPoint, b: FootprintPoint) =>
-      (a.x - o.x) * (b.z - o.z) - (a.z - o.z) * (b.x - o.x);
-    const lower: FootprintPoint[] = [];
-    for (const p of pts) {
-      while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], p) <= 0) lower.pop();
-      lower.push(p);
-    }
-    const upper: FootprintPoint[] = [];
-    for (let i = pts.length - 1; i >= 0; i--) {
-      const p = pts[i];
-      while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], p) <= 0) upper.pop();
-      upper.push(p);
-    }
-    lower.pop();
-    upper.pop();
-    return lower.concat(upper);
-  };
-
-  // The real building's footprint outline - replaces drawing one rectangle per
-  // mesh (walls, railings, small fixtures all got their own overlapping box,
-  // which rendered as a noisy jagged blob with no resemblance to the actual
-  // uploaded model). A single hull over every mesh's real world-space corners
-  // gives one clean silhouette that actually matches the model's real shape.
-  const [footprintHull, setFootprintHull] = useState<FootprintPoint[]>([]);
-
-  // Keep the "Objects" count, "Bounds" readout, and footprint outline in sync
-  // with what's actually in the scene - these were previously stuck at their
-  // initial values (0 objects, -50..50) forever, since nothing ever updated them.
-  useEffect(() => {
-    if (!scene) return;
-    const sync = () => {
-      const meshes = getRelevantMeshes(scene);
-      setObjects(meshes.map((m) => ({ id: m.uniqueId, type: 'mesh' })));
-      setSceneBounds(computeBounds(meshes));
-      const corners: FootprintPoint[] = [];
-      meshes.forEach((m) => {
-        const info = m.getBoundingInfo?.();
-        info?.boundingBox.vectorsWorld.forEach((v) => corners.push({ x: v.x, z: v.z }));
-      });
-      setFootprintHull(convexHull(corners));
-    };
-    sync();
-    const interval = setInterval(sync, 1000);
-    return () => clearInterval(interval);
-  }, [scene]);
-
-  // Draw minimap (camera, meshes, lights)
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas || !scene || !camera) return;
-
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    const draw = () => {
-      ctx.fillStyle = '#0f172a';
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-      const bounds = sceneBounds;
-      const w = Math.max(bounds.max.x - bounds.min.x, 1);
-      const h = Math.max(bounds.max.z - bounds.min.z, 1);
-      const pad = 10;
-      const scale = Math.min((canvas.width - pad * 2) / w, (canvas.height - pad * 2) / h) * zoom;
-      const ox = pad + (canvas.width - pad * 2 - w * scale) / 2;
-      const oy = pad + (canvas.height - pad * 2 - h * scale) / 2;
-
-      const toScreen = (x: number, z: number) => ({
-        x: ox + (x - bounds.min.x) * scale,
-        y: oy + (z - bounds.min.z) * scale
-      });
-
-      // Marked area of the currently-open PDF (see "Floor Plans" below) - drawn as an
-      // underlay stretched across the same plotted rect as the model footprint, so it
-      // reads as "the area this plan covers" without claiming a precision of real-world
-      // alignment we don't actually have. Stays contained to this small canvas rather
-      // than covering the whole 3D view.
-      const openPdf = openPdfId ? savedPdfs.find((p) => p.id === openPdfId) : null;
-      if (openPdf) {
-        let img = pdfImageCacheRef.current.get(openPdf.id);
-        if (!img) {
-          img = new Image();
-          img.src = openPdf.previewImage;
-          pdfImageCacheRef.current.set(openPdf.id, img);
-        }
-        if (img.complete && img.naturalWidth > 0) {
-          ctx.save();
-          ctx.globalAlpha = 0.55;
-          ctx.drawImage(img, ox, oy, w * scale, h * scale);
-          ctx.restore();
-        }
-      }
-
-      // Draw the real building's footprint as one outline (see footprintHull
-      // above) so the minimap reads as an actual top-down silhouette of the
-      // loaded model instead of a noisy pile of overlapping per-mesh boxes.
-      ctx.fillStyle = 'rgba(16, 185, 129, 0.35)';
-      ctx.strokeStyle = '#10b981';
-      ctx.lineWidth = 1.5;
-      if (footprintHull.length >= 3) {
-        ctx.beginPath();
-        footprintHull.forEach((p, i) => {
-          const s = toScreen(p.x, p.z);
-          if (i === 0) ctx.moveTo(s.x, s.y);
-          else ctx.lineTo(s.x, s.y);
-        });
-        ctx.closePath();
-        ctx.fill();
-        ctx.stroke();
-      } else if (footprintHull.length === 2) {
-        const a = toScreen(footprintHull[0].x, footprintHull[0].z);
-        const b = toScreen(footprintHull[1].x, footprintHull[1].z);
-        ctx.beginPath();
-        ctx.moveTo(a.x, a.y);
-        ctx.lineTo(b.x, b.y);
-        ctx.stroke();
-      } else if (footprintHull.length === 1) {
-        const p = toScreen(footprintHull[0].x, footprintHull[0].z);
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, 2, 0, Math.PI * 2);
-        ctx.fill();
-      }
-
-      // Draw lights
-      scene.lights.forEach((l) => {
-        if (l instanceof BABYLON.ShadowLight) {
-          const p = toScreen(l.position.x, l.position.z);
-          ctx.fillStyle = '#f59e0b';
-          ctx.beginPath();
-          ctx.arc(p.x, p.y, 4, 0, Math.PI * 2);
-          ctx.fill();
-        }
-      });
-
-      // Draw camera
-      const camP = toScreen(camera.position.x, camera.position.z);
-      ctx.fillStyle = '#3b82f6';
-      ctx.beginPath();
-      ctx.arc(camP.x, camP.y, 5, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.strokeStyle = '#60a5fa';
-      ctx.lineWidth = 2;
-      ctx.stroke();
-    };
-
-    draw();
-    const interval = setInterval(draw, 100);
-    return () => clearInterval(interval);
-  }, [scene, camera, sceneBounds, zoom, footprintHull, openPdfId, savedPdfs]);
-
-  // Canvas click handler
-  const handleCanvasClick = (event: React.MouseEvent<HTMLCanvasElement>) => {
-    if (!canvasRef.current) return;
-    const canvas = canvasRef.current;
-    const rect = canvas.getBoundingClientRect();
-    // The canvas's actual displayed size (rect) can differ from its intrinsic pixel
-    // dimensions (canvas.width/height) - e.g. Tailwind's base styles apply
-    // `max-width: 100%` to canvas elements, which visually shrinks it to fit a
-    // narrower container without changing its drawing-space dimensions. Convert the
-    // click position into intrinsic canvas space first, so it lines up with the same
-    // coordinate space the map is actually drawn in.
-    const scaleToIntrinsicX = canvas.width / rect.width;
-    const scaleToIntrinsicY = canvas.height / rect.height;
-    const x = (event.clientX - rect.left) * scaleToIntrinsicX;
-    const y = (event.clientY - rect.top) * scaleToIntrinsicY;
-    const boundsWidth = sceneBounds.max.x - sceneBounds.min.x;
-    const boundsHeight = sceneBounds.max.z - sceneBounds.min.z;
-    const scaleX = (canvas.width - 20) / boundsWidth;
-    const scaleZ = (canvas.height - 20) / boundsHeight;
-    const scale = Math.min(scaleX, scaleZ) * zoom;
-    const offsetX = (canvas.width - boundsWidth * scale) / 2;
-    const offsetY = (canvas.height - boundsHeight * scale) / 2;
-    const worldX = sceneBounds.min.x + (x - offsetX) / scale;
-    const worldZ = sceneBounds.min.z + (y - offsetY) / scale;
-
-    const newPosition = new BABYLON.Vector3(worldX, camera.position.y, worldZ);
-
-    // Check if click is inside any workspace bounds
-    for (const workspace of workspaces) {
-      const b = workspace.bounds;
-      if (b && worldX >= b.minLng && worldX <= b.maxLng && worldZ >= b.minLat && worldZ <= b.maxLat) {
-        onWorkspaceSelect?.(workspace.id);
-        return;
-      }
-    }
-
-    // If no workspace selected, move camera
-    if (onCameraMove) {
-      onCameraMove(newPosition);
-    }
-  };
+  const openPdf = openPdfId ? savedPdfs.find((p) => p.id === openPdfId) : null;
 
   return (
     <div className="minimap-container">
       <div className="minimap-header">
-        <h3 className="minimap-title">Minimap</h3>
-        <div className="minimap-controls">
-          <button className="minimap-button" onClick={() => setZoom(Math.max(0.5, zoom - 0.2))} title="Zoom Out">-</button>
-          <span className="minimap-button">{Math.round(zoom * 100)}%</span>
-          <button className="minimap-button" onClick={() => setZoom(Math.min(3, zoom + 0.2))} title="Zoom In">+</button>
-          <button className={`minimap-button ${isVisible ? 'minimap-button-hide' : 'minimap-button-show'}`} onClick={() => setIsVisible(!isVisible)}>
-            {isVisible ? 'Hide' : 'Show'}
-          </button>
-        </div>
+        <h3 className="minimap-title">Floor Plans</h3>
       </div>
 
-      {isVisible && (
-        <div style={{ position: 'relative' }}>
-          <canvas
-            ref={canvasRef}
-            width={200}
-            height={200}
-            onClick={handleCanvasClick}
-            style={{
-              border: '1px solid #475569',
-              borderRadius: '4px',
-              cursor: 'crosshair',
-              background: '#0f172a'
-            }}
-            title="Click to move camera"
-          />
-
-          {/* Legend */}
-          <div style={{
-            position: 'absolute',
-            top: '4px',
-            right: '4px',
-            background: 'rgba(15, 23, 42, 0.9)',
-            padding: '4px',
-            borderRadius: '4px',
-            fontSize: '10px'
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '2px' }}>
-              <div style={{ width: '8px', height: '8px', background: '#3b82f6', borderRadius: '50%' }}></div>
-              <span>Camera</span>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '2px' }}>
-              <div style={{ width: '8px', height: '8px', background: '#10b981', borderRadius: '50%' }}></div>
-              <span>Objects</span>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-              <div style={{ width: '8px', height: '8px', background: '#f59e0b', borderRadius: '50%' }}></div>
-              <span>Lights</span>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Status info */}
       <div style={{
-        marginTop: '12px',
-        fontSize: '12px',
-        color: '#94a3b8'
-      }}>
-        <div>Objects: {objects.filter(obj => obj.type !== 'camera').length}</div>
-        <div>Bounds: {sceneBounds.min.x.toFixed(1)} to {sceneBounds.max.x.toFixed(1)}</div>
-      </div>
-
-      {/* Teleporter - Save named locations and jump directly */}
-      <div style={{
-        marginTop: '16px',
+        marginTop: '8px',
         padding: '8px',
         background: '#0f172a',
         borderRadius: '6px',
         color: '#f1f5f9'
       }}>
-        <h4 style={{ marginBottom: '8px', fontSize: '14px' }}>Teleporter</h4>
-        <div style={{ display: 'flex', gap: '8px', marginBottom: '8px', flexWrap: 'wrap' }}>
-          <input
-            type="text"
-            value={locationName}
-            onChange={e => setLocationName(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && saveLocation()}
-            style={{ background: '#18181b', color: '#fff', borderRadius: '4px', border: '1px solid #334155', fontSize: '12px', padding: '4px 8px', width: '120px' }}
-            placeholder="Kitchen, Dining, Bedroom..."
-          />
-          <button
-            type="button"
-            className="minimap-button"
-            onClick={saveLocation}
-            style={{ background: '#10b981', color: '#fff', border: 'none', padding: '4px 12px', borderRadius: '4px', cursor: 'pointer', fontSize: '12px' }}
-          >
-            Save Location
-          </button>
-        </div>
-        <div>
-          <span style={{ fontSize: '12px' }}>Saved: {savedLocations.length}</span>
-          <ul style={{ maxHeight: '120px', overflowY: 'auto', margin: '8px 0 0', padding: 0, listStyle: 'none' }}>
-            {savedLocations.map((loc) => (
-              <li key={loc.id} style={{
-                background: '#1e293b',
-                color: '#f1f5f9',
-                padding: '6px 8px',
-                borderRadius: '4px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                gap: '8px',
-                marginBottom: '4px'
-              }}>
-                <span style={{ fontWeight: 500, flex: 1 }}>{loc.name}</span>
-                <button
-                  type="button"
-                  style={{ fontSize: '11px', background: '#3b82f6', color: '#fff', borderRadius: '4px', border: 'none', padding: '4px 10px', cursor: 'pointer' }}
-                  onClick={() => teleportTo(loc)}
-                >
-                  Teleport
-                </button>
-                <button
-                  type="button"
-                  style={{ fontSize: '11px', background: '#64748b', color: '#fff', borderRadius: '4px', border: 'none', padding: '4px 8px', cursor: 'pointer' }}
-                  onClick={() => removeLocation(loc.id)}
-                >
-                  Delete
-                </button>
-              </li>
-            ))}
-          </ul>
-        </div>
-      </div>
-
-      {/* Floor Plans - upload a PDF once, then reopen/hide it on demand instead
-          of re-uploading every visit */}
-      <div style={{
-        marginTop: '16px',
-        padding: '8px',
-        background: '#0f172a',
-        borderRadius: '6px',
-        color: '#f1f5f9'
-      }}>
-        <h4 style={{ marginBottom: '8px', fontSize: '14px' }}>Floor Plans</h4>
         <input
           ref={pdfInputRef}
           type="file"
@@ -576,9 +150,15 @@ const Minimap: React.FC<MinimapProps> = ({
               </li>
             ))}
           </ul>
+          {openPdf && (
+            <img
+              src={openPdf.previewImage}
+              alt={openPdf.name}
+              style={{ marginTop: '8px', width: '100%', borderRadius: '4px', border: '1px solid #334155' }}
+            />
+          )}
         </div>
       </div>
-
     </div>
   );
 };
