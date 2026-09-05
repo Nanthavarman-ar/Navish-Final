@@ -110,13 +110,15 @@ export interface SavedFeatureState {
 // the same on/off state the admin left them in, not just whoever placed them.
 export interface SavedFixture {
   id: string;
-  type: 'fan' | 'light' | 'tv' | 'door' | 'fire' | 'water';
+  type: 'fan' | 'light' | 'tv' | 'door' | 'fire' | 'water' | 'curtain' | 'wind' | 'rain' | 'person' | 'pet' | 'elevator' | 'shutter';
   label: string;
   position: { x: number; y: number; z: number };
   // The mesh this fixture acts on - fan blades to spin, bulb/fixture mesh to glow, TV
-  // screen to light up, the door/cabinet panel itself to swing. Absent for a 'light'/
-  // 'fire'/'water' placed on empty air (no mesh under the click) - those still create a
-  // real point light/particle effect there, just with no mesh to glow/attach to.
+  // screen to light up, the door/cabinet/shutter panel itself to swing/slide, the curtain/
+  // tree mesh to sway, the window mesh the rain overlay sits in front of, the elevator
+  // cabin mesh to travel. Absent for a 'light'/'fire'/'water'/'person'/'pet' placed on
+  // empty air (no mesh under the click) - those still create a real light/particle/prop
+  // there, just with no mesh to glow/attach to.
   meshId?: string;
   meshName?: string;
   isOn: boolean;
@@ -133,6 +135,10 @@ export interface SavedFixture {
   // reliable way to know which side of the wall the room is on) - the "Reverse swing"
   // list control.
   swingReversed?: boolean;
+  // 'elevator' only - how far up (metres) the cabin travels when "on", since a real
+  // floor-to-floor height varies by building and can't be measured from the cabin mesh
+  // alone. Defaults to 3m (one typical storey) if unset.
+  travelHeight?: number;
 }
 
 // Directional ambience markers (SpatialAudioPanel.tsx) - e.g. a marker near the balcony

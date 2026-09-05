@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Scene, Mesh, TransformNode, MeshBuilder, StandardMaterial, VideoTexture, DynamicTexture, ParticleSystem, Color3, Color4, Vector3, Scalar, PointerEventTypes, PointLight } from '@babylonjs/core';
-import { X, Fan, Lightbulb, Tv, Trash2, Upload, DoorOpen, Flame, Droplets, FlipHorizontal } from 'lucide-react';
+import { Scene, Mesh, AbstractMesh, TransformNode, MeshBuilder, StandardMaterial, VideoTexture, DynamicTexture, Texture, ParticleSystem, Color3, Color4, Vector3, Scalar, VertexBuffer, PointerEventTypes, PointLight } from '@babylonjs/core';
+import { X, Fan, Lightbulb, Tv, Trash2, Upload, DoorOpen, Flame, Droplets, FlipHorizontal, Wind, CloudRain, User, PawPrint, ArrowUpDown, Warehouse } from 'lucide-react';
 import { Button } from './ui/button';
 import { showToast } from './utils/toast';
 import { usePanelStack } from '../hooks/usePanelStack';
@@ -36,6 +36,13 @@ const FIXTURE_TYPES: { id: FixtureType; label: string; icon: typeof Fan; color: 
   { id: 'door', label: 'Door / Cabinet', icon: DoorOpen, color: new Color3(0.75, 0.55, 0.3), instruction: 'Click directly on the door/cabinet panel mesh' },
   { id: 'fire', label: 'Fireplace / Candle', icon: Flame, color: new Color3(1, 0.5, 0.15), instruction: 'Click the fireplace/candle (or any spot to place the flame there)' },
   { id: 'water', label: 'Running Water', icon: Droplets, color: new Color3(0.35, 0.65, 0.95), instruction: 'Click the tap/sink (or any spot to place the stream there)' },
+  { id: 'curtain', label: 'Curtain Flutter', icon: Wind, color: new Color3(0.85, 0.85, 0.9), instruction: 'Click directly on the curtain mesh' },
+  { id: 'wind', label: 'Wind Sway', icon: Wind, color: new Color3(0.4, 0.7, 0.35), instruction: 'Click directly on the tree/plant mesh' },
+  { id: 'rain', label: 'Window Rain', icon: CloudRain, color: new Color3(0.5, 0.6, 0.75), instruction: 'Click directly on the window glass mesh' },
+  { id: 'person', label: 'Person Prop', icon: User, color: new Color3(0.8, 0.7, 0.55), instruction: 'Click the floor spot to stand the figure on' },
+  { id: 'pet', label: 'Pet Prop', icon: PawPrint, color: new Color3(0.75, 0.55, 0.35), instruction: 'Click the floor spot to lay the figure on' },
+  { id: 'elevator', label: 'Elevator', icon: ArrowUpDown, color: new Color3(0.6, 0.6, 0.65), instruction: 'Click directly on the elevator cabin mesh' },
+  { id: 'shutter', label: 'Garage Shutter / Gate', icon: Warehouse, color: new Color3(0.55, 0.55, 0.6), instruction: 'Click directly on the shutter/gate panel mesh' },
 ];
 
 // A door/cabinet has no reliable way to detect its true hinge edge or which way it should
@@ -43,6 +50,50 @@ const FIXTURE_TYPES: { id: FixtureType; label: string; icon: typeof Fan; color: 
 // with the Flip hinge/Reverse swing list controls if it opens from the wrong side.
 const DOOR_SWING_DEGREES = 100;
 const DOOR_SWING_SPEED = 4; // lerp rate - reaches target in well under a second
+const MOVER_SPEED = 1.5; // elevator/shutter lerp rate - a slower, heavier feel than a door
+const DEFAULT_ELEVATOR_TRAVEL = 3; // metres - one typical storey height
+
+// Curtain/wind sway - a cheap CPU vertex wave (no shader authoring, no per-frame normal
+// recompute for performance) rather than true cloth/foliage simulation: displaces each
+// vertex sideways by a sine wave whose PHASE depends on height and whose AMPLITUDE is
+// scaled by howFar from the anchored end (curtain: anchored at the top rail, sways more
+// toward the bottom hem; tree: anchored at the trunk base, sways more toward the crown).
+interface VertexWaveState {
+  mesh: AbstractMesh;
+  originalPositions: Float32Array;
+  minY: number;
+  maxY: number;
+  anchorAtTop: boolean; // true for curtain (anchored at top), false for wind/tree (anchored at base)
+}
+
+function setupVertexWave(mesh: AbstractMesh, anchorAtTop: boolean): VertexWaveState | null {
+  const positions = mesh.getVerticesData(VertexBuffer.PositionKind);
+  if (!positions) return null;
+  let minY = Infinity, maxY = -Infinity;
+  for (let i = 1; i < positions.length; i += 3) {
+    if (positions[i] < minY) minY = positions[i];
+    if (positions[i] > maxY) maxY = positions[i];
+  }
+  return { mesh, originalPositions: Float32Array.from(positions), minY, maxY, anchorAtTop };
+}
+
+function applyVertexWave(state: VertexWaveState, time: number, amplitude: number, frequency: number, speed: number): void {
+  const { mesh, originalPositions, minY, maxY, anchorAtTop } = state;
+  const range = Math.max(0.001, maxY - minY);
+  const positions = new Float32Array(originalPositions.length);
+  for (let i = 0; i < originalPositions.length; i += 3) {
+    const x = originalPositions[i];
+    const y = originalPositions[i + 1];
+    const z = originalPositions[i + 2];
+    const t = (y - minY) / range; // 0 at bottom, 1 at top
+    const distFromAnchor = anchorAtTop ? 1 - t : t;
+    const wave = Math.sin(time * speed + y * frequency) * amplitude * distFromAnchor * distFromAnchor;
+    positions[i] = x + wave;
+    positions[i + 1] = y;
+    positions[i + 2] = z;
+  }
+  mesh.updateVerticesData(VertexBuffer.PositionKind, positions, true);
+}
 
 // Both particle effects share one small soft-dot sprite (generated once, not shipped as an
 // asset file) rather than each fixture creating its own copy of the same texture.
@@ -106,6 +157,107 @@ function createWaterParticles(scene: Scene, id: string, position: Vector3, textu
   return ps;
 }
 
+// There's no real rigged character asset available to place (this isn't something code
+// can generate - an actual person/pet model needs real 3D art and rigging), so these are
+// honest stylized placeholder figures built from primitives, not a photorealistic person.
+// Still real geometry with a real idle animation though, not a flat cutout - good enough
+// to convey the human/pet scale of a room the way the feature is actually meant to.
+function createPersonProp(scene: Scene, id: string, position: Vector3): TransformNode {
+  const root = new TransformNode(`fixture_person_root_${id}`, scene);
+  root.position = position.clone();
+
+  const skin = new StandardMaterial(`fixture_person_skin_${id}`, scene);
+  skin.diffuseColor = new Color3(0.85, 0.68, 0.55);
+  const clothes = new StandardMaterial(`fixture_person_clothes_${id}`, scene);
+  clothes.diffuseColor = new Color3(0.25, 0.35, 0.55);
+
+  const head = MeshBuilder.CreateSphere(`fixture_person_head_${id}`, { diameter: 0.22 }, scene);
+  head.position.y = 1.58;
+  head.material = skin;
+  head.parent = root;
+
+  const torso = MeshBuilder.CreateCapsule(`fixture_person_torso_${id}`, { height: 0.55, radius: 0.16 }, scene);
+  torso.position.y = 1.18;
+  torso.material = clothes;
+  torso.parent = root;
+
+  const legPositions: [number, number][] = [[-0.09, 0.5], [0.09, 0.5]];
+  const armPositions: [number, number][] = [[-0.24, 1.02], [0.24, 1.02]];
+  legPositions.forEach(([x], i) => {
+    const leg = MeshBuilder.CreateCylinder(`fixture_person_leg_${id}_${i}`, { height: 0.5, diameterTop: 0.13, diameterBottom: 0.1 }, scene);
+    leg.position.set(x, 0.25, 0);
+    leg.material = clothes;
+    leg.parent = root;
+  });
+  armPositions.forEach(([x, y], i) => {
+    const arm = MeshBuilder.CreateCylinder(`fixture_person_arm_${id}_${i}`, { height: 0.45, diameter: 0.08 }, scene);
+    arm.position.set(x, y - 0.225, 0);
+    arm.material = skin;
+    arm.parent = root;
+  });
+
+  return root;
+}
+
+function createPetProp(scene: Scene, id: string, position: Vector3): TransformNode {
+  const root = new TransformNode(`fixture_pet_root_${id}`, scene);
+  root.position = position.clone();
+
+  const fur = new StandardMaterial(`fixture_pet_fur_${id}`, scene);
+  fur.diffuseColor = new Color3(0.55, 0.4, 0.25);
+
+  // Lying-down pose: a squashed body capsule close to the floor, head resting forward.
+  const body = MeshBuilder.CreateCapsule(`fixture_pet_body_${id}`, { height: 0.5, radius: 0.13 }, scene);
+  body.rotation.z = Math.PI / 2;
+  body.position.y = 0.13;
+  body.material = fur;
+  body.parent = root;
+
+  const head = MeshBuilder.CreateSphere(`fixture_pet_head_${id}`, { diameter: 0.18 }, scene);
+  head.position.set(0.32, 0.12, 0);
+  head.material = fur;
+  head.parent = root;
+
+  const ear1 = MeshBuilder.CreateCylinder(`fixture_pet_ear_${id}_0`, { height: 0.07, diameter: 0.05 }, scene);
+  ear1.position.set(0.34, 0.2, 0.06);
+  ear1.material = fur;
+  ear1.parent = root;
+  const ear2 = ear1.clone(`fixture_pet_ear_${id}_1`);
+  ear2.position.z = -0.06;
+  ear2.parent = root;
+
+  return root;
+}
+
+// A scrolling procedural rain-streak texture on a thin transparent plane placed just in
+// front of the window mesh (same "toward camera" offset technique already used for swatch
+// popups, so it never clips into the glass) - not a real fluid simulation, just vertical
+// translucent streaks whose V-offset scrolls down every frame to read as water sliding
+// down glass.
+function createRainTexture(scene: Scene, id: string): DynamicTexture {
+  const width = 128, height = 128;
+  const texture = new DynamicTexture(`fixture_rain_tex_${id}`, { width, height }, scene, false);
+  texture.hasAlpha = true;
+  const ctx = texture.getContext() as CanvasRenderingContext2D;
+  ctx.clearRect(0, 0, width, height);
+  const streakCount = 26;
+  for (let i = 0; i < streakCount; i++) {
+    const x = Math.random() * width;
+    const streakHeight = 20 + Math.random() * 60;
+    const y = Math.random() * height;
+    const alpha = 0.15 + Math.random() * 0.25;
+    ctx.strokeStyle = `rgba(200,220,235,${alpha})`;
+    ctx.lineWidth = 1 + Math.random() * 1.5;
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(x + (Math.random() - 0.5) * 4, y + streakHeight);
+    ctx.stroke();
+  }
+  texture.update();
+  texture.wrapV = Texture.WRAP_ADDRESSMODE;
+  return texture;
+}
+
 // "Living details" - a ceiling fan that actually spins, a light switch that actually turns
 // a real light (and the fixture's own glow) on/off, a TV screen that actually lights up, a
 // door/cabinet that swings open on a real hinge, a fireplace/candle that flickers, a tap/
@@ -124,6 +276,16 @@ const InteractiveFixtures: React.FC<InteractiveFixturesProps> = ({ scene, roomId
   const hingeNodesRef = useRef<Map<string, { node: TransformNode; hingeSide: 'min' | 'max' }>>(new Map());
   const particleSystemsRef = useRef<Map<string, ParticleSystem>>(new Map());
   const dotTextureRef = useRef<DynamicTexture | null>(null);
+  // 'elevator'/'shutter' - wraps the cabin/panel mesh in a TransformNode (same reason as
+  // hingeNodesRef: avoids touching the mesh's own pivot) and translates that node up/down.
+  // baseY is the node's Y at setup time (its resting/closed position), captured once and
+  // never re-derived from the mesh afterward - once the mesh is parented under this node,
+  // ITS OWN world Y keeps changing as the node moves, so re-reading it each frame would
+  // make "resting position" a moving target.
+  const moverNodesRef = useRef<Map<string, { node: TransformNode; baseY: number }>>(new Map());
+  const vertexWavesRef = useRef<Map<string, VertexWaveState>>(new Map());
+  const rainOverlaysRef = useRef<Map<string, { plane: Mesh; texture: DynamicTexture }>>(new Map());
+  const propNodesRef = useRef<Map<string, TransformNode>>(new Map());
   const fixturesRef = useRef<SavedFixture[]>([]);
   fixturesRef.current = fixtures;
   const [uploadingVideoId, setUploadingVideoId] = useState<string | null>(null);
@@ -154,13 +316,16 @@ const InteractiveFixtures: React.FC<InteractiveFixturesProps> = ({ scene, roomId
     if (!fixture.meshId || !fixture.meshName) return null;
     const resolved = resolveMeshRef(scene, fixture.meshId, fixture.meshName, fixture.position);
     if (resolved) {
-      if (fixture.type === 'fan' || fixture.type === 'door') {
+      const needsLiveTransform = fixture.type === 'fan' || fixture.type === 'door'
+        || fixture.type === 'elevator' || fixture.type === 'shutter'
+        || fixture.type === 'curtain' || fixture.type === 'wind';
+      if (needsLiveTransform) {
         // The load-time performance optimization freezes every static mesh's world
         // matrix (see BabylonWorkspace.tsx's model-load effect) since real architectural
-        // imports have thousands of meshes that never move - a fan's blades and a door
-        // panel are deliberate, permanent exceptions to that: both need their transform
-        // to keep updating for as long as the fixture exists, so a frozen world matrix
-        // would make a fan spin (or a door swing) exactly nowhere.
+        // imports have thousands of meshes that never move - every fixture type that
+        // actually animates its mesh's transform or vertices (spin, swing, slide, sway)
+        // is a deliberate, permanent exception to that, since a frozen world matrix would
+        // make the animation happen exactly nowhere.
         resolved.unfreezeWorldMatrix();
         resolved.doNotSyncBoundingInfo = false;
       }
@@ -353,12 +518,129 @@ const InteractiveFixtures: React.FC<InteractiveFixturesProps> = ({ scene, roomId
     });
   }, [fixtures, scene]);
 
-  // Fan spin, TV flicker, door swing lerp, fire flicker (fan/TV/fire only while "on"; door
-  // runs regardless so it can smoothly swing back CLOSED once switched off, not just freeze
-  // wherever it was) - one shared render loop rather than one observer per fixture.
+  // Wraps the cabin/panel mesh for each 'elevator'/'shutter' fixture in its own
+  // TransformNode (setParent preserves current world transform, same reasoning as the
+  // door hinge above) so the render loop can translate that node up/down without ever
+  // touching the mesh's own pivot/position directly.
+  useEffect(() => {
+    const currentIds = new Set(fixtures.filter((f) => f.type === 'elevator' || f.type === 'shutter').map((f) => f.id));
+    moverNodesRef.current.forEach((entry, id) => {
+      if (!currentIds.has(id)) {
+        const child = entry.node.getChildren()[0];
+        if (child && 'setParent' in child) (child as Mesh).setParent(null);
+        entry.node.dispose();
+        moverNodesRef.current.delete(id);
+      }
+    });
+
+    fixtures.forEach((fixture) => {
+      if ((fixture.type !== 'elevator' && fixture.type !== 'shutter') || moverNodesRef.current.has(fixture.id)) return;
+      const mesh = resolveFixtureMesh(fixture);
+      if (!mesh) return;
+      const node = new TransformNode(`fixture_mover_${fixture.id}`, scene);
+      node.position = mesh.getBoundingInfo().boundingBox.centerWorld.clone();
+      mesh.setParent(node);
+      moverNodesRef.current.set(fixture.id, { node, baseY: node.position.y });
+    });
+  }, [fixtures, scene, resolveFixtureMesh]);
+
+  // Caches each 'curtain'/'wind' fixture's original vertex positions once, so the render
+  // loop below can displace them from a stable baseline every frame rather than drifting
+  // (re-reading already-displaced positions as the new "original" would compound).
+  useEffect(() => {
+    const currentIds = new Set(fixtures.filter((f) => f.type === 'curtain' || f.type === 'wind').map((f) => f.id));
+    vertexWavesRef.current.forEach((_, id) => {
+      if (!currentIds.has(id)) vertexWavesRef.current.delete(id);
+    });
+
+    fixtures.forEach((fixture) => {
+      if ((fixture.type !== 'curtain' && fixture.type !== 'wind') || vertexWavesRef.current.has(fixture.id)) return;
+      const mesh = resolveFixtureMesh(fixture);
+      if (!mesh) return;
+      const state = setupVertexWave(mesh, fixture.type === 'curtain');
+      if (state) vertexWavesRef.current.set(fixture.id, state);
+    });
+  }, [fixtures, resolveFixtureMesh]);
+
+  // Creates/removes the scrolling rain-streak overlay plane for each 'rain' fixture,
+  // positioned a real distance toward wherever it was placed's mesh normal-ish direction
+  // (approximated as "toward the room center from the window", since a window mesh's own
+  // face normal isn't reliably known without inspecting its geometry) - shown/hidden with
+  // isOn rather than removed, so toggling doesn't repeatedly recreate the texture.
+  useEffect(() => {
+    const currentIds = new Set(fixtures.filter((f) => f.type === 'rain').map((f) => f.id));
+    rainOverlaysRef.current.forEach((entry, id) => {
+      if (!currentIds.has(id)) {
+        entry.plane.dispose(false, true);
+        rainOverlaysRef.current.delete(id);
+      }
+    });
+
+    fixtures.forEach((fixture) => {
+      if (fixture.type !== 'rain') return;
+      let entry = rainOverlaysRef.current.get(fixture.id);
+      if (!entry) {
+        const mesh = resolveFixtureMesh(fixture);
+        const bb = mesh?.getBoundingInfo().boundingBox;
+        const width = bb ? Math.max(0.4, bb.maximumWorld.x - bb.minimumWorld.x) : 1.2;
+        const height = bb ? Math.max(0.4, bb.maximumWorld.y - bb.minimumWorld.y) : 1.2;
+        const plane = MeshBuilder.CreatePlane(`fixture_rain_plane_${fixture.id}`, { width, height }, scene);
+        plane.position = new Vector3(fixture.position.x, fixture.position.y, fixture.position.z + 0.02);
+        const texture = createRainTexture(scene, fixture.id);
+        const mat = new StandardMaterial(`fixture_rain_mat_${fixture.id}`, scene);
+        // Same "unlit, self-shown" approach as the TV screen material - emissiveTexture
+        // (not diffuseTexture) is what makes the streaks show at a consistent brightness
+        // regardless of the room's actual lighting.
+        mat.emissiveTexture = texture;
+        mat.emissiveColor = new Color3(1, 1, 1);
+        mat.opacityTexture = texture;
+        mat.disableLighting = true;
+        mat.backFaceCulling = false;
+        plane.material = mat;
+        entry = { plane, texture };
+        rainOverlaysRef.current.set(fixture.id, entry);
+      }
+      entry.plane.setEnabled(fixture.isOn);
+    });
+  }, [fixtures, scene, resolveFixtureMesh]);
+
+  // Creates/removes the procedural person/pet prop for each fixture - built from
+  // primitives (see createPersonProp/createPetProp) rather than a real character asset,
+  // which isn't something code can produce. Visible/hidden with isOn like the rain
+  // overlay, not recreated on every toggle.
+  useEffect(() => {
+    const currentIds = new Set(fixtures.filter((f) => f.type === 'person' || f.type === 'pet').map((f) => f.id));
+    propNodesRef.current.forEach((node, id) => {
+      if (!currentIds.has(id)) {
+        // true: also dispose the skin/clothes/fur materials created just for this prop
+        // (see createPersonProp/createPetProp) - they're never shared with anything else.
+        node.dispose(false, true);
+        propNodesRef.current.delete(id);
+      }
+    });
+
+    fixtures.forEach((fixture) => {
+      if (fixture.type !== 'person' && fixture.type !== 'pet') return;
+      let node = propNodesRef.current.get(fixture.id);
+      if (!node) {
+        const position = new Vector3(fixture.position.x, fixture.position.y, fixture.position.z);
+        node = fixture.type === 'person' ? createPersonProp(scene, fixture.id, position) : createPetProp(scene, fixture.id, position);
+        propNodesRef.current.set(fixture.id, node);
+      }
+      node.setEnabled(fixture.isOn);
+    });
+  }, [fixtures, scene]);
+
+  // Fan spin, TV flicker, door/elevator/shutter movement lerp, fire flicker, curtain/wind
+  // sway (fan/TV/fire only while "on"; door/elevator/shutter run regardless so they can
+  // smoothly move back to their CLOSED/resting position once switched off, not just freeze
+  // wherever they were; curtain/wind only sway while "on", holding still at rest otherwise)
+  // - one shared render loop rather than one observer per fixture.
+  const waveTimeRef = useRef(0);
   useEffect(() => {
     const observer = scene.onBeforeRenderObservable.add(() => {
       const dt = scene.getEngine().getDeltaTime() / 1000;
+      waveTimeRef.current += dt;
       fixturesRef.current.forEach((fixture) => {
         if (fixture.type === 'door') {
           const hingeEntry = hingeNodesRef.current.get(fixture.id);
@@ -366,6 +648,39 @@ const InteractiveFixtures: React.FC<InteractiveFixturesProps> = ({ scene, roomId
           const targetDeg = fixture.isOn ? DOOR_SWING_DEGREES * (fixture.swingReversed ? -1 : 1) : 0;
           const targetRad = (targetDeg * Math.PI) / 180;
           hingeEntry.node.rotation.y = Scalar.Lerp(hingeEntry.node.rotation.y, targetRad, Math.min(1, dt * DOOR_SWING_SPEED));
+          return;
+        }
+        if (fixture.type === 'elevator' || fixture.type === 'shutter') {
+          const entry = moverNodesRef.current.get(fixture.id);
+          if (!entry) return;
+          let travel = fixture.travelHeight ?? DEFAULT_ELEVATOR_TRAVEL;
+          if (fixture.type === 'shutter') {
+            // Rolls up out of the way over its own height, rather than a fixed distance -
+            // extendSizeWorld (half-size) doesn't change as the node translates, only its
+            // position does, so this stays correct every frame.
+            const mesh = resolveFixtureMesh(fixture);
+            travel = mesh ? mesh.getBoundingInfo().boundingBox.extendSizeWorld.y * 2 : DEFAULT_ELEVATOR_TRAVEL;
+          }
+          const targetY = fixture.isOn ? entry.baseY + travel : entry.baseY;
+          entry.node.position.y = Scalar.Lerp(entry.node.position.y, targetY, Math.min(1, dt * MOVER_SPEED));
+          return;
+        }
+        if (fixture.type === 'curtain' || fixture.type === 'wind') {
+          if (!fixture.isOn) return;
+          const state = vertexWavesRef.current.get(fixture.id);
+          if (!state) return;
+          // Curtains flutter faster/smaller (a light breeze through a window); trees/
+          // plants sway slower/wider (whole branches, not just fabric).
+          if (fixture.type === 'curtain') applyVertexWave(state, waveTimeRef.current, 0.04, 3, 2.2);
+          else applyVertexWave(state, waveTimeRef.current, 0.12, 0.6, 0.8);
+          return;
+        }
+        if (fixture.type === 'rain') {
+          if (!fixture.isOn) return;
+          const entry = rainOverlaysRef.current.get(fixture.id);
+          // Scrolling the texture's V-offset (rather than moving the plane) is what
+          // actually reads as streaks sliding down the glass, not just a static overlay.
+          if (entry) entry.texture.vOffset = (entry.texture.vOffset + dt * 0.4) % 1;
           return;
         }
         if (!fixture.isOn) return;
@@ -431,6 +746,17 @@ const InteractiveFixtures: React.FC<InteractiveFixturesProps> = ({ scene, roomId
       particleSystemsRef.current.clear();
       dotTextureRef.current?.dispose();
       dotTextureRef.current = null;
+      moverNodesRef.current.forEach((entry) => {
+        const child = entry.node.getChildren()[0];
+        if (child && 'setParent' in child) (child as Mesh).setParent(null);
+        entry.node.dispose();
+      });
+      moverNodesRef.current.clear();
+      vertexWavesRef.current.clear();
+      rainOverlaysRef.current.forEach((entry) => entry.plane.dispose(false, true));
+      rainOverlaysRef.current.clear();
+      propNodesRef.current.forEach((node) => node.dispose(false, true));
+      propNodesRef.current.clear();
     };
   }, []);
 
@@ -442,14 +768,15 @@ const InteractiveFixtures: React.FC<InteractiveFixturesProps> = ({ scene, roomId
     });
   }, [persist]);
 
-  // Click-to-place: arm "Add Fan/Light/TV/..." then click a spot on the model. Fan/TV/Door
-  // need an actual mesh hit - there's nothing to spin/light up/swing otherwise; Light/Fire/
-  // Water can be placed on bare space too, since they still create a real light/particle
-  // effect there with no mesh to glow/attach to.
+  // Click-to-place: arm "Add Fan/Light/TV/..." then click a spot on the model. Fan/TV/Door/
+  // Curtain/Wind/Rain/Elevator/Shutter need an actual mesh hit - there's nothing to spin/
+  // light up/swing/sway/travel otherwise; Light/Fire/Water/Person/Pet can be placed on bare
+  // space too, since they create a real light/particle/prop there with no mesh needed.
   useEffect(() => {
     if (!placingType) return;
     const typeInfo = FIXTURE_TYPES.find((t) => t.id === placingType)!;
-    const requiresMesh = placingType === 'fan' || placingType === 'tv' || placingType === 'door';
+    const MESH_REQUIRED_TYPES: FixtureType[] = ['fan', 'tv', 'door', 'curtain', 'wind', 'rain', 'elevator', 'shutter'];
+    const requiresMesh = MESH_REQUIRED_TYPES.includes(placingType);
     const observer = scene.onPointerObservable.add((pointerInfo) => {
       if (pointerInfo.type !== PointerEventTypes.POINTERPICK) return;
       const pickResult = scene.pick(scene.pointerX, scene.pointerY, (m) => isSelectableMesh(m));
@@ -515,6 +842,17 @@ const InteractiveFixtures: React.FC<InteractiveFixturesProps> = ({ scene, roomId
   const reverseDoorSwing = (id: string) => {
     setFixtures((prev) => {
       const next = prev.map((f) => (f.id === id ? { ...f, swingReversed: !f.swingReversed } : f));
+      persist(next);
+      return next;
+    });
+  };
+
+  // A real floor-to-floor height varies by building and can't be measured from the cabin
+  // mesh alone, so this is a manual input rather than a guess like the door's hinge side.
+  const updateElevatorTravel = (id: string, meters: number) => {
+    if (!Number.isFinite(meters) || meters <= 0) return;
+    setFixtures((prev) => {
+      const next = prev.map((f) => (f.id === id ? { ...f, travelHeight: meters } : f));
       persist(next);
       return next;
     });
@@ -633,6 +971,19 @@ const InteractiveFixtures: React.FC<InteractiveFixturesProps> = ({ scene, roomId
                     <FlipHorizontal className="w-3 h-3 rotate-90" /> Reverse swing
                   </button>
                 </div>
+              )}
+              {fixture.type === 'elevator' && (
+                <label className="flex items-center gap-1.5 text-[11px] text-slate-400">
+                  Travel height (m):
+                  <input
+                    type="number"
+                    min={0.5}
+                    step={0.1}
+                    defaultValue={fixture.travelHeight ?? DEFAULT_ELEVATOR_TRAVEL}
+                    onBlur={(e) => updateElevatorTravel(fixture.id, parseFloat(e.target.value))}
+                    className="w-16 bg-slate-700 border border-slate-600 rounded px-1.5 py-0.5 text-slate-100"
+                  />
+                </label>
               )}
             </div>
           );
