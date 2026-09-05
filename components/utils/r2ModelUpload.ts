@@ -78,16 +78,24 @@ async function uploadPartWithRetry(url: string, chunk: Blob): Promise<string> {
   throw lastError instanceof Error ? lastError : new Error('Part upload failed after retries');
 }
 
+export interface R2UploadResult {
+  key: string;
+  // Public URL (getR2PublicUrlBase()/key) - immediately fetchable, no signing needed.
+  // Used directly as a BABYLON.VideoTexture source for InteractiveFixtures' TV videos.
+  url: string;
+}
+
 /**
- * Uploads `file` to R2 via multipart upload and returns the object key it landed at (to
- * hand to /finalize-model-upload as r2Key afterwards).
+ * Uploads `file` to R2 via multipart upload and returns the object key/public URL it
+ * landed at (the key goes to /finalize-model-upload as r2Key for a model upload; the url
+ * is what a TV fixture's video plays directly from).
  */
 export async function uploadFileToR2(
   functionsBaseUrl: string,
   file: File,
-  pathPrefix: 'models' | 'thumbnails',
+  pathPrefix: 'models' | 'thumbnails' | 'fixture-videos',
   onProgress?: (progress: R2UploadProgress) => void
-): Promise<string> {
+): Promise<R2UploadResult> {
   const { uploadId, key } = await callFunction(functionsBaseUrl, '/r2-start-upload', {
     fileName: file.name,
     contentType: file.type || 'application/octet-stream',
@@ -110,8 +118,8 @@ export async function uploadFileToR2(
       onProgress?.({ bytesUploaded: end, bytesTotal: file.size });
     }
 
-    await callFunction(functionsBaseUrl, '/r2-complete-upload', { key, uploadId, parts });
-    return key;
+    const result = await callFunction(functionsBaseUrl, '/r2-complete-upload', { key, uploadId, parts });
+    return { key, url: result.url };
   } catch (error) {
     // Best-effort - the upload has already failed either way, this just stops an
     // incomplete multipart upload from sitting in the bucket accruing storage cost.

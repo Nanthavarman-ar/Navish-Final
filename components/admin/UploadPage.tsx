@@ -203,7 +203,7 @@ export function UploadPage() {
           // part gets retried on its own instead of restarting the whole file from byte
           // zero, which the old fake progress-bar animation (and single all-or-nothing
           // fetch) couldn't offer at all.
-          const r2Key = await uploadFileToR2(functionsBaseUrl, uploadFile.file, 'models', ({ bytesUploaded, bytesTotal }) => {
+          const { key: r2Key } = await uploadFileToR2(functionsBaseUrl, uploadFile.file, 'models', ({ bytesUploaded, bytesTotal }) => {
             const pct = bytesTotal > 0 ? Math.round((bytesUploaded / bytesTotal) * 100) : 0;
             setUploadFiles(prev => prev.map(f =>
               f.id === uploadFile.id ? { ...f, progress: pct } : f
@@ -212,7 +212,7 @@ export function UploadPage() {
 
           let thumbnailR2Key: string | undefined;
           if (uploadFile.thumbnailFile) {
-            thumbnailR2Key = await uploadFileToR2(functionsBaseUrl, uploadFile.thumbnailFile, 'thumbnails');
+            thumbnailR2Key = (await uploadFileToR2(functionsBaseUrl, uploadFile.thumbnailFile, 'thumbnails')).key;
           }
 
           const result = await finalizeModelUpload(functionsBaseUrl, {

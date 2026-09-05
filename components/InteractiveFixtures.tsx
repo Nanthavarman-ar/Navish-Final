@@ -1,11 +1,20 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Scene, Mesh, MeshBuilder, StandardMaterial, Color3, Vector3, PointerEventTypes, PointLight } from '@babylonjs/core';
-import { X, Fan, Lightbulb, Tv, Trash2 } from 'lucide-react';
+import { Scene, Mesh, MeshBuilder, StandardMaterial, VideoTexture, Color3, Vector3, PointerEventTypes, PointLight } from '@babylonjs/core';
+import { X, Fan, Lightbulb, Tv, Trash2, Upload } from 'lucide-react';
 import { Button } from './ui/button';
 import { showToast } from './utils/toast';
 import { usePanelStack } from '../hooks/usePanelStack';
 import { loadSceneEdits, savePartialFeatureState, SavedFixture } from './utils/sceneEditsPersistence';
 import { resolveMeshRef, isSelectableMesh } from './BabylonWorkspace/meshSceneHandlers';
+import { uploadFileToR2 } from './utils/r2ModelUpload';
+import { projectId } from '../supabase/client';
+
+const functionsBaseUrl = `https://${projectId}.supabase.co/functions/v1/make-server-cf230d31`;
+// A TV screen is only ever seen from across a room, so there's no reason to accept a huge
+// source file - kept generous enough for a genuinely short, reasonably compressed clip
+// (the pasted-in reference's own advice: 720p H.264, not 4K) while still bounding upload
+// time/R2 storage use per fixture.
+const MAX_VIDEO_BYTES = 150 * 1024 * 1024;
 
 interface InteractiveFixturesProps {
   scene: Scene;
@@ -39,8 +48,11 @@ const InteractiveFixtures: React.FC<InteractiveFixturesProps> = ({ scene, roomId
   const markerMeshesRef = useRef<Map<string, Mesh>>(new Map());
   const lightsRef = useRef<Map<string, PointLight>>(new Map());
   const resolvedMeshCacheRef = useRef<Map<string, ReturnType<typeof resolveMeshRef>>>(new Map());
+  const videoTexturesRef = useRef<Map<string, { texture: VideoTexture; url: string }>>(new Map());
   const fixturesRef = useRef<SavedFixture[]>([]);
   fixturesRef.current = fixtures;
+  const [uploadingVideoId, setUploadingVideoId] = useState<string | null>(null);
+  const [videoUploadProgress, setVideoUploadProgress] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -106,7 +118,10 @@ const InteractiveFixtures: React.FC<InteractiveFixturesProps> = ({ scene, roomId
       if (fixture.type === 'light') {
         lightsRef.current.get(fixture.id)?.setEnabled(fixture.isOn);
       }
-      if (fixture.type === 'light' || fixture.type === 'tv') {
+      // A TV with a real uploaded video is handled entirely by the video-texture effect
+      // below (its own material, its own emissive drive from the video frames) - applying
+      // a flat emissiveColor here too would fight it every render.
+      if (fixture.type === 'light' || (fixture.type === 'tv' && !fixture.videoUrl)) {
         const mesh = resolveFixtureMesh(fixture);
         const mat = mesh?.material as (StandardMaterial & { emissiveColor?: Color3 }) | null;
         if (mat && 'emissiveColor' in mat) {
@@ -114,6 +129,52 @@ const InteractiveFixtures: React.FC<InteractiveFixturesProps> = ({ scene, roomId
             ? (fixture.type === 'tv' ? new Color3(0.55, 0.7, 0.95) : new Color3(1, 0.88, 0.6))
             : new Color3(0, 0, 0);
         }
+      }
+    });
+  }, [fixtures, scene, resolveFixtureMesh]);
+
+  // Creates/replaces the VideoTexture for each TV fixture that has a real uploaded video
+  // (see the Upload button in the fixture list), and plays/pauses it to match isOn. Muted
+  // so play() is never blocked by the browser's autoplay policy regardless of exactly how
+  // the click that triggers it propagates through React state - a silently-never-playing
+  // "TV" would be a worse regression than losing audio.
+  useEffect(() => {
+    const currentVideoIds = new Set(fixtures.filter((f) => f.type === 'tv' && f.videoUrl).map((f) => f.id));
+    videoTexturesRef.current.forEach((entry, id) => {
+      if (!currentVideoIds.has(id)) {
+        entry.texture.dispose();
+        videoTexturesRef.current.delete(id);
+      }
+    });
+
+    fixtures.forEach((fixture) => {
+      if (fixture.type !== 'tv' || !fixture.videoUrl) return;
+      const mesh = resolveFixtureMesh(fixture);
+      if (!mesh) return;
+      const existing = videoTexturesRef.current.get(fixture.id);
+      if (!existing || existing.url !== fixture.videoUrl) {
+        existing?.texture.dispose();
+        const texture = new VideoTexture(`fixture_tv_video_${fixture.id}`, fixture.videoUrl, scene, true, false, undefined, {
+          autoPlay: false,
+          loop: true,
+          muted: true,
+        });
+        const mat = new StandardMaterial(`fixture_tv_mat_${fixture.id}`, scene);
+        // Preserves whatever the original screen mesh's material had for double-sidedness -
+        // common for a thin TV screen panel - the same fix already applied to swatch
+        // material swaps (see MeshMaterialSwatches) for the same reason.
+        mat.backFaceCulling = mesh.material?.backFaceCulling ?? true;
+        mat.diffuseTexture = texture;
+        mat.emissiveTexture = texture;
+        mat.emissiveColor = new Color3(1, 1, 1);
+        mat.disableLighting = true;
+        mesh.material = mat;
+        videoTexturesRef.current.set(fixture.id, { texture, url: fixture.videoUrl });
+      }
+      const video = videoTexturesRef.current.get(fixture.id)?.texture.video;
+      if (video) {
+        if (fixture.isOn) video.play().catch(() => {});
+        else video.pause();
       }
     });
   }, [fixtures, scene, resolveFixtureMesh]);
@@ -128,7 +189,10 @@ const InteractiveFixtures: React.FC<InteractiveFixturesProps> = ({ scene, roomId
         if (fixture.type === 'fan') {
           const mesh = resolveFixtureMesh(fixture);
           if (mesh) mesh.rotation.y += 6 * dt; // roughly one full turn per second at "on" speed
-        } else if (fixture.type === 'tv') {
+        } else if (fixture.type === 'tv' && !fixture.videoUrl) {
+          // A TV with a real uploaded video is driven by its own video frames instead
+          // (see the video-texture effect) - flickering its emissiveColor on top would
+          // just tint a real video with a fake "bad signal" wobble.
           const mesh = resolveFixtureMesh(fixture);
           const mat = mesh?.material as (StandardMaterial & { emissiveColor?: Color3 }) | null;
           if (mat && 'emissiveColor' in mat) {
@@ -173,6 +237,8 @@ const InteractiveFixtures: React.FC<InteractiveFixturesProps> = ({ scene, roomId
       markerMeshesRef.current.clear();
       lightsRef.current.forEach((light) => light.dispose());
       lightsRef.current.clear();
+      videoTexturesRef.current.forEach((entry) => entry.texture.dispose());
+      videoTexturesRef.current.clear();
     };
   }, []);
 
@@ -242,6 +308,30 @@ const InteractiveFixtures: React.FC<InteractiveFixturesProps> = ({ scene, roomId
     });
   };
 
+  const uploadFixtureVideo = async (fixtureId: string, file: File) => {
+    if (file.size > MAX_VIDEO_BYTES) {
+      showToast.error('Video too large', `Please use a file under ${(MAX_VIDEO_BYTES / (1024 * 1024)).toFixed(0)} MB - a short, compressed 720p clip is plenty for a TV screen.`);
+      return;
+    }
+    setUploadingVideoId(fixtureId);
+    setVideoUploadProgress(0);
+    try {
+      const { url } = await uploadFileToR2(functionsBaseUrl, file, 'fixture-videos', ({ bytesUploaded, bytesTotal }) => {
+        setVideoUploadProgress(bytesTotal > 0 ? Math.round((bytesUploaded / bytesTotal) * 100) : 0);
+      });
+      setFixtures((prev) => {
+        const next = prev.map((f) => (f.id === fixtureId ? { ...f, videoUrl: url } : f));
+        persist(next);
+        return next;
+      });
+      showToast.success('Video uploaded', 'Visible on every device that opens this model');
+    } catch (error) {
+      showToast.error('Could not upload video', error instanceof Error ? error.message : undefined);
+    } finally {
+      setUploadingVideoId(null);
+    }
+  };
+
   return (
     <div ref={panelRef} style={panelStyle} className={`fixed right-4 z-40 w-80 max-w-[90vw] bg-gray-900/95 border border-cyan-500/20 rounded-lg shadow-2xl text-white flex-col max-h-[70vh] ${visible ? 'flex' : 'hidden'}`}>
       <div className="flex items-center justify-between p-4 border-b border-gray-700 shrink-0">
@@ -280,25 +370,48 @@ const InteractiveFixtures: React.FC<InteractiveFixturesProps> = ({ scene, roomId
         )}
         {fixtures.map((fixture) => {
           const typeInfo = FIXTURE_TYPES.find((t) => t.id === fixture.type)!;
+          const isUploading = uploadingVideoId === fixture.id;
           return (
-            <div key={fixture.id} className="p-2.5 bg-slate-800/50 border border-slate-700/80 rounded-lg group flex items-center gap-2">
-              <typeInfo.icon className="w-4 h-4 shrink-0" style={{ color: `rgb(${typeInfo.color.r * 255}, ${typeInfo.color.g * 255}, ${typeInfo.color.b * 255})` }} />
-              <span className="flex-1 text-sm text-gray-100 truncate">{fixture.label}</span>
-              <Button
-                size="sm"
-                variant={fixture.isOn ? 'default' : 'outline'}
-                className="h-7 px-2 text-xs"
-                onClick={() => toggleFixture(fixture.id)}
-              >
-                {fixture.isOn ? 'On' : 'Off'}
-              </Button>
-              <button
-                onClick={() => deleteFixture(fixture.id)}
-                className="text-gray-500 hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100 shrink-0"
-                aria-label="Delete fixture"
-              >
-                <Trash2 className="w-3.5 h-3.5" />
-              </button>
+            <div key={fixture.id} className="p-2.5 bg-slate-800/50 border border-slate-700/80 rounded-lg group space-y-1.5">
+              <div className="flex items-center gap-2">
+                <typeInfo.icon className="w-4 h-4 shrink-0" style={{ color: `rgb(${typeInfo.color.r * 255}, ${typeInfo.color.g * 255}, ${typeInfo.color.b * 255})` }} />
+                <span className="flex-1 text-sm text-gray-100 truncate">{fixture.label}</span>
+                <Button
+                  size="sm"
+                  variant={fixture.isOn ? 'default' : 'outline'}
+                  className="h-7 px-2 text-xs"
+                  onClick={() => toggleFixture(fixture.id)}
+                >
+                  {fixture.isOn ? 'On' : 'Off'}
+                </Button>
+                <button
+                  onClick={() => deleteFixture(fixture.id)}
+                  className="text-gray-500 hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100 shrink-0"
+                  aria-label="Delete fixture"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              </div>
+              {fixture.type === 'tv' && (
+                isUploading ? (
+                  <div className="text-[11px] text-cyan-300">Uploading video... {videoUploadProgress}%</div>
+                ) : (
+                  <label className="flex items-center gap-1.5 text-[11px] text-slate-400 hover:text-cyan-300 cursor-pointer w-fit">
+                    <Upload className="w-3 h-3" />
+                    {fixture.videoUrl ? 'Replace video' : 'Upload video (plays while On)'}
+                    <input
+                      type="file"
+                      accept="video/*"
+                      className="hidden"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        e.target.value = '';
+                        if (file) uploadFixtureVideo(fixture.id, file);
+                      }}
+                    />
+                  </label>
+                )
+              )}
             </div>
           );
         })}

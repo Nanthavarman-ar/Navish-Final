@@ -1325,7 +1325,7 @@ app.post('/make-server-cf230d31/r2-start-upload', async (c) => {
     if (!fileName) {
       return c.json({ error: 'Missing fileName' }, 400);
     }
-    const safePrefix = pathPrefix === 'thumbnails' ? 'thumbnails' : 'models';
+    const safePrefix = pathPrefix === 'thumbnails' ? 'thumbnails' : pathPrefix === 'fixture-videos' ? 'fixture-videos' : 'models';
     const key = `${safePrefix}/${Date.now()}-${String(fileName).replace(/[^a-zA-Z0-9._-]/g, '_')}`;
 
     const client = getR2Client();

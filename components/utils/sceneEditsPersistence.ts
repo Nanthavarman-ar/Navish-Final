@@ -119,6 +119,10 @@ export interface SavedFixture {
   meshId?: string;
   meshName?: string;
   isOn: boolean;
+  // 'tv' only - a real uploaded video (Cloudflare R2, same storage models use) that plays
+  // on the screen mesh while "on". Without one, TV falls back to an animated glow with no
+  // real video - see InteractiveFixtures.tsx.
+  videoUrl?: string;
 }
 
 // Directional ambience markers (SpatialAudioPanel.tsx) - e.g. a marker near the balcony
