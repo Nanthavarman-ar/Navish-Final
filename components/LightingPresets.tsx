@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import * as BABYLON from '@babylonjs/core';
 import { SkyMaterial } from '@babylonjs/materials';
 import { calculateRealWorldLighting, temperatureToRGB, calculateSunAngle, calculateSunIntensity, calculateColorTemperature } from '../utils/lightingUtils';
-import { Sun, Moon, Sparkles, Home, Building2, Zap, Lightbulb, Brain, Image as ImageIcon, CloudSun } from 'lucide-react';
+import { Sun, Moon, Sparkles, Home, Building2, Zap, Lightbulb, Brain, Image as ImageIcon, CloudSun, RotateCcw } from 'lucide-react';
 
 // Persists the uploaded HDRI (as its raw file, in IndexedDB - it's typically tens of MB,
 // too large for localStorage/a project JSON) so it survives a page reload instead of
@@ -219,6 +219,43 @@ const LightingPresets: React.FC<LightingPresetsProps> = ({ scene, onPresetChange
 
   useEffect(() => { applyCustomExterior(); }, [customIntensity, customAngle, ambientIntensity]);
   useEffect(() => { if (scene) scene.imageProcessingConfiguration.exposure = exposure; }, [scene, exposure]);
+
+  // Every lighting choice here persists to localStorage (see the effect below) and gets
+  // silently REAPPLIED on every future mount, before the user touches anything - this
+  // component is always mounted regardless of whether the Lighting panel is open (see
+  // uiSegments.tsx). That's normally the point (a chosen look survives a reload), but it
+  // means a single Night/Sunset/Interior click during a demo or test session bakes a dark
+  // scene into every future load in that browser, with nothing visibly "wrong" to explain
+  // why - the exact "opens dark instead of bright" report this button exists to fix. One
+  // click gets back to the same bright baseline a brand new browser would start at.
+  const resetToBrightDay = useCallback(() => {
+    // Turn off Real World Time / Time Simulation FIRST, not via applyPreset - applyPreset
+    // bails out early whenever realWorldTimeMode is still true (by design, for a normal
+    // preset click), but React batches this same function's state updates, so
+    // realWorldTimeMode would still read as its OLD value inside applyPreset's closure
+    // this same tick, silently no-op-ing the whole reset.
+    setRealWorldTimeMode(false);
+    setTimeSimEnabled(false);
+    setMode('exterior');
+    const day = presets[0]; // 'day' preset
+    setSelectedPreset(day.id);
+    const dir = getDirLight();
+    const hemi = getHemiLight();
+    if (dir) {
+      dir.intensity = day.sunIntensity;
+      const rad = (day.sunAngle * Math.PI) / 180;
+      dir.direction = new BABYLON.Vector3(Math.sin(rad), -Math.cos(rad), 0);
+    }
+    if (hemi) {
+      hemi.intensity = day.ambientIntensity;
+      hemi.groundColor = day.groundColor;
+    }
+    setCustomIntensity(day.sunIntensity);
+    setCustomAngle(day.sunAngle);
+    setAmbientIntensity(day.ambientIntensity);
+    setExposure(1.0);
+    onPresetChange?.(day);
+  }, [onPresetChange]);
 
   // Persist lighting choices so they survive a reload/reopen instead of silently
   // snapping back to the hardcoded defaults. skyMode is only saved as 'flat'/'procedural'
@@ -558,12 +595,19 @@ const LightingPresets: React.FC<LightingPresetsProps> = ({ scene, onPresetChange
     }));
   };
 
-  // Interior: Dim sun for interior feel
+  // Interior: dim the direct sun (indoors, it shouldn't blast in like open daylight) and
+  // lift ambient a bit, but SCALED from the user's own exterior settings rather than a
+  // flat hardcoded 0.2/0.5 - a flat override ignores whatever customIntensity actually is
+  // (which could itself already be quite low, e.g. a Night/Sunset preset was chosen
+  // earlier), and specifically because `mode` is persisted (see loadPersistedLightingSettings
+  // above) and this effect fires again on every future mount purely from that stale value -
+  // a proportional floor is far less likely to read as "the scene is just broken" than a
+  // flat 0.2 would if it's compounding on top of an already-dim customIntensity.
   const setInteriorMode = useCallback((on: boolean) => {
     const dir = getDirLight();
     const hemi = getHemiLight();
-    if (dir) dir.intensity = on ? 0.2 : customIntensity;
-    if (hemi) hemi.intensity = on ? 0.5 : ambientIntensity;
+    if (dir) dir.intensity = on ? Math.max(customIntensity * 0.3, 0.3) : customIntensity;
+    if (hemi) hemi.intensity = on ? Math.max(ambientIntensity, 0.4) : ambientIntensity;
   }, [customIntensity, ambientIntensity, scene]);
 
   useEffect(() => {
@@ -603,6 +647,13 @@ const LightingPresets: React.FC<LightingPresetsProps> = ({ scene, onPresetChange
         </button>
         <button className={mode === 'interior' ? 'active' : ''} onClick={() => setMode('interior')} title="Indoor lighting">
           <Building2 className="w-4 h-4" /> Interior
+        </button>
+        <button
+          onClick={resetToBrightDay}
+          title="Reset lighting back to bright daylight - use this if the model looks dark on open"
+          style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 4 }}
+        >
+          <RotateCcw className="w-4 h-4" /> Reset to Bright
         </button>
       </div>
 
