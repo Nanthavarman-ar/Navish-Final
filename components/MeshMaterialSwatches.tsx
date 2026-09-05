@@ -8,6 +8,7 @@ import { usePanelStack } from '../hooks/usePanelStack';
 import type { MaterialManager } from './MaterialManager';
 import type { MaterialPreset } from './interfaces/MaterialInterfaces';
 import { loadSceneEdits, savePartialFeatureState, type SavedSwatchMarker, type SavedSwatchOption } from './utils/sceneEditsPersistence';
+import { resolveMeshRef } from './BabylonWorkspace/meshSceneHandlers';
 
 interface MeshMaterialSwatchesProps {
   scene: Scene;
@@ -36,38 +37,8 @@ type SwatchMarker = SavedSwatchMarker;
 // tile size is wasted anyway.
 const MAX_TEXTURE_DIMENSION = 512;
 
-// A fence/railing/tiled surface is very often many repeated slat/panel meshes that all
-// share the exact same source name (and sometimes the same id) - a plain
-// scene.getMeshById/name match then resolves to whichever one happens to appear first in
-// scene.meshes, not necessarily the one the marker was actually placed on, so applying a
-// swatch changed some OTHER slat instead of the marked one. Disambiguates by preferring
-// whichever same-named candidate's bounding box actually CONTAINS the marker's placement
-// point - nearest-bounding-box-CENTER (the first cut of this fix) looks like the right
-// idea but isn't: a click near the edge of one large panel can easily be numerically
-// closer to a smaller adjacent panel's center than to the correct (large) panel's own
-// center, silently picking the wrong neighbor. Containment is what actually answers
-// "which mesh is this point on", stable across a reload the same way center-distance
-// was (real geometry, not a runtime-only id). Falls back to nearest-center only if no
-// candidate's bounds actually contain the point (e.g. floating-point edge cases on
-// razor-thin geometry).
-function resolveMeshRef(scene: Scene, meshId: string, meshName: string, position: { x: number; y: number; z: number }): AbstractMesh | null {
-  const candidates = scene.meshes.filter((m) => m.id === meshId || m.name === meshName);
-  if (candidates.length <= 1) return candidates[0] ?? null;
-  const target = new Vector3(position.x, position.y, position.z);
-  const containing = candidates.find((c) => c.getBoundingInfo().boundingBox.intersectsPoint(target));
-  if (containing) return containing;
-  let best = candidates[0];
-  let bestDistSq = Vector3.DistanceSquared(best.getBoundingInfo().boundingBox.centerWorld, target);
-  for (let i = 1; i < candidates.length; i++) {
-    const candidate = candidates[i];
-    const distSq = Vector3.DistanceSquared(candidate.getBoundingInfo().boundingBox.centerWorld, target);
-    if (distSq < bestDistSq) {
-      best = candidate;
-      bestDistSq = distSq;
-    }
-  }
-  return best;
-}
+// Moved to meshSceneHandlers.ts (as resolveMeshRef, imported below) so InteractiveFixtures
+// can share the exact same mesh-disambiguation logic instead of keeping its own copy.
 
 // Same enumeration MaterialEditor.tsx's own "Materials" list uses (scene.materials plus
 // MultiMaterial's subMaterials, deduped) - the actual materials already on the loaded

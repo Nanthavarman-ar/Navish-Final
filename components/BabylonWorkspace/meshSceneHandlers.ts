@@ -11,7 +11,41 @@ import { Scene, ArcRotateCamera, AbstractMesh, Mesh, Vector3, PointerEventTypes,
 // out of sync - a single shared predicate can't drift again.
 export const isSelectableMesh = (mesh: AbstractMesh): boolean =>
   mesh.isEnabled() && mesh.isVisible && mesh.isPickable &&
-  !/^(ground|ceiling_light|measure_|annotation_pin_|annotation_popup_panel_|hotspot_marker_|swatch_marker_|swatch_popup_panel_|cursor_|collab_|sound_privacy_marker_|__root__)/i.test(mesh.name || '');
+  !/^(ground|ceiling_light|measure_|annotation_pin_|annotation_popup_panel_|hotspot_marker_|swatch_marker_|swatch_popup_panel_|cursor_|collab_|sound_privacy_marker_|ambient_zone_|fixture_marker_|__root__)/i.test(mesh.name || '');
+
+// A fence/railing/tiled surface (or, for InteractiveFixtures, several identical light
+// fixtures/fan models placed around a house) is very often many separate meshes that all
+// share the exact same source name (and sometimes the same id) - a plain scene.getMeshById/
+// name match then resolves to whichever one happens to appear first in scene.meshes, not
+// necessarily the one a marker was actually placed on. Disambiguates by preferring
+// whichever same-named candidate's bounding box actually CONTAINS the marker's placement
+// point - nearest-bounding-box-CENTER (the first cut of this, in MeshMaterialSwatches) looks
+// like the right idea but isn't: a click near the edge of one large panel can easily be
+// numerically closer to a smaller adjacent panel's center than to the correct (large)
+// panel's own center, silently picking the wrong neighbor. Containment is what actually
+// answers "which mesh is this point on", stable across a reload the same way center-distance
+// was (real geometry, not a runtime-only id). Falls back to nearest-center only if no
+// candidate's bounds actually contain the point (e.g. floating-point edge cases on
+// razor-thin geometry). Shared by MeshMaterialSwatches and InteractiveFixtures rather than
+// each keeping its own copy, so this can't drift out of sync the way isSelectableMesh once did.
+export function resolveMeshRef(scene: Scene, meshId: string, meshName: string, position: { x: number; y: number; z: number }): AbstractMesh | null {
+  const candidates = scene.meshes.filter((m) => m.id === meshId || m.name === meshName);
+  if (candidates.length <= 1) return candidates[0] ?? null;
+  const target = new Vector3(position.x, position.y, position.z);
+  const containing = candidates.find((c) => c.getBoundingInfo().boundingBox.intersectsPoint(target));
+  if (containing) return containing;
+  let best = candidates[0];
+  let bestDistSq = Vector3.DistanceSquared(best.getBoundingInfo().boundingBox.centerWorld, target);
+  for (let i = 1; i < candidates.length; i++) {
+    const candidate = candidates[i];
+    const distSq = Vector3.DistanceSquared(candidate.getBoundingInfo().boundingBox.centerWorld, target);
+    if (distSq < bestDistSq) {
+      best = candidate;
+      bestDistSq = distSq;
+    }
+  }
+  return best;
+}
 
 export interface UseMeshSceneHandlersProps {
   sceneRef: React.RefObject<Scene | null>;

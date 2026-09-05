@@ -391,6 +391,7 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
     showAnnotations: false,
     showHotspotNav: false,
     showMeshMaterialSwatches: false,
+    showInteractiveFixtures: false,
     showBIMIntegration: false,
     // helpful overlay showing available input methods
     showMovementControlChecker: true,

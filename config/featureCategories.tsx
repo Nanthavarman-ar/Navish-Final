@@ -13,7 +13,7 @@ import {
   // Simulations/Analysis (6 icons)
   CloudRain, Droplet, Wind, Volume, DollarSign, Gauge, Leaf, AlertTriangle, BarChart3,
   // Tools/Editors (3 icons)
-  Edit3, Download, Upload, History, Video,
+  Edit3, Download, Upload, History, Video, Lightbulb,
   // Analytics/Monitoring (2 icons)
   Activity, HardDrive,
   // Collaboration/Multi-user (3 icons)
@@ -114,6 +114,7 @@ export const featureCategories: FeaturesByCategory = {
     { id: 'showAnnotations', name: 'Annotations', description: 'Add and share annotations', hotkey: 'N', icon: Edit3, category: 'Tools and Editors', enabledByDefault: false },
     { id: 'showHotspotNav', name: 'Hotspot Navigation', description: 'Place clickable hotspots that jump the camera between rooms/viewpoints', hotkey: 'J', icon: Navigation, category: 'Tools and Editors', enabledByDefault: false },
     { id: 'showMeshMaterialSwatches', name: 'Material Swatches', description: 'Place a marker on a mesh with a few pickable material/color options for viewers', hotkey: 'P', icon: Palette, category: 'Tools and Editors', enabledByDefault: false },
+    { id: 'showInteractiveFixtures', name: 'Interactive Fixtures', description: 'Place a fan that spins, a light switch that turns a real light on/off, or a TV that lights up', icon: Lightbulb, category: 'Tools and Editors', enabledByDefault: false },
     { id: 'showVersionHistory', name: 'Version History', description: 'View and restore previous saves', icon: History, category: 'Tools and Editors', enabledByDefault: false }
   ],
   "Auto Furnish & AR Anchor": [

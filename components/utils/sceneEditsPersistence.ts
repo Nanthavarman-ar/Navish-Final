@@ -97,6 +97,28 @@ export interface SavedFeatureState {
   };
   swatches?: SavedSwatchMarker[];
   ambientZones?: SavedAmbientZone[];
+  fixtures?: SavedFixture[];
+}
+
+// "Living details" - interactive placed fixtures (InteractiveFixtures.tsx) - a fan whose
+// blades spin, a light switch that toggles a real light + the fixture's own glow, a TV
+// screen that lights up - each placed ON a specific mesh in THIS model (meshId/meshName/
+// position resolved back via resolveMeshRef, same disambiguation swatches use for
+// duplicate-named meshes) rather than assumed to exist at a fixed name like "Fan_Blades",
+// since an arbitrary uploaded Revit/SketchUp/Blender export has no predictable mesh
+// naming. Saved per-model so every viewer sees the same fixtures in the same place and
+// the same on/off state the admin left them in, not just whoever placed them.
+export interface SavedFixture {
+  id: string;
+  type: 'fan' | 'light' | 'tv';
+  label: string;
+  position: { x: number; y: number; z: number };
+  // The mesh this fixture acts on - fan blades to spin, bulb/fixture mesh to glow, TV
+  // screen to light up. Absent for a 'light' placed on empty air (no mesh under the
+  // click) - it still creates a real point light there, just with no glowing bulb mesh.
+  meshId?: string;
+  meshName?: string;
+  isOn: boolean;
 }
 
 // Directional ambience markers (SpatialAudioPanel.tsx) - e.g. a marker near the balcony

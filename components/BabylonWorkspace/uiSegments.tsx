@@ -487,6 +487,7 @@ const VersionHistoryPanel = React.lazy(() => import('../VersionHistoryPanel'));
 const AnnotationTool = React.lazy(() => import('../AnnotationTool'));
 const HotspotNavigation = React.lazy(() => import('../HotspotNavigation'));
 const MeshMaterialSwatches = React.lazy(() => import('../MeshMaterialSwatches'));
+const InteractiveFixtures = React.lazy(() => import('../InteractiveFixtures'));
 const SiteContextPanel = React.lazy(() => import('../SiteContextPanel'));
 const ROICalculatorPanel = React.lazy(() => import('../ROICalculatorPanel'));
 const DesignReportPanel = React.lazy(() => import('../DesignReportPanel'));
@@ -922,6 +923,19 @@ const CoreFeaturesSegment: React.FC<Pick<CustomPanelsSegmentProps, 'featureState
           roomId={currentModelId}
           onClose={() => disableFeature('showMeshMaterialSwatches')}
           visible={!!featureStates.showMeshMaterialSwatches}
+        />
+      </Suspense>
+    )}
+    {sceneRef.current && (
+      // Same kept-mounted pattern as AnnotationTool/HotspotNavigation/MeshMaterialSwatches
+      // above - a spinning fan/lit switch/glowing TV must keep working for any viewer
+      // regardless of whether the admin's own panel is currently open.
+      <Suspense fallback={null}>
+        <InteractiveFixtures
+          scene={sceneRef.current}
+          roomId={currentModelId}
+          onClose={() => disableFeature('showInteractiveFixtures')}
+          visible={!!featureStates.showInteractiveFixtures}
         />
       </Suspense>
     )}
