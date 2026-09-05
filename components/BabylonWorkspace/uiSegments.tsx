@@ -568,6 +568,12 @@ interface CustomPanelsSegmentProps {
   recommendedQuality?: 'low' | 'medium' | 'high' | 'ultra';
   gpuName?: string;
   deviceCapabilities?: any;
+  // Real screen-space reflections - enableSSR is the live on/off state (whatever the tier
+  // default or an explicit override resolved to), onSsrOverrideChange lets the panel force
+  // an explicit choice that wins over the tier default (see the quality effect and FPS
+  // watchdog in BabylonWorkspace.tsx).
+  enableSSR?: boolean;
+  onSsrOverrideChange?: (enabled: boolean) => void;
   sustainabilityReport?: {
     greenScore: number;
     energyEfficiency: number;
@@ -603,8 +609,8 @@ export const CustomPanelsSegment: React.FC<CustomPanelsSegmentProps> = (props) =
 );
 
 // Sub-segment components for CustomPanels
-const CoreFeaturesSegment: React.FC<Pick<CustomPanelsSegmentProps, 'featureStates' | 'sceneRef' | 'engineRef' | 'cameraRef' | 'bimManagerRef' | 'materialManagerRef' | 'aiManagerRef' | 'workspaces' | 'selectedWorkspaceId' | 'handleWorkspaceSelect' | 'handleMaterialApplied' | 'handleAnimationCreate' | 'handleSequencePlay' | 'disableFeature' | 'workspaceState' | 'scenarioManagerRef' | 'moodSceneManagerRef' | 'animationManagerRef' | 'cloudAnchorManagerRef' | 'arCloudAnchorsRef' | 'gpsTransformUtilsRef' | 'xrManagerRef' | 'graphicsQuality' | 'setGraphicsQuality' | 'recommendedQuality' | 'gpuName' | 'deviceCapabilities' | 'simulationManagerRef' | 'currentModelId' | 'floorPlans' | 'onFloorPlansChange'>> = ({
-  featureStates, sceneRef, engineRef, cameraRef, bimManagerRef, materialManagerRef, aiManagerRef, workspaces, selectedWorkspaceId, handleWorkspaceSelect, handleMaterialApplied, handleAnimationCreate, handleSequencePlay, disableFeature, workspaceState, scenarioManagerRef, moodSceneManagerRef, animationManagerRef, cloudAnchorManagerRef, arCloudAnchorsRef, gpsTransformUtilsRef, xrManagerRef, graphicsQuality, setGraphicsQuality, recommendedQuality, gpuName, deviceCapabilities, simulationManagerRef, currentModelId, floorPlans, onFloorPlansChange
+const CoreFeaturesSegment: React.FC<Pick<CustomPanelsSegmentProps, 'featureStates' | 'sceneRef' | 'engineRef' | 'cameraRef' | 'bimManagerRef' | 'materialManagerRef' | 'aiManagerRef' | 'workspaces' | 'selectedWorkspaceId' | 'handleWorkspaceSelect' | 'handleMaterialApplied' | 'handleAnimationCreate' | 'handleSequencePlay' | 'disableFeature' | 'workspaceState' | 'scenarioManagerRef' | 'moodSceneManagerRef' | 'animationManagerRef' | 'cloudAnchorManagerRef' | 'arCloudAnchorsRef' | 'gpsTransformUtilsRef' | 'xrManagerRef' | 'graphicsQuality' | 'setGraphicsQuality' | 'recommendedQuality' | 'gpuName' | 'deviceCapabilities' | 'enableSSR' | 'onSsrOverrideChange' | 'simulationManagerRef' | 'currentModelId' | 'floorPlans' | 'onFloorPlansChange'>> = ({
+  featureStates, sceneRef, engineRef, cameraRef, bimManagerRef, materialManagerRef, aiManagerRef, workspaces, selectedWorkspaceId, handleWorkspaceSelect, handleMaterialApplied, handleAnimationCreate, handleSequencePlay, disableFeature, workspaceState, scenarioManagerRef, moodSceneManagerRef, animationManagerRef, cloudAnchorManagerRef, arCloudAnchorsRef, gpsTransformUtilsRef, xrManagerRef, graphicsQuality, setGraphicsQuality, recommendedQuality, gpuName, deviceCapabilities, enableSSR, onSsrOverrideChange, simulationManagerRef, currentModelId, floorPlans, onFloorPlansChange
 }) => {
   const lightingPanel = usePanelStack('top-left', !!featureStates.showLighting);
   const graphicsQualityPanel = usePanelStack('top-right');
@@ -695,6 +701,8 @@ const CoreFeaturesSegment: React.FC<Pick<CustomPanelsSegmentProps, 'featureState
             recommended={recommendedQuality ?? 'medium'}
             gpuName={gpuName}
             capabilities={deviceCapabilities}
+            ssrEnabled={!!enableSSR}
+            onSsrToggle={onSsrOverrideChange}
           />
         </div>
       </div>
@@ -2181,6 +2189,8 @@ interface RenderCustomPanelsProps {
   recommendedQuality?: CustomPanelsSegmentProps['recommendedQuality'];
   gpuName?: string;
   deviceCapabilities?: any;
+  enableSSR?: CustomPanelsSegmentProps['enableSSR'];
+  onSsrOverrideChange?: CustomPanelsSegmentProps['onSsrOverrideChange'];
   sustainabilityReport?: CustomPanelsSegmentProps['sustainabilityReport'];
   floorPlans?: CustomPanelsSegmentProps['floorPlans'];
   onFloorPlansChange?: CustomPanelsSegmentProps['onFloorPlansChange'];

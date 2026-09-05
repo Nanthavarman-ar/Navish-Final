@@ -966,6 +966,11 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
   // worth a second attempt - restricted to Ultra since ray-marching a reflection buffer
   // per pixel is the most expensive effect in this pipeline.
   const [enableSSR, setEnableSSR] = React.useState(false);
+  // null = follow the tier-driven automatic choice above (today's default, unchanged);
+  // true/false = an explicit choice from the Graphics Quality panel's "Reflections" toggle
+  // that wins over the tier default - see the quality effect further down and the FPS
+  // watchdog effect, which can clear this back to null if it has to force SSR off.
+  const [ssrOverride, setSsrOverride] = React.useState<boolean | null>(null);
   const [enableGrain, setEnableGrain] = React.useState(false);
   const [enableVignette, setEnableVignette] = React.useState(false);
   const [viewMode, setViewMode] = React.useState<'walk' | 'orbit' | 'dollhouse' | 'vr' | 'ar'>('orbit');
@@ -1451,6 +1456,11 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
   // once they exit.
   const desktopSSAOPreferenceRef = useRef<boolean>(false);
   const desktopSSRPreferenceRef = useRef<boolean>(false);
+  // Consecutive-low-FPS sample count while SSR is on (see the watchdog effect further
+  // down) - separate from desktopSSRPreferenceRef above, which is only about remembering
+  // the desktop choice across a VR/AR session, not about this device genuinely being too
+  // slow for SSR regardless of session type.
+  const ssrLowFpsStreakRef = useRef(0);
 
   // AI Manager ref
   const aiManagerRef = useRef<any>(null);
@@ -2498,13 +2508,61 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
     const isHighTier = resolved === 'high' || resolved === 'ultra';
     setEnableSSAO(isHighTier);
     setEnableBloom(resolved !== 'low');
-    setEnableSSR(resolved === 'ultra');
+    // ssrOverride (the Graphics Quality panel's "Reflections" toggle) wins over the tier
+    // default when the user has explicitly set it - null means "no explicit choice yet",
+    // which keeps today's behavior (Ultra only) as the default.
+    setEnableSSR(ssrOverride !== null ? ssrOverride : resolved === 'ultra');
     if (shadowGeneratorRef.current) {
       shadowGeneratorRef.current.mapSize = isHighTier ? 2048 : 1024;
       shadowGeneratorRef.current.filteringQuality = isHighTier ? ShadowGenerator.QUALITY_HIGH : ShadowGenerator.QUALITY_MEDIUM;
     }
     Texture.DEFAULT_ANISOTROPIC_FILTERING_LEVEL = isHighTier ? 8 : 4;
-  }, [graphicsQuality, recommendedQuality]);
+  }, [graphicsQuality, recommendedQuality, ssrOverride]);
+
+  // The top bar's FPS badge (`fps` state) was declared but never actually updated anywhere -
+  // always showing a fixed "60 FPS" regardless of the real frame rate. Sampling every 500ms
+  // (not every frame) is what makes this cheap enough to drive React state from - and it's
+  // also the only real signal the SSR watchdog effect right below has to react to.
+  useEffect(() => {
+    const engine = engineRef.current;
+    if (!engine) return;
+    const interval = setInterval(() => {
+      setFps(Math.round(engine.getFps()));
+    }, 500);
+    return () => clearInterval(interval);
+  }, [sceneReadyForLoad]);
+
+  // Backs the static tier-based SSR gate (above) with a real, live safety net: the device-
+  // score heuristic can be fooled (a phone only costs a flat -10 of 100 points, so a modern
+  // one with enough cores/RAM can still score 'ultra'), and the "Reflections" override in
+  // the Graphics Quality panel lets anyone force SSR on regardless of tier to actually try
+  // it. If the real frame rate stays under ~24fps for 3 consecutive samples (~1.5s
+  // sustained, not one dip from something unrelated), turns SSR off and explains why -
+  // and clears ssrOverride back to null so the next tier recompute doesn't just turn it
+  // straight back on.
+  useEffect(() => {
+    if (!enableSSR) {
+      ssrLowFpsStreakRef.current = 0;
+      return;
+    }
+    const LOW_FPS_THRESHOLD = 24;
+    const REQUIRED_STREAK = 3;
+    if (fps > 0 && fps < LOW_FPS_THRESHOLD) {
+      ssrLowFpsStreakRef.current += 1;
+    } else {
+      ssrLowFpsStreakRef.current = 0;
+    }
+    if (ssrLowFpsStreakRef.current >= REQUIRED_STREAK) {
+      ssrLowFpsStreakRef.current = 0;
+      setEnableSSR(false);
+      // Explicitly false, not null - null falls back to the tier default in the quality
+      // effect above, which could well BE 'ultra' (that's how SSR got turned on in the
+      // first place), immediately re-enabling the very thing that just proved too slow.
+      // An explicit false is what actually sticks.
+      setSsrOverride(false);
+      showToast.info('Turned off Reflections', 'The frame rate dropped too low on this device - reflections have been switched off to keep things smooth.');
+    }
+  }, [fps, enableSSR]);
 
   // Reactively toggle spatial audio without recreating AudioManager
   useEffect(() => {
@@ -4473,6 +4531,8 @@ const getCategoryDescription = (categoryName: string): string => {
               recommendedQuality,
               gpuName,
               deviceCapabilities,
+              enableSSR,
+              onSsrOverrideChange: setSsrOverride,
               sustainabilityReport,
               onRainToggle,
               rainOn,
