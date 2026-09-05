@@ -110,12 +110,13 @@ export interface SavedFeatureState {
 // the same on/off state the admin left them in, not just whoever placed them.
 export interface SavedFixture {
   id: string;
-  type: 'fan' | 'light' | 'tv';
+  type: 'fan' | 'light' | 'tv' | 'door' | 'fire' | 'water';
   label: string;
   position: { x: number; y: number; z: number };
   // The mesh this fixture acts on - fan blades to spin, bulb/fixture mesh to glow, TV
-  // screen to light up. Absent for a 'light' placed on empty air (no mesh under the
-  // click) - it still creates a real point light there, just with no glowing bulb mesh.
+  // screen to light up, the door/cabinet panel itself to swing. Absent for a 'light'/
+  // 'fire'/'water' placed on empty air (no mesh under the click) - those still create a
+  // real point light/particle effect there, just with no mesh to glow/attach to.
   meshId?: string;
   meshName?: string;
   isOn: boolean;
@@ -123,6 +124,15 @@ export interface SavedFixture {
   // on the screen mesh while "on". Without one, TV falls back to an animated glow with no
   // real video - see InteractiveFixtures.tsx.
   videoUrl?: string;
+  // 'door' only - which side of the door mesh's own (world-space) bounding box the hinge
+  // sits on. There's no reliable way to detect which edge is the real hinge from geometry
+  // alone, so this defaults to 'min' and the admin corrects it with the "Flip hinge" list
+  // control if it swings from the wrong edge.
+  hingeSide?: 'min' | 'max';
+  // 'door' only - flips which way it swings open, for the same reason as hingeSide (no
+  // reliable way to know which side of the wall the room is on) - the "Reverse swing"
+  // list control.
+  swingReversed?: boolean;
 }
 
 // Directional ambience markers (SpatialAudioPanel.tsx) - e.g. a marker near the balcony
