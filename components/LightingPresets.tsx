@@ -2,7 +2,8 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import * as BABYLON from '@babylonjs/core';
 import { SkyMaterial } from '@babylonjs/materials';
 import { calculateRealWorldLighting, temperatureToRGB, calculateSunAngle, calculateSunIntensity, calculateColorTemperature } from '../utils/lightingUtils';
-import { Sun, Moon, Sparkles, Home, Building2, Zap, Lightbulb, Brain, Image as ImageIcon, CloudSun, RotateCcw } from 'lucide-react';
+import { Sun, Moon, Sparkles, Home, Building2, Zap, Lightbulb, Brain, Image as ImageIcon, CloudSun, RotateCcw, Trash2 } from 'lucide-react';
+import { showToast } from './utils/toast';
 
 // Persists the uploaded HDRI (as its raw file, in IndexedDB - it's typically tens of MB,
 // too large for localStorage/a project JSON) so it survives a page reload instead of
@@ -80,6 +81,22 @@ async function loadHdriFromDb(): Promise<StoredHdri | null> {
     req.onerror = () => reject(req.error);
   });
 }
+
+async function deleteHdriFromDb(): Promise<void> {
+  const db = await openHdriDb();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(HDRI_STORE_NAME, 'readwrite');
+    tx.objectStore(HDRI_STORE_NAME).delete(HDRI_KEY);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+// A real .hdr file (especially the high-res ones - "16k", "32k" - that actually look good
+// as a visible sky) is commonly 50-200MB+, and IndexedDB quotas vary a lot by browser -
+// small in Safari/private browsing especially. Warn before storing rather than after a
+// silent failure with nothing to explain why it didn't survive the next reload.
+const HDRI_PERSIST_WARN_BYTES = 80 * 1024 * 1024;
 
 interface LightingPreset {
   id: string;
@@ -458,9 +475,31 @@ const LightingPresets: React.FC<LightingPresetsProps> = ({ scene, onPresetChange
     const file = e.target.files?.[0];
     if (!file) return;
     applyHdriFile(file, file.name, hdriIntensity, envLightingIntensity, hdriRotation);
+    if (file.size > HDRI_PERSIST_WARN_BYTES) {
+      showToast.info('Large HDRI file', `${(file.size / (1024 * 1024)).toFixed(0)}MB - this browser may not have room to keep it saved for next time. It'll still work for this session.`);
+    }
+    // Was a console.warn only on failure and nothing at all on success - IndexedDB quotas
+    // vary a lot by browser (much smaller in Safari/private browsing especially), so a
+    // real, common failure here looked identical to it just working, and there was no
+    // toast to distinguish "saved for next time" from "worked now, but won't survive a
+    // reload".
     saveHdriToDb({ blob: file, fileName: file.name, intensity: hdriIntensity, envLightingIntensity, rotation: hdriRotation })
-      .catch(err => console.warn('[LightingPresets] Could not save HDRI for persistence:', err));
+      .then(() => showToast.success('HDRI saved', 'It will load automatically the next time this model opens, on this device.'))
+      .catch(err => {
+        console.warn('[LightingPresets] Could not save HDRI for persistence:', err);
+        showToast.error('Could not save this HDRI for next time', 'It works for this session, but you\'ll need to re-upload it after a reload - the file may be too large for this browser to store.');
+      });
     e.target.value = '';
+  };
+
+  // Clears the active HDRI (back to the procedural sky) and forgets it from IndexedDB -
+  // previously the only way to move off an HDRI was switching to Flat/Sky Dome, which left
+  // the file itself still stored and silently restored again on the next reload.
+  const clearHdri = () => {
+    if (hdriBlobUrlRef.current) { URL.revokeObjectURL(hdriBlobUrlRef.current); hdriBlobUrlRef.current = null; }
+    setSkyMode('procedural');
+    setHdriFileName(null);
+    deleteHdriFromDb().catch(err => console.warn('[LightingPresets] Could not remove saved HDRI:', err));
   };
 
   // Restore a previously uploaded HDRI on mount, if one was saved - otherwise every
@@ -719,14 +758,25 @@ const LightingPresets: React.FC<LightingPresetsProps> = ({ scene, onPresetChange
                 <button className={`add-btn ${skyMode === 'procedural' ? 'active-mode' : ''}`} onClick={() => setSkyMode('procedural')} title="Real-time sun/sky dome">
                   <CloudSun className="w-4 h-4" /> Sky Dome
                 </button>
-                <label className={`add-btn ${skyMode === 'hdri' ? 'active-mode' : ''}`} style={{ cursor: 'pointer' }}>
-                  <ImageIcon className="w-4 h-4" /> HDRI
+                <label className={`add-btn ${skyMode === 'hdri' ? 'active-mode' : ''}`} style={{ cursor: 'pointer' }} title={hdriFileName ? 'Pick a different .hdr file to replace the current one' : 'Upload a .hdr file'}>
+                  <ImageIcon className="w-4 h-4" /> {hdriFileName ? 'Change HDRI' : 'HDRI'}
                   <input type="file" accept=".hdr" onChange={handleHdriUpload} style={{ display: 'none' }} />
                 </label>
               </div>
               {skyMode === 'hdri' && (
                 <>
-                  {hdriFileName && <p className="hint">Loaded: {hdriFileName}</p>}
+                  {hdriFileName && (
+                    <p className="hint" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                      <span>Loaded: {hdriFileName}</span>
+                      <button
+                        onClick={clearHdri}
+                        title="Remove this HDRI and go back to the sky dome"
+                        style={{ display: 'flex', alignItems: 'center', gap: 4, background: 'none', border: 'none', color: 'inherit', cursor: 'pointer', padding: 0 }}
+                      >
+                        <Trash2 className="w-3.5 h-3.5" /> Remove
+                      </button>
+                    </p>
+                  )}
                   <Slider label="Sky Brightness" value={hdriIntensity} min={0} max={3} step={0.05} onChange={setHdriIntensity} />
                   <p className="hint" style={{ marginTop: -6 }}>How bright the visible sky background looks.</p>
                   <Slider label="Environment Lighting" value={envLightingIntensity} min={0} max={3} step={0.05} onChange={setEnvLightingIntensity} />
