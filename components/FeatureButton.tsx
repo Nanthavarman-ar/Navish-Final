@@ -3,7 +3,7 @@ import { motion } from 'framer-motion';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip';
-import { Loader2, Star, AlertTriangle, EyeOff } from 'lucide-react';
+import { Loader2, Star, AlertTriangle, EyeOff, Info } from 'lucide-react';
 
 interface Feature {
   id: string;
@@ -100,6 +100,11 @@ const FeatureButton: React.FC<FeatureButtonProps> = ({
           <Star className="w-3 h-3 text-yellow-500 absolute top-1 right-1" />
         )}
 
+        {/* Always-visible hint that hovering this button explains what it does - the
+            tooltip itself only shows on hover (Radix's default), but without some visible
+            marker there was nothing on the button telling anyone that info exists at all. */}
+        <Info className="w-3 h-3 text-gray-400/70 absolute top-1 left-1" />
+
         {/* Performance impact indicator */}
         {showPerformance && feature.performanceImpact && feature.performanceImpact > 0 && (
           <div className="absolute bottom-1 right-1 flex items-center space-x-1">
@@ -140,42 +145,43 @@ const FeatureButton: React.FC<FeatureButtonProps> = ({
     </motion.div>
   );
 
-  if (variant === 'compact') {
-    return (
-      <TooltipProvider>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            {buttonContent}
-          </TooltipTrigger>
-          <TooltipContent side="right" className="max-w-xs">
-            <div>
-              <div className="font-medium">{feature.name}</div>
-              <div className="text-sm text-gray-300 mt-1">
-                {feature.description}
-              </div>
-              {feature.hotkey && (
-                <div className="text-xs text-gray-400 mt-1">
-                  Hotkey: {feature.hotkey}
-                </div>
-              )}
-              {feature.performanceImpact && (
-                <div className="text-xs text-gray-400 mt-1">
-                  Performance Impact: {feature.performanceImpact}/10
-                </div>
-              )}
-              {feature.dependencies && feature.dependencies.length > 0 && (
-                <div className="text-xs text-gray-400 mt-1">
-                  Dependencies: {feature.dependencies.join(', ')}
-                </div>
-              )}
+  // Previously only the (unused-in-practice) 'compact' variant ever got this tooltip -
+  // the grid/list variants actually rendered everywhere in the app (see
+  // BabylonWorkspace.tsx's renderFeatureButton, which never passes a variant) showed
+  // nothing on hover at all, despite every Feature entry (config/featureCategories.tsx)
+  // already carrying a real description and hotkey with nowhere to display them. Now
+  // every variant gets it, matching the always-visible Info icon on the button itself.
+  return (
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          {buttonContent}
+        </TooltipTrigger>
+        <TooltipContent side="right" className="max-w-xs">
+          <div>
+            <div className="font-medium">{feature.name}</div>
+            <div className="text-sm text-gray-300 mt-1">
+              {feature.description}
             </div>
-          </TooltipContent>
-        </Tooltip>
-      </TooltipProvider>
-    );
-  }
-
-  return buttonContent;
+            <div className="text-xs text-gray-400 mt-2">
+              {active ? 'Click to turn this off.' : 'Click to turn this on.'}
+              {feature.hotkey && <> Or press <kbd className="px-1.5 py-0.5 mx-0.5 bg-gray-800 rounded font-mono">{feature.hotkey}</kbd> to toggle it from the keyboard.</>}
+            </div>
+            {feature.performanceImpact ? (
+              <div className="text-xs text-gray-400 mt-1">
+                Performance Impact: {feature.performanceImpact}/10
+              </div>
+            ) : null}
+            {feature.dependencies && feature.dependencies.length > 0 && (
+              <div className="text-xs text-gray-400 mt-1">
+                Needs: {feature.dependencies.join(', ')} to already be on
+              </div>
+            )}
+          </div>
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
 };
 
 export default FeatureButton;
