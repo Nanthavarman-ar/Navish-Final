@@ -139,6 +139,10 @@ export interface SavedFixture {
   // floor-to-floor height varies by building and can't be measured from the cabin mesh
   // alone. Defaults to 3m (one typical storey) if unset.
   travelHeight?: number;
+  // 'person' only - defaults to 'standing'.
+  personVariant?: 'standing' | 'sitting';
+  // 'pet' only - defaults to 'dog'.
+  petVariant?: 'dog' | 'cat' | 'bird';
 }
 
 // Directional ambience markers (SpatialAudioPanel.tsx) - e.g. a marker near the balcony

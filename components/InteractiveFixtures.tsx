@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Scene, Mesh, AbstractMesh, TransformNode, MeshBuilder, StandardMaterial, VideoTexture, DynamicTexture, Texture, ParticleSystem, Color3, Color4, Vector3, Scalar, VertexBuffer, PointerEventTypes, PointLight } from '@babylonjs/core';
+import { Scene, Mesh, AbstractMesh, TransformNode, MeshBuilder, StandardMaterial, VideoTexture, DynamicTexture, Texture, ParticleSystem, Color3, Color4, Vector3, Scalar, VertexBuffer, PointerEventTypes, PointLight, ArcRotateCamera } from '@babylonjs/core';
 import { X, Fan, Lightbulb, Tv, Trash2, Upload, DoorOpen, Flame, Droplets, FlipHorizontal, Wind, CloudRain, User, PawPrint, ArrowUpDown, Warehouse } from 'lucide-react';
 import { Button } from './ui/button';
 import { showToast } from './utils/toast';
@@ -52,6 +52,25 @@ const DOOR_SWING_DEGREES = 100;
 const DOOR_SWING_SPEED = 4; // lerp rate - reaches target in well under a second
 const MOVER_SPEED = 1.5; // elevator/shutter lerp rate - a slower, heavier feel than a door
 const DEFAULT_ELEVATOR_TRAVEL = 3; // metres - one typical storey height
+
+// A real architectural export that's been merged/optimized for fewer draw calls (e.g.
+// gltf-transform's default --join) can leave no separate mesh for a single door/tap/
+// curtain at all - everything sharing a material gets combined into one big mesh. Clicking
+// what looks like a door then actually picks that whole merged wall/facade, and animating
+// it moves/rotates the entire building instead of the small object intended. These caps
+// reject a pick whose mesh is implausibly large for what the fixture is meant to be,
+// rather than silently corrupting the model - the size a real one could plausibly be,
+// generous enough not to reject genuinely large fixtures (a big garage door, a tall
+// curtain) while still catching "that's obviously the whole wall".
+const MAX_FIXTURE_MESH_SIZE: Partial<Record<FixtureType, number>> = {
+  door: 3,
+  water: 1.5,
+  curtain: 4,
+  rain: 5,
+  elevator: 5,
+  shutter: 10,
+  wind: 20,
+};
 
 // Curtain/wind sway - a cheap CPU vertex wave (no shader authoring, no per-frame normal
 // recompute for performance) rather than true cloth/foliage simulation: displaces each
@@ -160,9 +179,12 @@ function createWaterParticles(scene: Scene, id: string, position: Vector3, textu
 // There's no real rigged character asset available to place (this isn't something code
 // can generate - an actual person/pet model needs real 3D art and rigging), so these are
 // honest stylized placeholder figures built from primitives, not a photorealistic person.
-// Still real geometry with a real idle animation though, not a flat cutout - good enough
-// to convey the human/pet scale of a room the way the feature is actually meant to.
-function createPersonProp(scene: Scene, id: string, position: Vector3): TransformNode {
+// Still real geometry with a real idle animation though (head bob + a "mouth" that opens/
+// closes while "talking", see the render loop), not a flat cutout - good enough to convey
+// the human/pet scale of a room the way the feature is actually meant to.
+interface PersonPropParts { root: TransformNode; head: Mesh; mouth: Mesh; }
+
+function createPersonProp(scene: Scene, id: string, position: Vector3, variant: 'standing' | 'sitting'): PersonPropParts {
   const root = new TransformNode(`fixture_person_root_${id}`, scene);
   root.position = position.clone();
 
@@ -170,14 +192,31 @@ function createPersonProp(scene: Scene, id: string, position: Vector3): Transfor
   skin.diffuseColor = new Color3(0.85, 0.68, 0.55);
   const clothes = new StandardMaterial(`fixture_person_clothes_${id}`, scene);
   clothes.diffuseColor = new Color3(0.25, 0.35, 0.55);
+  const mouthMat = new StandardMaterial(`fixture_person_mouth_${id}`, scene);
+  mouthMat.diffuseColor = new Color3(0.35, 0.12, 0.12);
+
+  // Sitting drops the whole figure onto a lower "seat height" and bends the legs forward
+  // instead of hanging straight down, roughly like sitting on a sofa/chair placed at that
+  // spot - the fixture doesn't know the sofa's own seat height, so this is a reasonable
+  // generic approximation the admin can nudge into place afterward if needed.
+  const sitting = variant === 'sitting';
+  const seatY = sitting ? 0.45 : 0;
+  const headY = (sitting ? 1.05 : 1.58);
 
   const head = MeshBuilder.CreateSphere(`fixture_person_head_${id}`, { diameter: 0.22 }, scene);
-  head.position.y = 1.58;
+  head.position.y = headY;
   head.material = skin;
   head.parent = root;
 
+  // Small dark box near the chin - the "mouth" the render loop pulses open/closed while
+  // this fixture is "on" (talking), rather than a static idle figure.
+  const mouth = MeshBuilder.CreateBox(`fixture_person_mouth_${id}`, { width: 0.06, height: 0.02, depth: 0.03 }, scene);
+  mouth.position.set(0, headY - 0.08, 0.1);
+  mouth.material = mouthMat;
+  mouth.parent = root;
+
   const torso = MeshBuilder.CreateCapsule(`fixture_person_torso_${id}`, { height: 0.55, radius: 0.16 }, scene);
-  torso.position.y = 1.18;
+  torso.position.y = (sitting ? 0.75 : 1.18);
   torso.material = clothes;
   torso.parent = root;
 
@@ -185,48 +224,110 @@ function createPersonProp(scene: Scene, id: string, position: Vector3): Transfor
   const armPositions: [number, number][] = [[-0.24, 1.02], [0.24, 1.02]];
   legPositions.forEach(([x], i) => {
     const leg = MeshBuilder.CreateCylinder(`fixture_person_leg_${id}_${i}`, { height: 0.5, diameterTop: 0.13, diameterBottom: 0.1 }, scene);
-    leg.position.set(x, 0.25, 0);
+    if (sitting) {
+      // Bent forward from the hip (seat height) rather than hanging straight down.
+      leg.rotation.x = Math.PI / 2;
+      leg.position.set(x, seatY, 0.25);
+    } else {
+      leg.position.set(x, 0.25, 0);
+    }
     leg.material = clothes;
     leg.parent = root;
   });
   armPositions.forEach(([x, y], i) => {
     const arm = MeshBuilder.CreateCylinder(`fixture_person_arm_${id}_${i}`, { height: 0.45, diameter: 0.08 }, scene);
-    arm.position.set(x, y - 0.225, 0);
+    arm.position.set(x, (sitting ? y - 0.55 : y - 0.225), 0);
     arm.material = skin;
     arm.parent = root;
   });
 
-  return root;
+  return { root, head, mouth };
 }
 
-function createPetProp(scene: Scene, id: string, position: Vector3): TransformNode {
+interface PetPropParts { root: TransformNode; body: Mesh; }
+
+function createPetProp(scene: Scene, id: string, position: Vector3, variant: 'dog' | 'cat' | 'bird'): PetPropParts {
   const root = new TransformNode(`fixture_pet_root_${id}`, scene);
   root.position = position.clone();
 
   const fur = new StandardMaterial(`fixture_pet_fur_${id}`, scene);
-  fur.diffuseColor = new Color3(0.55, 0.4, 0.25);
+  fur.diffuseColor = variant === 'cat' ? new Color3(0.3, 0.3, 0.32) : variant === 'bird' ? new Color3(0.5, 0.35, 0.2) : new Color3(0.55, 0.4, 0.25);
 
-  // Lying-down pose: a squashed body capsule close to the floor, head resting forward.
-  const body = MeshBuilder.CreateCapsule(`fixture_pet_body_${id}`, { height: 0.5, radius: 0.13 }, scene);
+  if (variant === 'bird') {
+    // Perched/standing pose, much smaller than the dog/cat - a round body, a small head
+    // with a beak, two flat wing shapes folded at its sides, thin legs.
+    const body = MeshBuilder.CreateSphere(`fixture_pet_body_${id}`, { diameterX: 0.14, diameterY: 0.12, diameterZ: 0.2 }, scene);
+    body.position.y = 0.14;
+    body.material = fur;
+    body.parent = root;
+
+    const head = MeshBuilder.CreateSphere(`fixture_pet_head_${id}`, { diameter: 0.08 }, scene);
+    head.position.set(0, 0.2, 0.11);
+    head.material = fur;
+    head.parent = root;
+
+    const beakMat = new StandardMaterial(`fixture_pet_beak_${id}`, scene);
+    beakMat.diffuseColor = new Color3(0.9, 0.7, 0.1);
+    const beak = MeshBuilder.CreateCylinder(`fixture_pet_beak_${id}`, { height: 0.05, diameterTop: 0, diameterBottom: 0.03 }, scene);
+    beak.rotation.x = Math.PI / 2;
+    beak.position.set(0, 0.2, 0.16);
+    beak.material = beakMat;
+    beak.parent = root;
+
+    [-1, 1].forEach((side, i) => {
+      const wing = MeshBuilder.CreatePlane(`fixture_pet_wing_${id}_${i}`, { width: 0.14, height: 0.08 }, scene);
+      wing.position.set(side * 0.08, 0.15, 0);
+      wing.rotation.y = side * 0.3;
+      wing.material = fur;
+      wing.parent = root;
+    });
+
+    [-1, 1].forEach((side, i) => {
+      const leg = MeshBuilder.CreateCylinder(`fixture_pet_leg_${id}_${i}`, { height: 0.08, diameter: 0.012 }, scene);
+      leg.position.set(side * 0.03, 0.04, 0);
+      leg.material = beakMat;
+      leg.parent = root;
+    });
+
+    return { root, body };
+  }
+
+  // Dog/cat share the same lying-down construction - a squashed body capsule close to the
+  // floor, head resting forward - just sized and colored differently.
+  const scale = variant === 'cat' ? 0.75 : 1;
+  const body = MeshBuilder.CreateCapsule(`fixture_pet_body_${id}`, { height: 0.5 * scale, radius: 0.13 * scale }, scene);
   body.rotation.z = Math.PI / 2;
-  body.position.y = 0.13;
+  body.position.y = 0.13 * scale;
   body.material = fur;
   body.parent = root;
 
-  const head = MeshBuilder.CreateSphere(`fixture_pet_head_${id}`, { diameter: 0.18 }, scene);
-  head.position.set(0.32, 0.12, 0);
+  const head = MeshBuilder.CreateSphere(`fixture_pet_head_${id}`, { diameter: 0.18 * scale }, scene);
+  head.position.set(0.32 * scale, 0.12 * scale, 0);
   head.material = fur;
   head.parent = root;
 
-  const ear1 = MeshBuilder.CreateCylinder(`fixture_pet_ear_${id}_0`, { height: 0.07, diameter: 0.05 }, scene);
-  ear1.position.set(0.34, 0.2, 0.06);
+  // A cat's ears are proportionally larger/more pointed than a dog's - approximated here
+  // with a taller, narrower cone rather than a real ear shape.
+  const earHeight = variant === 'cat' ? 0.1 : 0.07;
+  const ear1 = MeshBuilder.CreateCylinder(`fixture_pet_ear_${id}_0`, { height: earHeight, diameterTop: 0, diameterBottom: 0.05 * scale }, scene);
+  ear1.position.set(0.34 * scale, (0.2 + earHeight / 2) * scale, 0.06 * scale);
   ear1.material = fur;
   ear1.parent = root;
   const ear2 = ear1.clone(`fixture_pet_ear_${id}_1`);
-  ear2.position.z = -0.06;
+  ear2.position.z = -0.06 * scale;
   ear2.parent = root;
 
-  return root;
+  if (variant === 'cat') {
+    // A curled tail is one of the clearest cat-vs-dog silhouette cues even at this level
+    // of abstraction.
+    const tail = MeshBuilder.CreateTorus(`fixture_pet_tail_${id}`, { diameter: 0.18, thickness: 0.025, tessellation: 12 }, scene);
+    tail.position.set(-0.28, 0.2, 0);
+    tail.rotation.x = Math.PI / 2;
+    tail.material = fur;
+    tail.parent = root;
+  }
+
+  return { root, body };
 }
 
 // A scrolling procedural rain-streak texture on a thin transparent plane placed just in
@@ -285,7 +386,7 @@ const InteractiveFixtures: React.FC<InteractiveFixturesProps> = ({ scene, roomId
   const moverNodesRef = useRef<Map<string, { node: TransformNode; baseY: number }>>(new Map());
   const vertexWavesRef = useRef<Map<string, VertexWaveState>>(new Map());
   const rainOverlaysRef = useRef<Map<string, { plane: Mesh; texture: DynamicTexture }>>(new Map());
-  const propNodesRef = useRef<Map<string, TransformNode>>(new Map());
+  const propNodesRef = useRef<Map<string, (PersonPropParts | PetPropParts) & { variant: string }>>(new Map());
   const fixturesRef = useRef<SavedFixture[]>([]);
   fixturesRef.current = fixtures;
   const [uploadingVideoId, setUploadingVideoId] = useState<string | null>(null);
@@ -610,24 +711,33 @@ const InteractiveFixtures: React.FC<InteractiveFixturesProps> = ({ scene, roomId
   // overlay, not recreated on every toggle.
   useEffect(() => {
     const currentIds = new Set(fixtures.filter((f) => f.type === 'person' || f.type === 'pet').map((f) => f.id));
-    propNodesRef.current.forEach((node, id) => {
+    propNodesRef.current.forEach((entry, id) => {
       if (!currentIds.has(id)) {
         // true: also dispose the skin/clothes/fur materials created just for this prop
         // (see createPersonProp/createPetProp) - they're never shared with anything else.
-        node.dispose(false, true);
+        entry.root.dispose(false, true);
         propNodesRef.current.delete(id);
       }
     });
 
     fixtures.forEach((fixture) => {
       if (fixture.type !== 'person' && fixture.type !== 'pet') return;
-      let node = propNodesRef.current.get(fixture.id);
-      if (!node) {
-        const position = new Vector3(fixture.position.x, fixture.position.y, fixture.position.z);
-        node = fixture.type === 'person' ? createPersonProp(scene, fixture.id, position) : createPetProp(scene, fixture.id, position);
-        propNodesRef.current.set(fixture.id, node);
+      const wantedVariant = fixture.type === 'person' ? (fixture.personVariant ?? 'standing') : (fixture.petVariant ?? 'dog');
+      const existing = propNodesRef.current.get(fixture.id);
+      // Switching pose/variant (the list controls below) rebuilds the prop rather than
+      // trying to reshape the existing one in place.
+      if (existing && existing.variant !== wantedVariant) {
+        existing.root.dispose(false, true);
+        propNodesRef.current.delete(fixture.id);
       }
-      node.setEnabled(fixture.isOn);
+      if (!propNodesRef.current.has(fixture.id)) {
+        const position = new Vector3(fixture.position.x, fixture.position.y, fixture.position.z);
+        const parts = fixture.type === 'person'
+          ? createPersonProp(scene, fixture.id, position, wantedVariant as 'standing' | 'sitting')
+          : createPetProp(scene, fixture.id, position, wantedVariant as 'dog' | 'cat' | 'bird');
+        propNodesRef.current.set(fixture.id, { ...parts, variant: wantedVariant });
+      }
+      propNodesRef.current.get(fixture.id)!.root.setEnabled(fixture.isOn);
     });
   }, [fixtures, scene]);
 
@@ -662,7 +772,35 @@ const InteractiveFixtures: React.FC<InteractiveFixturesProps> = ({ scene, roomId
             travel = mesh ? mesh.getBoundingInfo().boundingBox.extendSizeWorld.y * 2 : DEFAULT_ELEVATOR_TRAVEL;
           }
           const targetY = fixture.isOn ? entry.baseY + travel : entry.baseY;
-          entry.node.position.y = Scalar.Lerp(entry.node.position.y, targetY, Math.min(1, dt * MOVER_SPEED));
+          const prevY = entry.node.position.y;
+          entry.node.position.y = Scalar.Lerp(prevY, targetY, Math.min(1, dt * MOVER_SPEED));
+          // An elevator that visually rises while the viewer just floats in place looks
+          // broken - carries the camera along by the same delta this frame, but only when
+          // it's actually standing in/on the cabin (checked against the cabin mesh's own
+          // horizontal footprint each frame, not just once at placement, since the viewer
+          // walks in and out of it). Works the same way for the WebXR camera in VR - it IS
+          // scene.activeCamera during an XR session in Babylon, so this needs no special
+          // casing for headset use.
+          if (fixture.type === 'elevator') {
+            const deltaY = entry.node.position.y - prevY;
+            const camera = scene.activeCamera;
+            const mesh = resolveFixtureMesh(fixture);
+            if (camera && mesh && Math.abs(deltaY) > 1e-6) {
+              const bb = mesh.getBoundingInfo().boundingBox;
+              const margin = 0.3;
+              const withinX = camera.position.x >= bb.minimumWorld.x - margin && camera.position.x <= bb.maximumWorld.x + margin;
+              const withinZ = camera.position.z >= bb.minimumWorld.z - margin && camera.position.z <= bb.maximumWorld.z + margin;
+              const withinY = camera.position.y >= bb.minimumWorld.y - 0.5 && camera.position.y <= bb.maximumWorld.y + 2.5;
+              if (withinX && withinZ && withinY) {
+                // ArcRotateCamera's own .position is recomputed every frame from
+                // alpha/beta/radius/target - setting it directly would just get
+                // overwritten; moving its target instead is what actually carries the
+                // orbit pivot (and so the camera) up with the cabin.
+                if (camera instanceof ArcRotateCamera) camera.target.y += deltaY;
+                else camera.position.y += deltaY;
+              }
+            }
+          }
           return;
         }
         if (fixture.type === 'curtain' || fixture.type === 'wind') {
@@ -700,6 +838,23 @@ const InteractiveFixtures: React.FC<InteractiveFixturesProps> = ({ scene, roomId
         } else if (fixture.type === 'fire') {
           const light = lightsRef.current.get(fixture.id);
           if (light) light.intensity = 0.6 * (0.7 + Math.random() * 0.6);
+        } else if (fixture.type === 'person') {
+          // "Talking": a small head bob plus the mouth box pulsing open/closed - about the
+          // only way to read as "speaking" from a primitive figure with no real face rig.
+          const entry = propNodesRef.current.get(fixture.id);
+          if (entry && 'mouth' in entry) {
+            const t = waveTimeRef.current;
+            entry.head.rotation.x = Math.sin(t * 2.4) * 0.05;
+            const mouthOpen = Math.max(0, Math.sin(t * 9));
+            entry.mouth.scaling.y = 0.4 + mouthOpen * 1.6;
+          }
+        } else if (fixture.type === 'pet') {
+          // Idle breathing - a small, slow scale pulse on the body rather than a static prop.
+          const entry = propNodesRef.current.get(fixture.id);
+          if (entry && 'body' in entry) {
+            const breathe = 1 + Math.sin(waveTimeRef.current * 1.6) * 0.03;
+            entry.body.scaling.set(breathe, 1, breathe);
+          }
         }
       });
     });
@@ -755,7 +910,7 @@ const InteractiveFixtures: React.FC<InteractiveFixturesProps> = ({ scene, roomId
       vertexWavesRef.current.clear();
       rainOverlaysRef.current.forEach((entry) => entry.plane.dispose(false, true));
       rainOverlaysRef.current.clear();
-      propNodesRef.current.forEach((node) => node.dispose(false, true));
+      propNodesRef.current.forEach((entry) => entry.root.dispose(false, true));
       propNodesRef.current.clear();
     };
   }, []);
@@ -787,6 +942,21 @@ const InteractiveFixtures: React.FC<InteractiveFixturesProps> = ({ scene, roomId
       if (requiresMesh && !pickResult.pickedMesh) {
         showToast.info(typeInfo.instruction);
         return;
+      }
+      if (pickResult.pickedMesh) {
+        const maxSize = MAX_FIXTURE_MESH_SIZE[placingType];
+        if (maxSize) {
+          const bb = pickResult.pickedMesh.getBoundingInfo().boundingBox;
+          const size = bb.maximumWorld.subtract(bb.minimumWorld);
+          const largest = Math.max(size.x, size.y, size.z);
+          if (largest > maxSize) {
+            showToast.error(
+              `That looks like part of the building, not a separate ${typeInfo.label.toLowerCase()}`,
+              `It's ${largest.toFixed(1)}m across. If this model doesn't have the ${typeInfo.label.toLowerCase()} as its own separate piece (common if it was merged/optimized for fewer draw calls), this feature can't isolate just it - try a model where it's a distinct mesh.`
+            );
+            return;
+          }
+        }
       }
       const fixture: SavedFixture = {
         id: `fixture_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
@@ -853,6 +1023,22 @@ const InteractiveFixtures: React.FC<InteractiveFixturesProps> = ({ scene, roomId
     if (!Number.isFinite(meters) || meters <= 0) return;
     setFixtures((prev) => {
       const next = prev.map((f) => (f.id === id ? { ...f, travelHeight: meters } : f));
+      persist(next);
+      return next;
+    });
+  };
+
+  const setPersonVariant = (id: string, variant: 'standing' | 'sitting') => {
+    setFixtures((prev) => {
+      const next = prev.map((f) => (f.id === id ? { ...f, personVariant: variant } : f));
+      persist(next);
+      return next;
+    });
+  };
+
+  const setPetVariant = (id: string, variant: 'dog' | 'cat' | 'bird') => {
+    setFixtures((prev) => {
+      const next = prev.map((f) => (f.id === id ? { ...f, petVariant: variant } : f));
       persist(next);
       return next;
     });
@@ -984,6 +1170,33 @@ const InteractiveFixtures: React.FC<InteractiveFixturesProps> = ({ scene, roomId
                     className="w-16 bg-slate-700 border border-slate-600 rounded px-1.5 py-0.5 text-slate-100"
                   />
                 </label>
+              )}
+              {fixture.type === 'person' && (
+                <div className="flex items-center gap-3 text-[11px]">
+                  {(['standing', 'sitting'] as const).map((v) => (
+                    <button
+                      key={v}
+                      onClick={() => setPersonVariant(fixture.id, v)}
+                      className={(fixture.personVariant ?? 'standing') === v ? 'text-cyan-300 font-medium' : 'text-slate-400 hover:text-cyan-300'}
+                    >
+                      {v === 'standing' ? 'Standing' : 'Sitting'}
+                    </button>
+                  ))}
+                  <span className="text-slate-500">- On = talking</span>
+                </div>
+              )}
+              {fixture.type === 'pet' && (
+                <div className="flex items-center gap-3 text-[11px]">
+                  {(['dog', 'cat', 'bird'] as const).map((v) => (
+                    <button
+                      key={v}
+                      onClick={() => setPetVariant(fixture.id, v)}
+                      className={(fixture.petVariant ?? 'dog') === v ? 'text-cyan-300 font-medium capitalize' : 'text-slate-400 hover:text-cyan-300 capitalize'}
+                    >
+                      {v}
+                    </button>
+                  ))}
+                </div>
               )}
             </div>
           );
