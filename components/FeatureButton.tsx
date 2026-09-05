@@ -163,17 +163,17 @@ const FeatureButton: React.FC<FeatureButtonProps> = ({
             <div className="text-sm text-gray-300 mt-1">
               {feature.description}
             </div>
-            <div className="text-xs text-gray-400 mt-2">
+            <div className="text-xs text-gray-300 mt-2">
               {active ? 'Click to turn this off.' : 'Click to turn this on.'}
-              {feature.hotkey && <> Or press <kbd className="px-1.5 py-0.5 mx-0.5 bg-gray-800 rounded font-mono">{feature.hotkey}</kbd> to toggle it from the keyboard.</>}
+              {feature.hotkey && <> Or press <kbd className="px-1.5 py-0.5 mx-0.5 bg-gray-800 text-gray-100 rounded font-mono">{feature.hotkey}</kbd> to toggle it from the keyboard.</>}
             </div>
             {feature.performanceImpact ? (
-              <div className="text-xs text-gray-400 mt-1">
+              <div className="text-xs text-gray-300 mt-1">
                 Performance Impact: {feature.performanceImpact}/10
               </div>
             ) : null}
             {feature.dependencies && feature.dependencies.length > 0 && (
-              <div className="text-xs text-gray-400 mt-1">
+              <div className="text-xs text-gray-300 mt-1">
                 Needs: {feature.dependencies.join(', ')} to already be on
               </div>
             )}
