@@ -254,6 +254,17 @@ const LightingPresets: React.FC<LightingPresetsProps> = ({ scene, onPresetChange
     setCustomAngle(day.sunAngle);
     setAmbientIntensity(day.ambientIntensity);
     setExposure(1.0);
+    // An HDRI deliberately dims the sun/ambient to 35%/60% of whatever they were (see the
+    // skyMode==='hdri' effect further down, needed so StandardMaterial surfaces - which get
+    // no light at all from an environment texture - don't go dark) - staying in HDRI mode
+    // through this reset would leave the values just set above clamped right back down,
+    // which is exactly why a first version of this reset still looked dull. Also re-seeds
+    // preHdriIntensityRef with these same bright values (rather than leaving it holding
+    // whatever was captured back whenever the HDRI was first turned on) so if that effect's
+    // own cleanup path runs after this, it restores to THIS bright baseline, not a stale
+    // dim one.
+    preHdriIntensityRef.current = { dir: day.sunIntensity, hemi: day.ambientIntensity };
+    setSkyMode('procedural');
     onPresetChange?.(day);
   }, [onPresetChange]);
 

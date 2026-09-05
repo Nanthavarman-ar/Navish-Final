@@ -270,6 +270,43 @@ export async function saveSceneEdits(modelId: string, data: SceneEditsData): Pro
   }
 }
 
+// Read-modify-write for BabylonWorkspace.tsx's own top-level fields (meshes/homeView/
+// floorPlans), the same pattern savePartialFeatureState already uses for `features` below -
+// generalized here because saveSceneEdits's plain overwrite has a real data-loss bug, not
+// just the same "acceptable" last-write-wins race savePartialFeatureState documents:
+// BabylonWorkspace.tsx's own sceneEditsRef is a LOCAL, in-memory snapshot that has no way
+// to know about a save a completely different component just made independently via
+// savePartialFeatureState (Material Swatches, Interactive Fixtures, Spatial Audio zones,
+// Cost Estimator, etc. all save their own `features` slice this way). Autosaving a mesh
+// drag, Set Home View, or a floor plan upload from BabylonWorkspace.tsx used to send that
+// stale sceneEditsRef.current wholesale - silently erasing a swatch/fixture/zone that had
+// been correctly saved to the server moments earlier, the instant anything else triggered
+// a save. Only ever pass the ONE field actually being changed in `patch` - this merges it
+// onto the server's LATEST record instead of overwriting the whole thing from a
+// possibly-stale local ref.
+export async function mergeAndSaveSceneEdits(modelId: string, patch: Partial<SceneEditsData>): Promise<boolean> {
+  const accessToken = await getAccessToken();
+  if (!accessToken) return false;
+  try {
+    const current = await loadSceneEdits(modelId);
+    const merged: SceneEditsData = { ...(current ?? { meshes: {} }), ...patch };
+    const body = JSON.stringify({ sceneData: merged });
+    const response = await fetch(`${functionsBaseUrl}/api/scenes/${encodeURIComponent(modelId)}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${accessToken}` },
+      body,
+    });
+    if (!response.ok) {
+      const errorText = await response.text().catch(() => '');
+      console.error(`Failed to save scene edits for ${modelId}: ${response.status} ${errorText} (payload ${body.length} bytes)`);
+    }
+    return response.ok;
+  } catch (error) {
+    console.error('Failed to auto-save scene edits:', error);
+    return false;
+  }
+}
+
 // Merge-and-save a single feature panel's own slice of `features` without needing every
 // panel to route through BabylonWorkspace.tsx's central sceneEditsRef (that ref only exists
 // there; the panels using this - CostEstimatorWrapper, ROICalculatorPanel, BudgetTierPanel,

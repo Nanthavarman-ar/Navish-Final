@@ -63,7 +63,7 @@ import { SimulationManager } from './SimulationManager';
 import { SustainabilityManager, SustainabilityReport } from './SustainabilityManager';
 import { PresentationManager } from './PresentationManager';
 import { IoTManager } from './IoTManager';
-import { captureSceneEdits, applySceneEdits, saveSceneEdits, loadSceneEdits, type SceneEditsData } from './utils/sceneEditsPersistence';
+import { captureSceneEdits, applySceneEdits, mergeAndSaveSceneEdits, loadSceneEdits, type SceneEditsData } from './utils/sceneEditsPersistence';
 
 // UI Component imports
 import FeatureButton from './FeatureButton';
@@ -1026,8 +1026,12 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
     // Was fire-and-forget with the result ignored - a save the backend rejected (a PDF
     // preview image can make this record large) failed completely silently, so it
     // looked saved in this browser but was never actually on the server: gone on
-    // reload, never visible on a different device.
-    const saved = await saveSceneEdits(currentModelId, sceneEditsRef.current);
+    // reload, never visible on a different device. Merges just this field onto the
+    // server's latest record (mergeAndSaveSceneEdits) rather than sending the whole
+    // sceneEditsRef.current wholesale - that ref has no way to know about a swatch/
+    // fixture/ambient-zone another panel saved independently a moment earlier, and a
+    // plain overwrite here would have silently erased it.
+    const saved = await mergeAndSaveSceneEdits(currentModelId, { floorPlans: next });
     if (!saved) {
       showToast.error('Could not save floor plan', 'It will disappear on reload - try again or use a smaller PDF');
     } else if (wasAdded) {
@@ -1054,13 +1058,13 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
 
     // Persisted to the backend (same per-model record as mesh edits) rather than just this
     // ref, so it's the same on every device that opens this model, not just this browser tab.
-    sceneEditsRef.current = {
-      ...sceneEditsRef.current,
-      homeView: { alpha: arcCam.alpha, beta: arcCam.beta, radius: arcCam.radius, target: { x: target.x, y: target.y, z: target.z } }
-    };
+    const homeView = { alpha: arcCam.alpha, beta: arcCam.beta, radius: arcCam.radius, target: { x: target.x, y: target.y, z: target.z } };
+    sceneEditsRef.current = { ...sceneEditsRef.current, homeView };
     // Used to show "saved" unconditionally regardless of whether the request actually
-    // succeeded - now only claims that once the backend has confirmed it.
-    const saved = await saveSceneEdits(currentModelId, sceneEditsRef.current);
+    // succeeded - now only claims that once the backend has confirmed it. Merges just this
+    // field onto the server's latest record (see the matching comment on
+    // handleFloorPlansChange above) instead of sending sceneEditsRef.current wholesale.
+    const saved = await mergeAndSaveSceneEdits(currentModelId, { homeView });
     if (saved) {
       showToast.success('Home view saved', 'Fit and Presentation Mode will use this point on every device from now on');
     } else {
@@ -1153,16 +1157,19 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
     saveEditsDebounceRef.current = setTimeout(() => {
       saveEditsDebounceRef.current = null;
       if (loadedModelMeshesRef.current.length === 0) return;
-      // Merge mesh edits into the existing per-model record (sceneEditsRef) rather than
-      // saving a freshly-built { meshes } object - a fresh object has no homeView field at
-      // all, and since the backend record is one JSON blob per model that a save fully
-      // replaces, that would silently wipe out a previously-saved Home view every time a
-      // mesh gets moved/recolored.
-      sceneEditsRef.current = { ...sceneEditsRef.current, meshes: captureSceneEdits(loadedModelMeshesRef.current).meshes };
+      // Merge mesh edits into the existing per-model record rather than overwriting the
+      // whole thing from this local sceneEditsRef snapshot - it has no way to know about a
+      // Home view, floor plan, swatch/fixture/ambient-zone, etc. that got saved
+      // independently (by this same ref going stale, or by a completely different panel
+      // via savePartialFeatureState) since this ref was last refreshed, and a mesh drag is
+      // by far the most frequent save in the app - the single most likely place for that
+      // staleness to actually bite.
+      const meshes = captureSceneEdits(loadedModelMeshesRef.current).meshes;
+      sceneEditsRef.current = { ...sceneEditsRef.current, meshes };
       // Quiet on success (this fires after every drag/edit - a toast each time would be
       // noisy), but a failed save here means the edit that was just made is NOT actually
       // persisted anywhere, which is worth surfacing rather than staying silent about.
-      saveSceneEdits(currentModelId, sceneEditsRef.current).then((saved) => {
+      mergeAndSaveSceneEdits(currentModelId, { meshes }).then((saved) => {
         if (!saved) showToast.error('Could not save your changes', 'They will be lost on reload - try again');
       });
     }, 1500);
