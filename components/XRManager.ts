@@ -71,6 +71,10 @@ export class XRManager {
   // negative (mirrored) x back to positive, silently undoing the mirror. Kept separate so
   // scale and mirror compose instead of one clobbering the other - see applyPlacementScale().
   private placementMirrored: boolean = false;
+  // "Dollhouse Mode" auto-spin - shows the placed miniature turning to face every side
+  // without the viewer needing to physically walk around a real table (not always
+  // practical one-handed on a phone). See toggleAutoRotate()/teardownARPlacement().
+  private autoRotateObserver: any = null;
 
   // Two-finger pinch-to-zoom for the placed model - the only scaling controls that
   // existed before this were the on-screen +/- buttons (a fixed ~4% step per tap/hold
@@ -1083,6 +1087,10 @@ export class XRManager {
     this.reticle = null;
     this.teardownAROverlayUI();
     this.teardownPinchToZoom();
+    if (this.autoRotateObserver) {
+      this.scene.onBeforeRenderObservable.remove(this.autoRotateObserver);
+      this.autoRotateObserver = null;
+    }
     // Deliberately NOT disposing placementRoot or resetting placementScale here - if
     // the user re-enters AR in the same session, their last placement/scale is kept
     // rather than snapping back to the model's original authored position.
@@ -1171,9 +1179,12 @@ export class XRManager {
 
   // Scales the placed model (clamped to a sane range so it can't be pinched/tapped down
   // to invisible or up to absurdly oversized). factor is relative, e.g. 1.04 = +4%.
+  // Floor is 1% rather than the old 10% - a whole-house model needs to shrink well past
+  // 10% to actually sit on a real table (see getPlacedModelRestSize/ARScalePanel's
+  // Tabletop auto-fit), and 10% left anything bigger than ~6m across still room-sized.
   scalePlacedModel(factor: number): void {
     const root = this.ensurePlacementRoot();
-    this.placementScale = Math.min(5, Math.max(0.1, this.placementScale * factor));
+    this.placementScale = Math.min(5, Math.max(0.01, this.placementScale * factor));
     this.applyPlacementScale(root);
     this.updateScaleReadout();
   }
@@ -1249,9 +1260,58 @@ export class XRManager {
   // repeated relative nudge.
   setPlacedModelScale(scale: number): void {
     const root = this.ensurePlacementRoot();
-    this.placementScale = Math.min(5, Math.max(0.1, scale));
+    this.placementScale = Math.min(5, Math.max(0.01, scale));
     this.applyPlacementScale(root);
     this.updateScaleReadout();
+  }
+
+  // The placed model's real, unscaled (scale=1) footprint - what ARScalePanel's Tabletop
+  // auto-fit needs to compute "what scale actually makes this specific model's footprint
+  // fit on a real table", rather than a flat percentage that works for a small room but
+  // leaves an entire house still metres across. Divides the current (already-scaled)
+  // world bounding box by the currently-applied scale rather than temporarily resetting
+  // scaling to 1, since that would visibly flash the placed model to full size for a frame.
+  getPlacedModelRestSize(): Vector3 | null {
+    if (!this.placementRoot || this.placementRoot.isDisposed()) return null;
+    const meshes = this.getPlaceableMeshes().filter((m) => m.getTotalVertices() > 0);
+    if (meshes.length === 0) return null;
+    let min = meshes[0].getBoundingInfo().boundingBox.minimumWorld.clone();
+    let max = meshes[0].getBoundingInfo().boundingBox.maximumWorld.clone();
+    meshes.forEach((m) => {
+      const bb = m.getBoundingInfo().boundingBox;
+      min = Vector3.Minimize(min, bb.minimumWorld);
+      max = Vector3.Maximize(max, bb.maximumWorld);
+    });
+    const worldSize = max.subtract(min);
+    const scale = this.placementScale || 1;
+    return new Vector3(worldSize.x / scale, worldSize.y / scale, worldSize.z / scale);
+  }
+
+  // Continuous slow spin around the vertical axis, reusing rotatePlacedModel's existing
+  // per-frame heading rotation - the "360 degree turntable" view of a Dollhouse Mode
+  // placement, for anyone who'd rather not physically circle a real table while holding
+  // a phone. Toggled off automatically on exiting AR (teardownARPlacement) so it can't
+  // keep spinning a model that's no longer even visible.
+  toggleAutoRotate(enabled?: boolean): boolean {
+    const shouldEnable = enabled ?? !this.autoRotateObserver;
+    if (shouldEnable === !!this.autoRotateObserver) return !!this.autoRotateObserver;
+    if (shouldEnable) {
+      const root = this.ensurePlacementRoot();
+      if (!root.rotationQuaternion) root.rotationQuaternion = Quaternion.FromEulerVector(root.rotation);
+      const RADIANS_PER_SECOND = (2 * Math.PI) / 12; // one full turn every 12 seconds
+      this.autoRotateObserver = this.scene.onBeforeRenderObservable.add(() => {
+        const deltaSeconds = this.scene.getEngine().getDeltaTime() / 1000;
+        this.rotatePlacedModel(RADIANS_PER_SECOND * deltaSeconds);
+      });
+    } else {
+      this.scene.onBeforeRenderObservable.remove(this.autoRotateObserver);
+      this.autoRotateObserver = null;
+    }
+    return shouldEnable;
+  }
+
+  isAutoRotating(): boolean {
+    return !!this.autoRotateObserver;
   }
 
   private updateScaleReadout(): void {

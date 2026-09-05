@@ -96,6 +96,20 @@ export interface SavedFeatureState {
     referencePdf?: { name: string; dataUrl: string };
   };
   swatches?: SavedSwatchMarker[];
+  ambientZones?: SavedAmbientZone[];
+}
+
+// Directional ambience markers (SpatialAudioPanel.tsx) - e.g. a marker near the balcony
+// playing traffic/birds, one in the living room playing TV chatter/a fountain. Saved here
+// (instead of only ever existing as live Web Audio nodes in one browser tab) so every
+// client who opens this model hears the same placed ambience, not just whoever placed it.
+export interface SavedAmbientZone {
+  id: string;
+  preset: 'traffic' | 'birds' | 'tv' | 'fountain';
+  label: string;
+  position: { x: number; y: number; z: number };
+  volume: number;
+  maxDistance: number;
 }
 
 export interface SceneEditsData {

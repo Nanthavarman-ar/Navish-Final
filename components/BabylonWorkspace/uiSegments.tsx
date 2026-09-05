@@ -1922,8 +1922,8 @@ const CollaborationFeaturesSegment: React.FC<Pick<CustomPanelsSegmentProps, 'fea
   );
 };
 
-const ImmersiveFeaturesSegment: React.FC<Pick<CustomPanelsSegmentProps, 'featureStates' | 'sceneRef' | 'disableFeature' | 'audioManagerRef'>> = ({
-  featureStates, sceneRef, disableFeature, audioManagerRef
+const ImmersiveFeaturesSegment: React.FC<Pick<CustomPanelsSegmentProps, 'featureStates' | 'sceneRef' | 'disableFeature' | 'audioManagerRef' | 'currentModelId'>> = ({
+  featureStates, sceneRef, disableFeature, audioManagerRef, currentModelId
 }) => {
   const vrPanel = usePanelStack('top-left');
   const arPanel = usePanelStack('top-right');
@@ -1948,6 +1948,8 @@ const ImmersiveFeaturesSegment: React.FC<Pick<CustomPanelsSegmentProps, 'feature
       <Suspense fallback={null}>
         <SpatialAudioPanel
           audioManager={audioManagerRef?.current || null}
+          scene={sceneRef.current ?? undefined}
+          modelId={currentModelId}
           onClose={() => disableFeature('showSpatialAudio')}
         />
       </Suspense>

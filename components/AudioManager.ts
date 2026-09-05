@@ -24,6 +24,15 @@ export class AudioManager {
   private proceduralGain: GainNode | null = null;
   private proceduralPanner: PannerNode | null = null;
   private proceduralUpdateObserver: any = null;
+  // Directional ambience zones (balcony traffic/birds, living room TV/fountain, etc) -
+  // each is its own real Web Audio graph (noise/oscillator -> filter -> gain -> PannerNode
+  // positioned at the marker) rather than a BABYLON.Sound, since there's no actual sound
+  // asset file to point one at - these are synthesized so the feature works with zero
+  // external audio files to source/host/license. All share the single global
+  // AudioListener (kept aligned with the active camera in update()), so as the viewer
+  // walks toward a zone's marker, that zone's own distance falloff makes it audibly
+  // louder/closer while every other zone fades relatively - genuine directional ambience.
+  private ambientZones: Map<string, { nodes: AudioNode[]; intervalId: number | null }> = new Map();
 
   constructor(scene: BABYLON.Scene, config?: Partial<AudioConfig>, xrSession?: XRSession) {
     this.scene = scene;
@@ -127,6 +136,141 @@ export class AudioManager {
       console.error('Failed to create ambient sound:', error);
       return null;
     }
+  }
+
+  public static readonly AMBIENT_ZONE_PRESETS = ['traffic', 'birds', 'tv', 'fountain'] as const;
+
+  private createNoiseBuffer(audioContext: AudioContext, durationSeconds: number): AudioBuffer {
+    const length = Math.floor(audioContext.sampleRate * durationSeconds);
+    const buffer = audioContext.createBuffer(1, length, audioContext.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < length; i++) data[i] = Math.random() * 2 - 1;
+    return buffer;
+  }
+
+  // Places a real, positioned, looping ambience source at a spot in the scene - e.g. a
+  // marker near the balcony playing traffic/birds, one in the living room playing TV
+  // chatter/a fountain. Replaces any existing zone with the same id (so moving/re-editing
+  // a marker doesn't leave the old audio graph still playing underneath the new one).
+  public addAmbientZone(
+    id: string,
+    preset: typeof AudioManager.AMBIENT_ZONE_PRESETS[number],
+    position: BABYLON.Vector3,
+    options?: { volume?: number; maxDistance?: number }
+  ): void {
+    const audioContext = this.audioEngine?.audioContext as AudioContext | undefined;
+    if (!audioContext) return;
+    this.removeAmbientZone(id);
+
+    const volume = options?.volume ?? 0.4;
+    const maxDistance = options?.maxDistance ?? this.config.maxDistance;
+
+    const panner = audioContext.createPanner();
+    panner.panningModel = 'HRTF';
+    panner.distanceModel = 'inverse';
+    panner.refDistance = 1;
+    panner.maxDistance = maxDistance;
+    panner.rolloffFactor = this.config.rolloffFactor;
+    panner.positionX.value = position.x;
+    panner.positionY.value = position.y;
+    panner.positionZ.value = position.z;
+    panner.connect(audioContext.destination);
+
+    const nodes: AudioNode[] = [panner];
+    let intervalId: number | null = null;
+
+    // Presets are synthesized (noise/oscillators through filters), not sample playback -
+    // there's no bundled/hosted sound asset for "traffic" or "birds" to load, so this is
+    // what makes each preset audibly distinct with zero external audio files.
+    if (preset === 'traffic' || preset === 'fountain' || preset === 'tv') {
+      const noise = audioContext.createBufferSource();
+      noise.buffer = this.createNoiseBuffer(audioContext, 4);
+      noise.loop = true;
+      const filter = audioContext.createBiquadFilter();
+      const gain = audioContext.createGain();
+      const lfo = audioContext.createOscillator();
+      const lfoGain = audioContext.createGain();
+
+      if (preset === 'traffic') {
+        // Low rumble with a slow swell/fade, like distant vehicles passing.
+        filter.type = 'lowpass';
+        filter.frequency.value = 350;
+        gain.gain.value = volume * 0.6;
+        lfo.frequency.value = 0.15;
+        lfoGain.gain.value = volume * 0.15;
+      } else if (preset === 'fountain') {
+        // Wider-band filtered noise, steadier, brighter - reads as flowing water.
+        filter.type = 'bandpass';
+        filter.frequency.value = 1800;
+        filter.Q.value = 0.6;
+        gain.gain.value = volume * 0.5;
+        lfo.frequency.value = 0.6;
+        lfoGain.gain.value = volume * 0.1;
+      } else {
+        // Mid-band noise wobbling faster than traffic/fountain - reads as indistinct
+        // speech/chatter from another room, without the feature depending on real
+        // dialogue audio.
+        filter.type = 'bandpass';
+        filter.frequency.value = 1200;
+        filter.Q.value = 0.8;
+        gain.gain.value = volume * 0.35;
+        lfo.frequency.value = 3.2;
+        lfoGain.gain.value = volume * 0.2;
+      }
+
+      lfo.connect(lfoGain);
+      lfoGain.connect(gain.gain);
+      noise.connect(filter);
+      filter.connect(gain);
+      gain.connect(panner);
+      noise.start();
+      lfo.start();
+      nodes.push(noise, filter, gain, lfo, lfoGain);
+    } else if (preset === 'birds') {
+      // Intermittent short chirps rather than a continuous tone - scheduled in small
+      // clusters (1-3 chirps) at random intervals so it reads as occasional birdsong
+      // instead of a metronome.
+      const scheduleChirp = () => {
+        const now = audioContext.currentTime;
+        const osc = audioContext.createOscillator();
+        osc.type = 'sine';
+        const startFreq = 2200 + Math.random() * 1200;
+        osc.frequency.setValueAtTime(startFreq, now);
+        osc.frequency.exponentialRampToValueAtTime(startFreq * (1.2 + Math.random() * 0.4), now + 0.12);
+        const chirpGain = audioContext.createGain();
+        chirpGain.gain.setValueAtTime(0.0001, now);
+        chirpGain.gain.linearRampToValueAtTime(volume * 0.5, now + 0.02);
+        chirpGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.18);
+        osc.connect(chirpGain);
+        chirpGain.connect(panner);
+        osc.start(now);
+        osc.stop(now + 0.2);
+        osc.onended = () => { osc.disconnect(); chirpGain.disconnect(); };
+      };
+      intervalId = window.setInterval(() => {
+        const count = 1 + Math.floor(Math.random() * 3);
+        for (let i = 0; i < count; i++) {
+          setTimeout(scheduleChirp, i * (80 + Math.random() * 120));
+        }
+      }, 1800 + Math.random() * 1800);
+    }
+
+    this.ambientZones.set(id, { nodes, intervalId });
+  }
+
+  public removeAmbientZone(id: string): void {
+    const zone = this.ambientZones.get(id);
+    if (!zone) return;
+    if (zone.intervalId !== null) window.clearInterval(zone.intervalId);
+    zone.nodes.forEach((n) => {
+      try { if (typeof (n as OscillatorNode | AudioBufferSourceNode).stop === 'function') (n as OscillatorNode | AudioBufferSourceNode).stop(); } catch { /* already stopped */ }
+      try { n.disconnect(); } catch { /* already disconnected */ }
+    });
+    this.ambientZones.delete(id);
+  }
+
+  public clearAmbientZones(): void {
+    Array.from(this.ambientZones.keys()).forEach((id) => this.removeAmbientZone(id));
   }
 
   public createReverbZone(position: BABYLON.Vector3, size: BABYLON.Vector3, reverbOptions?: {
@@ -310,6 +454,7 @@ export class AudioManager {
   public dispose(): void {
     // Babylon.js sounds are automatically disposed when the scene is disposed
     this.stopProceduralAmbientTone();
+    this.clearAmbientZones();
     this.spatialAudioEnabled = false;
     console.log('AudioManager disposed');
   }
