@@ -721,26 +721,52 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
           // setCurrentModelId() call above would have taken effect.
           const loadedModelId = selectedModel?.id ? String(selectedModel.id) : 'default-model';
           loadSceneEdits(loadedModelId).then((savedEdits) => {
-            if (cancelled || !savedEdits) return;
-            sceneEditsRef.current = savedEdits;
-            applySceneEdits(loadedModelMeshesRef.current, savedEdits);
-            // Restores the saved Home view (see setHomeView) on this device too - previously
-            // this only ever lived in a plain useRef, so it reset the moment you navigated
-            // away and back, let alone opened the model on a different device.
-            const home = savedEdits.homeView;
-            const cam = cameraRef.current;
-            if (home && cam && typeof cam.setTarget === 'function') {
-              const target = new Vector3(home.target.x, home.target.y, home.target.z);
-              cam.setTarget(target);
-              cam.alpha = home.alpha;
-              cam.beta = home.beta;
-              cam.radius = home.radius;
-              homeViewRef.current = { alpha: home.alpha, beta: home.beta, radius: home.radius, target };
-              scenarioManagerRef.current?.setHomeCenter(target);
+            if (cancelled) return;
+            if (savedEdits) {
+              sceneEditsRef.current = savedEdits;
+              applySceneEdits(loadedModelMeshesRef.current, savedEdits);
+              // Restores the saved Home view (see setHomeView) on this device too - previously
+              // this only ever lived in a plain useRef, so it reset the moment you navigated
+              // away and back, let alone opened the model on a different device.
+              const home = savedEdits.homeView;
+              const cam = cameraRef.current;
+              if (home && cam && typeof cam.setTarget === 'function') {
+                const target = new Vector3(home.target.x, home.target.y, home.target.z);
+                cam.setTarget(target);
+                cam.alpha = home.alpha;
+                cam.beta = home.beta;
+                cam.radius = home.radius;
+                homeViewRef.current = { alpha: home.alpha, beta: home.beta, radius: home.radius, target };
+                scenarioManagerRef.current?.setHomeCenter(target);
+              }
+              // Restores the model's saved floor plan PDFs on this device too (see
+              // handleFloorPlansChange/Minimap.tsx) - previously localStorage-only.
+              setFloorPlans(savedEdits.floorPlans || []);
             }
-            // Restores the model's saved floor plan PDFs on this device too (see
-            // handleFloorPlansChange/Minimap.tsx) - previously localStorage-only.
-            setFloorPlans(savedEdits.floorPlans || []);
+            // Freezing has to wait until AFTER any saved position/rotation/scaling edits
+            // above are applied - freezeWorldMatrix() makes a mesh skip recomputing its
+            // world matrix from its transform entirely, so freezing first would make
+            // applySceneEdits' mesh.position.set() calls silently do nothing visually.
+            // A real architectural import (2,000+ separate meshes) recomputing every
+            // static mesh's matrix and re-syncing its bounding info every frame for
+            // nothing - none of them move on their own - is real, measurable per-frame
+            // cost; the gizmo attach effect below unfreezes/refreezes whichever single
+            // mesh is actually being edited, so this doesn't break moving/editing meshes,
+            // only skips redoing work for the thousands that never move.
+            // Deliberately NOT using scene.createOrUpdateSelectionOctree() here even though
+            // it's the other standard win for a mesh-heavy scene: Babylon builds it once
+            // from a snapshot of scene.meshes at call time, and once it exists, the active-
+            // mesh list for BOTH rendering and scene.pick() candidates comes ONLY from the
+            // octree - not a union with anything added after. Every marker this app creates
+            // post-load (hotspots, annotations, swatches, measurements, ambient audio zones)
+            // would silently stop rendering/being pickable the moment one was added after
+            // this ran, without touching every one of those tools to rebuild the octree on
+            // every marker add/remove. Not worth that regression risk for this win.
+            loadedModelMeshesRef.current.forEach((m) => {
+              if (m.getTotalVertices() === 0) return;
+              m.freezeWorldMatrix();
+              m.doNotSyncBoundingInfo = true;
+            });
           });
           removePlaceholderGeometry(scene);
           // Some exported CAD/BIM files mark certain nodes hidden (e.g. glTF's
@@ -2541,9 +2567,24 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
     // position/rotation are measured from, not the mesh's actual world position).
     if (pivotedMeshRef.current && pivotedMeshRef.current !== mesh) {
       pivotedMeshRef.current.setPivotPoint(Vector3.Zero());
+      // Re-lock it now that editing is done - see the load-time freeze comment
+      // (SceneLoader.Append's success callback) for why every static mesh is frozen
+      // by default. Safe here specifically because editing only ever happens while a
+      // mesh is gizmo-attached, i.e. between the unfreeze below and this re-freeze.
+      if (pivotedMeshRef.current.getTotalVertices() > 0) {
+        pivotedMeshRef.current.freezeWorldMatrix();
+        pivotedMeshRef.current.doNotSyncBoundingInfo = true;
+      }
       pivotedMeshRef.current = null;
     }
     if (mesh) {
+      // Unfreeze before touching pivot/bounding info - a frozen mesh silently ignores
+      // position/rotation/scaling changes (including from the gizmo drag this is about
+      // to enable), and a stale doNotSyncBoundingInfo would leave every tool that reads
+      // this mesh's bounding box (Measure Tool snapping, swatch markers, Cost Estimator)
+      // seeing its pre-move box after it's actually been dragged.
+      mesh.unfreezeWorldMatrix();
+      mesh.doNotSyncBoundingInfo = false;
       mesh.setPivotPoint(mesh.getBoundingInfo().boundingBox.center);
       pivotedMeshRef.current = mesh;
     }
@@ -3842,6 +3883,17 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
           if (!last) {
             showToast.info('Nothing to undo');
           } else if (last.kind === 'transform') {
+            // This mesh may well have been deselected (and, per the load-time freeze
+            // optimization, re-frozen) since the edit this undo is reverting - a frozen
+            // mesh silently ignores every position/rotation/scaling write below, which
+            // would make Undo visibly do nothing. Unfreeze first if it's not the mesh
+            // currently gizmo-attached (which is already unfrozen), and only re-freeze
+            // after if it wasn't - never re-freeze the one actively being edited.
+            const wasFrozen = last.mesh !== pivotedMeshRef.current;
+            if (wasFrozen) {
+              last.mesh.unfreezeWorldMatrix();
+              last.mesh.doNotSyncBoundingInfo = false;
+            }
             last.mesh.position.copyFrom(last.position);
             if (last.rotationQuaternion) {
               last.mesh.rotationQuaternion = last.rotationQuaternion;
@@ -3849,6 +3901,10 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
               last.mesh.rotation.copyFrom(last.rotation);
             }
             last.mesh.scaling.copyFrom(last.scaling);
+            if (wasFrozen && last.mesh.getTotalVertices() > 0) {
+              last.mesh.freezeWorldMatrix();
+              last.mesh.doNotSyncBoundingInfo = true;
+            }
             showToast.success('Undone');
           } else if (last.kind === 'material') {
             const mat = last.material;
