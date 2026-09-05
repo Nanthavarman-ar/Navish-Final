@@ -1291,9 +1291,9 @@ app.post('/make-server-cf230d31/finalize-model-upload', async (c) => {
   }
 });
 
-// Cloudflare R2 multipart upload (large model files) - four small steps instead of one
-// endpoint receiving the file, so the actual bytes go directly from the browser to R2 and
-// never pass through this Edge Function at all:
+// Cloudflare R2 multipart upload (large model files, and InteractiveFixtures' TV videos) -
+// four small steps instead of one endpoint receiving the file, so the actual bytes go
+// directly from the browser to R2 and never pass through this Edge Function at all:
 //   1. /r2-start-upload      - opens a multipart upload, returns { uploadId, key }
 //   2. /r2-part-url          - a presigned PUT URL for ONE part (client uploads to R2
 //                              directly with this, retrying just that one part on failure -
@@ -1304,28 +1304,36 @@ app.post('/make-server-cf230d31/finalize-model-upload', async (c) => {
 //   4. /r2-abort-upload      - cleans up an in-progress upload that won't be finished
 //                              (otherwise incomplete parts sit in the bucket accruing
 //                              storage cost indefinitely)
-// All four require the same admin role /upload-model already enforces - R2 has no
-// equivalent to Supabase's storage.objects RLS policies, so this Edge Function is the
-// only gate here, not an extra/redundant one.
+// R2 has no equivalent to Supabase's storage.objects RLS policies, so this Edge Function
+// is the only permission gate here - see requireR2UploadPermission just below for which
+// path prefixes require admin vs merely being signed in.
 
-async function requireAdminForR2(c: any): Promise<{ user: any; username: string } | Response> {
+// Replacing/adding a whole 3D model or its thumbnail stays admin-only. A TV fixture's
+// video (InteractiveFixtures.tsx) is a much lighter per-model add-on any signed-in
+// viewer can place onto a fixture they placed themselves - the same way Material
+// Swatches' own texture uploads have never required admin - so only the fixture-videos
+// prefix relaxes this down to "must be signed in" rather than "must be admin".
+async function requireR2UploadPermission(c: any, isFixtureVideo: boolean): Promise<{ user: any; username: string } | Response> {
   const { error, user } = await verifyUser(c.req.raw);
   if (error) return c.json({ error }, 401);
+  if (isFixtureVideo) {
+    return { user, username: user.user_metadata?.username || user.email };
+  }
   const { isAdmin, username } = requireAdminRole(user);
   if (!isAdmin) return c.json({ error: 'Only administrators can upload models' }, 403);
   return { user, username };
 }
 
 app.post('/make-server-cf230d31/r2-start-upload', async (c) => {
-  const auth = await requireAdminForR2(c);
-  if (auth instanceof Response) return auth;
-
   try {
     const { fileName, contentType, pathPrefix } = await c.req.json();
     if (!fileName) {
       return c.json({ error: 'Missing fileName' }, 400);
     }
     const safePrefix = pathPrefix === 'thumbnails' ? 'thumbnails' : pathPrefix === 'fixture-videos' ? 'fixture-videos' : 'models';
+    const auth = await requireR2UploadPermission(c, safePrefix === 'fixture-videos');
+    if (auth instanceof Response) return auth;
+
     const key = `${safePrefix}/${Date.now()}-${String(fileName).replace(/[^a-zA-Z0-9._-]/g, '_')}`;
 
     const client = getR2Client();
@@ -1343,14 +1351,13 @@ app.post('/make-server-cf230d31/r2-start-upload', async (c) => {
 });
 
 app.post('/make-server-cf230d31/r2-part-url', async (c) => {
-  const auth = await requireAdminForR2(c);
-  if (auth instanceof Response) return auth;
-
   try {
     const { key, uploadId, partNumber } = await c.req.json();
     if (!key || !uploadId || !partNumber) {
       return c.json({ error: 'Missing key, uploadId, or partNumber' }, 400);
     }
+    const auth = await requireR2UploadPermission(c, key.startsWith('fixture-videos/'));
+    if (auth instanceof Response) return auth;
 
     const client = getR2Client();
     const url = await getSignedUrl(client, new UploadPartCommand({
@@ -1368,14 +1375,13 @@ app.post('/make-server-cf230d31/r2-part-url', async (c) => {
 });
 
 app.post('/make-server-cf230d31/r2-complete-upload', async (c) => {
-  const auth = await requireAdminForR2(c);
-  if (auth instanceof Response) return auth;
-
   try {
     const { key, uploadId, parts } = await c.req.json();
     if (!key || !uploadId || !Array.isArray(parts) || parts.length === 0) {
       return c.json({ error: 'Missing key, uploadId, or parts' }, 400);
     }
+    const auth = await requireR2UploadPermission(c, key.startsWith('fixture-videos/'));
+    if (auth instanceof Response) return auth;
 
     const client = getR2Client();
     await client.send(new CompleteMultipartUploadCommand({
@@ -1395,14 +1401,13 @@ app.post('/make-server-cf230d31/r2-complete-upload', async (c) => {
 });
 
 app.post('/make-server-cf230d31/r2-abort-upload', async (c) => {
-  const auth = await requireAdminForR2(c);
-  if (auth instanceof Response) return auth;
-
   try {
     const { key, uploadId } = await c.req.json();
     if (!key || !uploadId) {
       return c.json({ error: 'Missing key or uploadId' }, 400);
     }
+    const auth = await requireR2UploadPermission(c, key.startsWith('fixture-videos/'));
+    if (auth instanceof Response) return auth;
 
     const client = getR2Client();
     await client.send(new AbortMultipartUploadCommand({
