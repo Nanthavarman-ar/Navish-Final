@@ -7,6 +7,7 @@ import { FeatureManager, DeviceCapabilities } from './FeatureManager';
 import { CostBreakdownSection } from './BabylonWorkspace/ui/CostBreakdownSection';
 import styles from './CostEstimatorWrapper.module.css';
 import { loadSceneEdits, savePartialFeatureState } from './utils/sceneEditsPersistence';
+import { showToast } from './utils/toast';
 
 interface CostEstimatorWrapperProps {
   scene: BABYLON.Scene;
@@ -103,10 +104,14 @@ const CostEstimatorWrapper: React.FC<CostEstimatorWrapperProps> = ({
 
   const [region, setRegion] = useState<string>('US_East');
   const [budget, setBudget] = useState<number>(100000);
+  // Kept alongside the pdfUrl/pdfFileName display state (rather than reading them back out)
+  // so a region/budget save never has to guess at the currently-saved PDF to avoid
+  // clobbering it - see persistCostEstimatorState below.
+  const referencePdfRef = useRef<{ name: string; dataUrl: string } | null>(null);
 
-  // Restores this model's saved region/budget/manual breakdown overrides - previously all
-  // three reset to the hardcoded defaults every time this panel was reopened, let alone on
-  // another device.
+  // Restores this model's saved region/budget/manual breakdown overrides/reference PDF -
+  // previously all reset to the hardcoded defaults every time this panel was reopened, let
+  // alone on another device.
   useEffect(() => {
     if (!modelId) return;
     let cancelled = false;
@@ -119,10 +124,20 @@ const CostEstimatorWrapper: React.FC<CostEstimatorWrapperProps> = ({
       if (saved.breakdownOverrides) {
         breakdownOverridesRef.current = new Map(Object.entries(saved.breakdownOverrides));
       }
+      if (saved.referencePdf) {
+        referencePdfRef.current = saved.referencePdf;
+        setPdfUrl(saved.referencePdf.dataUrl);
+        setPdfFileName(saved.referencePdf.name);
+      }
     });
     return () => { cancelled = true; };
   }, [modelId]);
 
+  // savePartialFeatureState replaces the whole costEstimator object each call (it only
+  // merges one level deep, at the `features` key) - so every save here must include
+  // whatever the other fields currently are, or it silently wipes them out. This is why
+  // handleBudgetChange/handleRegionChange/saveEditedBreakdown/handlePdfUpload all funnel
+  // through this one function instead of saving their own partial shape.
   const persistCostEstimatorState = (nextRegion: string, nextBudget: number) => {
     if (!modelId) return;
     savePartialFeatureState(modelId, {
@@ -130,6 +145,7 @@ const CostEstimatorWrapper: React.FC<CostEstimatorWrapperProps> = ({
         region: nextRegion,
         budget: nextBudget,
         breakdownOverrides: Object.fromEntries(breakdownOverridesRef.current),
+        referencePdf: referencePdfRef.current ?? undefined,
       },
     });
   };
@@ -167,31 +183,56 @@ const CostEstimatorWrapper: React.FC<CostEstimatorWrapperProps> = ({
     return areaSqm * 10.7639; // m^2 -> sq ft
   };
 
-  // Upload a reference PDF (e.g. a contractor quote) and preview it in a
-  // small side panel - can be closed and reopened freely since the blob URL
-  // stays alive for the life of the component, only the panel's visibility
-  // toggles.
+  // Upload a reference PDF (e.g. a contractor quote) and preview it in a small side panel.
+  // Read as a data URL and saved to the backend (see persistCostEstimatorState) rather than
+  // the previous URL.createObjectURL approach - a blob: URL only resolves within the tab
+  // that created it, so it silently stopped working (and was never saved anywhere at all)
+  // the moment this panel unmounted or the page reloaded.
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
   const [pdfFileName, setPdfFileName] = useState<string | null>(null);
   const [showPdfPreview, setShowPdfPreview] = useState(false);
-  const pdfUrlRef = useRef<string | null>(null);
 
-  useEffect(() => {
-    return () => {
-      if (pdfUrlRef.current) URL.revokeObjectURL(pdfUrlRef.current);
-    };
-  }, []);
+  // Generous but not unbounded - this file's base64 form is saved inline in the same
+  // per-model JSON record as mesh edits/floor plans/other feature state, so an oversized
+  // reference PDF risks the exact "silently rejected, save never actually persists"
+  // failure mode already seen with large embedded images elsewhere in this app.
+  const MAX_REFERENCE_PDF_BYTES = 4 * 1024 * 1024;
 
   const handlePdfUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file) return;
-    if (pdfUrlRef.current) URL.revokeObjectURL(pdfUrlRef.current);
-    const url = URL.createObjectURL(file);
-    pdfUrlRef.current = url;
-    setPdfUrl(url);
-    setPdfFileName(file.name);
-    setShowPdfPreview(true);
     e.target.value = '';
+    if (!file) return;
+    if (file.size > MAX_REFERENCE_PDF_BYTES) {
+      showToast.error('PDF too large', `Please use a file under ${(MAX_REFERENCE_PDF_BYTES / (1024 * 1024)).toFixed(0)} MB so it can be saved.`);
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = reader.result as string;
+      referencePdfRef.current = { name: file.name, dataUrl };
+      setPdfUrl(dataUrl);
+      setPdfFileName(file.name);
+      setShowPdfPreview(true);
+      if (!modelId) return;
+      savePartialFeatureState(modelId, {
+        costEstimator: {
+          region,
+          budget,
+          breakdownOverrides: Object.fromEntries(breakdownOverridesRef.current),
+          referencePdf: referencePdfRef.current,
+        },
+      }).then((saved) => {
+        if (saved) {
+          showToast.success('Reference PDF saved', 'Visible on every device that opens this model');
+        } else {
+          showToast.error('Could not save reference PDF', 'It will disappear on reload - try again or use a smaller PDF');
+        }
+      });
+    };
+    reader.onerror = () => {
+      showToast.error('Could not read PDF file');
+    };
+    reader.readAsDataURL(file);
   };
 
   // Model-wide cost data for when no element is selected

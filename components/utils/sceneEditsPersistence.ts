@@ -87,6 +87,13 @@ export interface SavedFeatureState {
     region: string;
     budget: number;
     breakdownOverrides?: Record<string, { material: number; labor: number; equipment: number; overhead: number; total: number }>;
+    // The uploaded "Reference PDF" (e.g. a contractor's quote) - previously only ever a
+    // local blob: URL held in component state, so it vanished the moment the panel
+    // unmounted or the page reloaded, and never reached anyone viewing the model on
+    // another device. Saved as a data URL (rather than uploaded to storage) to match how
+    // Minimap's floor plans and swatch textures already embed their images in this same
+    // per-model record, instead of introducing a second persistence mechanism.
+    referencePdf?: { name: string; dataUrl: string };
   };
   swatches?: SavedSwatchMarker[];
 }
