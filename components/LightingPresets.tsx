@@ -617,8 +617,12 @@ const LightingPresets: React.FC<LightingPresetsProps> = ({ scene, onPresetChange
   const setInteriorMode = useCallback((on: boolean) => {
     const dir = getDirLight();
     const hemi = getHemiLight();
-    if (dir) dir.intensity = on ? Math.max(customIntensity * 0.3, 0.3) : customIntensity;
-    if (hemi) hemi.intensity = on ? Math.max(ambientIntensity, 0.4) : ambientIntensity;
+    // Raised from *0.3/floor 0.3 and floor 0.4 - interior was reading as noticeably darker
+    // than intended, closer to a dim evening than "indoors on a bright day". Ambient
+    // (hemi) is what actually reads as "room brightness" here - direct sun stays dimmer
+    // than exterior on purpose (it's not meant to blast straight in like open daylight).
+    if (dir) dir.intensity = on ? Math.max(customIntensity * 0.5, 0.5) : customIntensity;
+    if (hemi) hemi.intensity = on ? Math.max(ambientIntensity * 1.5, 0.6) : ambientIntensity;
   }, [customIntensity, ambientIntensity, scene]);
 
   useEffect(() => {
