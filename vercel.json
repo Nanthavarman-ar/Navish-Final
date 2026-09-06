@@ -25,7 +25,7 @@
   ],
   "outputDirectory": "dist",
   "installCommand": "npm ci",
-  "buildCommand": "npm run build",
+  "buildCommand": "NODE_OPTIONS=--max-old-space-size=8192 npm run build",
   "devCommand": "npm run dev",
   "framework": "vite",
   "regions": ["iad1"]
