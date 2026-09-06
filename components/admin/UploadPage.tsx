@@ -16,6 +16,7 @@ import { projectId } from '../../supabase/client';
 import { showToast } from '../utils/toast';
 import { finalizeModelUpload } from '../utils/directModelUpload';
 import { uploadFileToR2 } from '../utils/r2ModelUpload';
+import { optimizeGlbFile } from '../utils/modelOptimizer';
 import { useApp } from '../../contexts/AppContext';
 import {
   Upload,
@@ -188,9 +189,37 @@ export function UploadPage() {
 
     try {
       for (const uploadFile of uploadFiles) {
+        // glTF/GLB uploads get a compression pass first - meshopt geometry compression
+        // + WebP texture conversion (normal maps excluded, see modelOptimizer.ts) via
+        // gltf-transform, entirely client-side. Babylon's own loader already supports
+        // both EXT_meshopt_compression and EXT_texture_webp, so nothing on the viewing
+        // side needs to change for these to just load normally. Other formats
+        // (obj/stl/ifc/etc) can't be processed by gltf-transform and skip straight to
+        // upload unchanged, same as before this existed.
+        let fileToUpload = uploadFile.file;
+        let optimizations: string[] | undefined;
+        const canOptimize = uploadFile.originalFormat === '.glb' || uploadFile.originalFormat === '.gltf';
+
+        if (canOptimize) {
+          setUploadFiles(prev => prev.map(f =>
+            f.id === uploadFile.id ? { ...f, status: 'processing', progress: 0, optimizations: [] } : f
+          ));
+          const optimized = await optimizeGlbFile(uploadFile.file, (stage) => {
+            setUploadFiles(prev => prev.map(f =>
+              f.id === uploadFile.id ? { ...f, optimizations: [...(f.optimizations || []), stage] } : f
+            ));
+          });
+          if (optimized) {
+            fileToUpload = optimized.file;
+            optimizations = optimized.optimizations;
+          }
+          // A null result (optimization failed) just means fileToUpload stays the
+          // original - optimization is a bonus, never a reason an upload fails.
+        }
+
         // Start upload
-        setUploadFiles(prev => prev.map(f => 
-          f.id === uploadFile.id ? { ...f, status: 'uploading' } : f
+        setUploadFiles(prev => prev.map(f =>
+          f.id === uploadFile.id ? { ...f, status: 'uploading', progress: 0 } : f
         ));
 
         try {
@@ -203,7 +232,7 @@ export function UploadPage() {
           // part gets retried on its own instead of restarting the whole file from byte
           // zero, which the old fake progress-bar animation (and single all-or-nothing
           // fetch) couldn't offer at all.
-          const { key: r2Key } = await uploadFileToR2(functionsBaseUrl, uploadFile.file, 'models', ({ bytesUploaded, bytesTotal }) => {
+          const { key: r2Key } = await uploadFileToR2(functionsBaseUrl, fileToUpload, 'models', ({ bytesUploaded, bytesTotal }) => {
             const pct = bytesTotal > 0 ? Math.round((bytesUploaded / bytesTotal) * 100) : 0;
             setUploadFiles(prev => prev.map(f =>
               f.id === uploadFile.id ? { ...f, progress: pct } : f
@@ -217,9 +246,9 @@ export function UploadPage() {
 
           const result = await finalizeModelUpload(functionsBaseUrl, {
             r2Key,
-            fileName: uploadFile.file.name,
-            fileSize: uploadFile.file.size,
-            format: uploadFile.originalFormat,
+            fileName: fileToUpload.name,
+            fileSize: fileToUpload.size,
+            format: fileToUpload === uploadFile.file ? uploadFile.originalFormat : '.glb',
             thumbnailR2Key,
             title: modelTitle,
             description: modelDescription,
@@ -227,12 +256,19 @@ export function UploadPage() {
             assignedClients: selectedClients
           });
 
+          const savedPct = fileToUpload !== uploadFile.file && uploadFile.file.size > 0
+            ? Math.round((1 - fileToUpload.size / uploadFile.file.size) * 100)
+            : null;
+
           setUploadFiles(prev => prev.map(f =>
             f.id === uploadFile.id ? {
               ...f,
               progress: 100,
               status: 'complete',
-              convertedSize: (uploadFile.file.size / (1024 * 1024)).toFixed(1) + ' MB',
+              optimizations,
+              convertedSize: savedPct !== null
+                ? `${savedPct > 0 ? savedPct : 0}% smaller`
+                : (fileToUpload.size / (1024 * 1024)).toFixed(1) + ' MB',
               uploadedModel: result?.model
             } : f
           ));
@@ -571,12 +607,14 @@ export function UploadPage() {
                             <div className="flex items-center gap-4 text-green-400">
                               <span className="flex items-center gap-1">
                                 <HardDrive className="w-3 h-3" />
-                                Saved {uploadFile.convertedSize}
+                                {uploadFile.optimizations?.length ? `Saved ${uploadFile.convertedSize}` : uploadFile.convertedSize}
                               </span>
-                              <span className="flex items-center gap-1">
-                                <FileType className="w-3 h-3" />
-                                Converted to glTF
-                              </span>
+                              {!!uploadFile.optimizations?.length && (
+                                <span className="flex items-center gap-1">
+                                  <FileType className="w-3 h-3" />
+                                  Optimized
+                                </span>
+                              )}
                             </div>
                             <Button
                               size="sm"
