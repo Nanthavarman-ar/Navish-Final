@@ -145,10 +145,24 @@ export function usePanelStack(corner: PanelCorner, active: boolean = true): { re
     // the same static offset every panel used before this system existed, rather than
     // throwing.
     const anchor = corner.startsWith('top') ? 'top' : 'bottom';
-    return { ref: () => {}, style: { [anchor]: BASE_OFFSET_PX } as React.CSSProperties };
+    return {
+      ref: () => {},
+      style: { [anchor]: BASE_OFFSET_PX, maxHeight: `calc(100vh - ${BASE_OFFSET_PX * 2}px)` } as React.CSSProperties,
+    };
   }
 
   const anchor = corner.startsWith('top') ? 'top' : 'bottom';
   const offset = ctx.getOffset(corner, idRef.current);
-  return { ref: setEl, style: { [anchor]: offset } as React.CSSProperties };
+  // Every consuming panel caps its own height with a plain Tailwind class - max-h-[70vh],
+  // max-h-[85vh], etc - sized as if it always started at the corner's base offset. Once a
+  // panel gets pushed down/up past other panels already stacked in the same corner (the
+  // entire point of `offset` above), that static viewport-relative cap no longer reflects
+  // how much room is actually left before this panel runs off the opposite edge of the
+  // screen - which is exactly what was cutting off the bottom (a scrollable list, in the
+  // case that surfaced this) of any panel that ended up stacked below a tall enough
+  // sibling. An inline style always wins over a class in CSS, so this - the real
+  // available space - overrides whatever static cap each panel's className happens to
+  // set, without needing to touch every one of them individually.
+  const maxHeight = `calc(100vh - ${offset}px - ${BASE_OFFSET_PX}px)`;
+  return { ref: setEl, style: { [anchor]: offset, maxHeight } as React.CSSProperties };
 }
