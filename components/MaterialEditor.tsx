@@ -778,6 +778,13 @@ const MaterialEditor: React.FC<MaterialEditorProps> = ({ sceneManager, selectedM
       () => setTextureLoadStatus(prev => ({ ...prev, [slot]: 'ok' })),
       (message) => setTextureLoadStatus(prev => ({ ...prev, [slot]: message || 'Failed to load image' }))
     );
+    if (slot === 'normal') {
+      // The generated image above encodes a surface normal direction in RGB, not a
+      // color - Texture defaults to gammaSpace=true (sRGB decode), which is correct for
+      // a diffuse photo but silently distorts a normal map's XYZ values, producing
+      // slightly-wrong bump lighting.
+      texture.gammaSpace = false;
+    }
 
     if (babylonMaterial instanceof BABYLON.StandardMaterial || babylonMaterial instanceof BABYLON.PBRMaterial) {
       if (slot === 'diffuse') {

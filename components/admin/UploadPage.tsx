@@ -459,7 +459,7 @@ export function UploadPage() {
                   <Button
                     onClick={startUpload}
                     disabled={uploadFiles.some(f => f.status === 'uploading' || f.status === 'processing')}
-                    className="bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-400 hover:to-blue-400"
+                    className="bg-linear-to-r from-cyan-500 to-blue-500 hover:from-cyan-400 hover:to-blue-400"
                     size="sm"
                   >
                     Start Upload
@@ -505,7 +505,7 @@ export function UploadPage() {
 
                       {uploadFile.status === 'pending' && (
                         <div className="flex items-center gap-3 mb-3 p-2 rounded-md bg-slate-900/50 border border-slate-700">
-                          <div className="w-12 h-12 rounded overflow-hidden bg-slate-700 flex-shrink-0 flex items-center justify-center">
+                          <div className="w-12 h-12 rounded overflow-hidden bg-slate-700 shrink-0 flex items-center justify-center">
                             {uploadFile.thumbnailPreviewUrl ? (
                               <img src={uploadFile.thumbnailPreviewUrl} alt="Thumbnail preview" className="w-full h-full object-cover" />
                             ) : (
@@ -605,11 +605,11 @@ export function UploadPage() {
             <CardContent>
               <div className="space-y-3 text-sm text-gray-400">
                 <div className="flex items-start gap-2">
-                  <FileType className="w-4 h-4 text-blue-400 mt-0.5 flex-shrink-0" />
+                  <FileType className="w-4 h-4 text-blue-400 mt-0.5 shrink-0" />
                   <p>Uploaded as-is - .glb/.gltf load with no conversion step; .obj and .stl load directly through Babylon.js's own importer.</p>
                 </div>
                 <div className="flex items-start gap-2">
-                  <Zap className="w-4 h-4 text-yellow-400 mt-0.5 flex-shrink-0" />
+                  <Zap className="w-4 h-4 text-yellow-400 mt-0.5 shrink-0" />
                   <p>For best performance, optimize meshes and compress textures in your 3D tool before exporting - this isn't done automatically yet.</p>
                 </div>
               </div>

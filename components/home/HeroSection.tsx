@@ -70,7 +70,7 @@ export function HeroSection() {
 
   return (
     <section className="relative min-h-screen flex items-center justify-center overflow-hidden">
-      <div className="absolute inset-0 bg-gradient-to-br from-slate-900 via-purple-900/20 to-blue-900/20" />
+      <div className="absolute inset-0 bg-linear-to-br from-slate-900 via-purple-900/20 to-blue-900/20" />
       {/* Blueprint grid texture - technical drafting-paper feel, fitting a BIM/architecture tool */}
       <div
         className="absolute inset-0 opacity-[0.07]"
@@ -113,7 +113,7 @@ export function HeroSection() {
             <h1 className="font-display text-4xl md:text-6xl font-bold text-white mb-6 leading-tight tracking-tight">
               <LegoHeadline text="Bring your designs to life" startDelay={0.1} />
               <br />
-              <span className="bg-gradient-to-r from-cyan-400 to-purple-400 bg-clip-text text-transparent">
+              <span className="bg-linear-to-r from-cyan-400 to-purple-400 bg-clip-text text-transparent">
                 <LegoHeadline text="in immersive XR" startDelay={0.65} />
               </span>
             </h1>
@@ -162,8 +162,8 @@ export function HeroSection() {
               Modes cards below double as its controls (see activeExploreMode). */}
           <div className="flex flex-col items-center lg:items-end gap-3">
             <div className="relative w-full max-w-md">
-              <Suspense fallback={<LegoBuildAnimation className="w-full aspect-[8/7] drop-shadow-[0_20px_40px_rgba(34,211,238,0.15)]" />}>
-                <InteractiveHouseDemo mode={demoMode} className="w-full aspect-[8/7] drop-shadow-[0_20px_40px_rgba(34,211,238,0.15)]" />
+              <Suspense fallback={<LegoBuildAnimation className="w-full aspect-8/7 drop-shadow-[0_20px_40px_rgba(34,211,238,0.15)]" />}>
+                <InteractiveHouseDemo mode={demoMode} className="w-full aspect-8/7 drop-shadow-[0_20px_40px_rgba(34,211,238,0.15)]" />
               </Suspense>
             </div>
             <AnimatePresence mode="wait">

@@ -73,7 +73,7 @@ const ToolsAndFeatures: React.FC = () => {
         { id: 'measure', name: 'Measure Tool', description: 'Precise measurement and dimensioning', page: 'measure-tool', available: true },
         { id: 'energy', name: 'Energy Analysis', description: 'Analyze energy efficiency and consumption', page: 'energy-analysis', available: true },
         { id: 'sunlight', name: 'Sunlight Analysis', description: 'Study natural lighting and shadows', page: 'sunlight-analysis', available: true },
-        { id: 'shadow', name: 'Shadow Impact', description: 'Analyze shadow casting and light blocking', page: 'shadow-impact-analysis', available: true },
+        { id: 'shadow-sm', name: 'Shadow Impact', description: 'Analyze shadow-sm casting and light blocking', page: 'shadow-impact-analysis', available: true },
         { id: 'ergonomic', name: 'Ergonomic Testing', description: 'Test workspace ergonomics and comfort', page: 'ergonomic-testing', available: true }
       ]
     },
@@ -149,7 +149,7 @@ const ToolsAndFeatures: React.FC = () => {
   return (
     <div className="min-h-screen bg-slate-900 text-white">
       {/* Header */}
-      <header className="bg-slate-800/50 backdrop-blur-sm border-b border-slate-700 px-6 py-4">
+      <header className="bg-slate-800/50 backdrop-blur-xs border-b border-slate-700 px-6 py-4">
         <div className="max-w-7xl mx-auto">
           <div className="flex items-center justify-between">
             <div>
@@ -199,7 +199,7 @@ const ToolsAndFeatures: React.FC = () => {
                       <Button
                         className={`w-full ${
                           tool.available
-                            ? 'bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-400 hover:to-blue-400'
+                            ? 'bg-linear-to-r from-cyan-500 to-blue-500 hover:from-cyan-400 hover:to-blue-400'
                             : 'bg-gray-600 cursor-not-allowed'
                         }`}
                         disabled={!tool.available}

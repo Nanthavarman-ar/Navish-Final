@@ -27,7 +27,7 @@ const VoiceChat: React.FC<VoiceChatProps> = ({ scene, isActive, xrManager }) => 
   const analyserRef = useRef<AnalyserNode | null>(null);
   const microphoneRef = useRef<MediaStreamAudioSourceNode | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
-  const animationFrameRef = useRef<number>();
+  const animationFrameRef = useRef<number | undefined>(undefined);
 
   // Initialize audio context
   useEffect(() => {

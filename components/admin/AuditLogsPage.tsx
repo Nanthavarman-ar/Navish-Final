@@ -289,14 +289,14 @@ export function AuditLogsPage() {
         <div className="flex items-center gap-3">
           <Button
             onClick={exportLogs}
-            className="bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-400 hover:to-emerald-400"
+            className="bg-linear-to-r from-green-500 to-emerald-500 hover:from-green-400 hover:to-emerald-400"
           >
             <Download className="w-4 h-4 mr-2" />
             Export Logs
           </Button>
           <Button
             onClick={() => navigate('/login')}
-            className="bg-gradient-to-r from-red-500 to-red-600 hover:from-red-400 hover:to-red-500 text-white px-6 py-3 rounded-xl shadow-lg shadow-red-500/25 transform hover:scale-105 transition-all duration-300"
+            className="bg-linear-to-r from-red-500 to-red-600 hover:from-red-400 hover:to-red-500 text-white px-6 py-3 rounded-xl shadow-lg shadow-red-500/25 transform hover:scale-105 transition-all duration-300"
           >
             <LogOut className="w-4 h-4 mr-2" />
             Back to Login

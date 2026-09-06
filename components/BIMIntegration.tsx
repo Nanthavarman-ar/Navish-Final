@@ -156,7 +156,7 @@ const BIMIntegration: React.FC<BIMIntegrationProps> = ({
 
   return (
     <div className="absolute top-4 left-4 z-50 w-96 max-h-96">
-      <Card className="bg-background/95 backdrop-blur border">
+      <Card className="bg-background/95 backdrop-blur-sm border">
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between">
             <CardTitle className="text-lg">BIM Integration</CardTitle>

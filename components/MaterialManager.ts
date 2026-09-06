@@ -790,6 +790,11 @@ export class MaterialManager {
         texture.anisotropicFilteringLevel = options.anisotropicFilteringLevel;
       }
 
+      // Defaults to sRGB (true) - correct for a diffuse/albedo photo. Callers loading a
+      // normal/bump, metallic, roughness, or AO map must pass gammaSpace: false, or the
+      // sRGB decode will distort that map's data and produce wrong-looking lighting.
+      texture.gammaSpace = options?.gammaSpace ?? true;
+
       // Cache texture
       this.textureCache.set(url, texture);
 

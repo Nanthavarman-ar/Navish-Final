@@ -147,7 +147,7 @@ export function SettingsPage() {
           <Button
             onClick={handleSave}
             disabled={isSaving}
-            className="bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-400 hover:to-emerald-400 disabled:opacity-60"
+            className="bg-linear-to-r from-green-500 to-emerald-500 hover:from-green-400 hover:to-emerald-400 disabled:opacity-60"
           >
             {isSaving ? (
               <div className="animate-spin w-4 h-4 mr-2 border-2 border-white border-t-transparent rounded-full" />
@@ -158,7 +158,7 @@ export function SettingsPage() {
           </Button>
           <Button
             onClick={() => navigate('/login')}
-            className="bg-gradient-to-r from-red-500 to-red-600 hover:from-red-400 hover:to-red-500 text-white px-6 py-3 rounded-xl shadow-lg shadow-red-500/25 transform hover:scale-105 transition-all duration-300"
+            className="bg-linear-to-r from-red-500 to-red-600 hover:from-red-400 hover:to-red-500 text-white px-6 py-3 rounded-xl shadow-lg shadow-red-500/25 transform hover:scale-105 transition-all duration-300"
           >
             <LogOut className="w-4 h-4 mr-2" />
             Back to Login
@@ -233,7 +233,7 @@ export function SettingsPage() {
               <div>
                 <h4 className="text-white font-medium mb-3">Profile Picture</h4>
                 <div className="flex items-center gap-4">
-                  <div className="w-20 h-20 bg-gradient-to-r from-cyan-400 to-purple-400 rounded-full flex items-center justify-center">
+                  <div className="w-20 h-20 bg-linear-to-r from-cyan-400 to-purple-400 rounded-full flex items-center justify-center">
                     <span className="text-black font-bold text-2xl">A</span>
                   </div>
                   <div className="space-y-2">
@@ -531,7 +531,7 @@ export function SettingsPage() {
                   </div>
                   <div className="w-full bg-slate-700 rounded-full h-3">
                     <div 
-                      className="bg-gradient-to-r from-cyan-500 to-blue-500 h-3 rounded-full transition-all duration-300"
+                      className="bg-linear-to-r from-cyan-500 to-blue-500 h-3 rounded-full transition-all duration-300"
                       style={{
                         '--progress-width': `${(parseFloat(settings.storageUsed) / parseFloat(settings.storageLimit)) * 100}%`,
                         width: 'var(--progress-width)'

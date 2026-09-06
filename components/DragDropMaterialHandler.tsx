@@ -38,11 +38,20 @@ export const DragDropMaterialHandler: React.FC<DragDropMaterialHandlerProps> = (
       }
       const url = URL.createObjectURL(file);
       createdBlobUrlsRef.current.add(url);
-      const material = new BABYLON.StandardMaterial(`${file.name.replace(/\.[^.]+$/, '')}_material`, scene);
+      // PBRMaterial, not StandardMaterial - every other material in this app (glTF
+      // imports, MaterialEditor, MaterialManager presets) is PBR, so a flat diffuse-only
+      // material here looked dead next to them: no reflectivity, so it never picked up
+      // the scene's SSR/IBL reflections the rest of the building responds to.
+      const material = new BABYLON.PBRMaterial(`${file.name.replace(/\.[^.]+$/, '')}_material`, scene);
       const texture = new BABYLON.Texture(url, scene, undefined, undefined, undefined, undefined, (message) => {
         showToast.error(`Failed to load texture: ${file.name}`, message);
       });
-      material.diffuseTexture = texture;
+      material.albedoTexture = texture;
+      // Safe generic default for an arbitrary dropped photo - non-metal, moderately
+      // rough, so it reads as a plausible physical surface instead of flat-black
+      // (metallic with no environment) or a mirror (roughness 0).
+      material.metallic = 0;
+      material.roughness = 0.7;
       targetMesh.material = material;
       onMaterialApplied(targetMesh, material);
       showToast.success(`Material created from ${file.name}`, `Applied to ${targetMesh.name}`);

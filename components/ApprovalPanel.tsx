@@ -124,7 +124,7 @@ const ApprovalPanel: React.FC<ApprovalPanelProps> = ({ roomId, onClose }) => {
           onChange={(e) => setComment(e.target.value)}
           placeholder="Optional comment..."
           rows={2}
-          className="w-full bg-slate-800 border border-slate-600 rounded px-2 py-1.5 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-cyan-500 resize-none"
+          className="w-full bg-slate-800 border border-slate-600 rounded px-2 py-1.5 text-sm text-white placeholder-gray-500 focus:outline-hidden focus:border-cyan-500 resize-none"
         />
 
         <div className="grid grid-cols-2 gap-2">

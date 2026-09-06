@@ -290,7 +290,7 @@ const HotspotNavigation: React.FC<HotspotNavigationProps> = ({ scene, roomId, on
               value={draftLabel}
               onChange={(e) => setDraftLabel(e.target.value)}
               placeholder="e.g. Living Room, Kitchen..."
-              className="w-full bg-slate-800 border border-slate-600 rounded px-2 py-1.5 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-cyan-500"
+              className="w-full bg-slate-800 border border-slate-600 rounded px-2 py-1.5 text-sm text-white placeholder-gray-500 focus:outline-hidden focus:border-cyan-500"
             />
             <div className="flex gap-2">
               <Button size="sm" className="flex-1" disabled={!draftLabel.trim()} onClick={handleSaveHotspot}>Save</Button>

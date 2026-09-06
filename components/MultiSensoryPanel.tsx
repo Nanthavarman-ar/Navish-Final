@@ -66,7 +66,7 @@ const MultiSensoryPanel: React.FC<MultiSensoryPanelProps> = ({ moodSceneManager,
           <select
             value={selectedSceneId || ''}
             onChange={(e) => setSelectedSceneId(e.target.value || null)}
-            className="w-full bg-slate-800 border border-slate-600 rounded px-2 py-1.5 text-sm text-white focus:outline-none focus:border-cyan-500"
+            className="w-full bg-slate-800 border border-slate-600 rounded px-2 py-1.5 text-sm text-white focus:outline-hidden focus:border-cyan-500"
           >
             <option value="">None</option>
             {scenes.map((s) => (

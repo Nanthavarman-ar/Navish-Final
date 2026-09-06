@@ -1077,7 +1077,7 @@ export class CostEstimator {
   // Estimate cost for maintenance issue
   estimateIssueCost(issue: MaintenanceIssue): number {
     // Base cost calculation based on issue severity and type
-    let baseCost = 0;
+    let baseCost: number;
 
     switch (issue.severity) {
       case 'low':
@@ -1180,7 +1180,7 @@ export class CostEstimator {
     const environmentalCost = baseCost * 0.1; // 10% environmental cost
 
     // Energy costs for maintenance (HVAC, electrical, etc.)
-    let energyCost = 0;
+    let energyCost: number;
     switch (materialData.type) {
       case 'hvac':
         energyCost = baseCost * 0.5; // Higher energy costs for HVAC

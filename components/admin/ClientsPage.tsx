@@ -370,7 +370,7 @@ export function ClientsPage() {
         <div className="flex items-center gap-3">
           <Dialog open={isAddClientOpen} onOpenChange={setIsAddClientOpen}>
           <DialogTrigger asChild>
-            <Button className="bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-400 hover:to-pink-400">
+            <Button className="bg-linear-to-r from-purple-500 to-pink-500 hover:from-purple-400 hover:to-pink-400">
               <UserPlus className="w-4 h-4 mr-2" />
               Add New User
             </Button>
@@ -468,7 +468,7 @@ export function ClientsPage() {
                 <Button 
                   onClick={handleAddClient}
                   disabled={isCreating}
-                  className="flex-1 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-400 hover:to-pink-400 disabled:opacity-50"
+                  className="flex-1 bg-linear-to-r from-purple-500 to-pink-500 hover:from-purple-400 hover:to-pink-400 disabled:opacity-50"
                 >
                   {isCreating ? 'Creating...' : 'Create User'}
                 </Button>
@@ -489,7 +489,7 @@ export function ClientsPage() {
           </Dialog>
           <Button
             onClick={() => navigate('/login')}
-            className="bg-gradient-to-r from-red-500 to-red-600 hover:from-red-400 hover:to-red-500 text-white px-6 py-3 rounded-xl shadow-lg shadow-red-500/25 transform hover:scale-105 transition-all duration-300"
+            className="bg-linear-to-r from-red-500 to-red-600 hover:from-red-400 hover:to-red-500 text-white px-6 py-3 rounded-xl shadow-lg shadow-red-500/25 transform hover:scale-105 transition-all duration-300"
           >
             <LogOut className="w-4 h-4 mr-2" />
             Back to Login
@@ -595,7 +595,7 @@ export function ClientsPage() {
                 className="flex items-center justify-between p-4 bg-slate-700/30 rounded-lg border border-slate-600 hover:border-slate-500 transition-colors"
               >
                 <div className="flex items-center gap-4 flex-1">
-                  <div className="w-12 h-12 bg-gradient-to-r from-purple-500 to-pink-500 rounded-full flex items-center justify-center">
+                  <div className="w-12 h-12 bg-linear-to-r from-purple-500 to-pink-500 rounded-full flex items-center justify-center">
                     <span className="text-white font-semibold text-lg">
                       {client.name.split(' ').map(n => n[0]).join('').toUpperCase()}
                     </span>
@@ -685,7 +685,7 @@ export function ClientsPage() {
             <div className="text-center py-8">
               <div className="text-white text-lg mb-2">Couldn't load users</div>
               <p className="text-gray-500 text-sm mb-4">{clientsError}</p>
-              <Button onClick={() => loadClients()} className="bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-400 hover:to-blue-400">
+              <Button onClick={() => loadClients()} className="bg-linear-to-r from-cyan-500 to-blue-500 hover:from-cyan-400 hover:to-blue-400">
                 Retry
               </Button>
             </div>

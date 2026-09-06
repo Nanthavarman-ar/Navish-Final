@@ -2,11 +2,11 @@ import React from 'react';
 
 export function Footer() {
   return (
-    <footer className="border-t border-slate-700 py-12 bg-slate-900/50 backdrop-blur-sm">
+    <footer className="border-t border-slate-700 py-12 bg-slate-900/50 backdrop-blur-xs">
       <div className="max-w-7xl mx-auto px-6">
         <div className="grid md:grid-cols-3 gap-8">
           <div>
-            <div className="text-2xl font-bold bg-gradient-to-r from-cyan-400 to-purple-400 bg-clip-text text-transparent mb-4">
+            <div className="text-2xl font-bold bg-linear-to-r from-cyan-400 to-purple-400 bg-clip-text text-transparent mb-4">
               NAVIZ
             </div>
             <p className="text-gray-400">

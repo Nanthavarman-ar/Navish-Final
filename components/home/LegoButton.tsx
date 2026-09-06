@@ -78,7 +78,7 @@ export function LegoButton({
       transition={{ type: 'spring', stiffness: 500, damping: 22 }}
     >
       <span className="lego-sheen" aria-hidden />
-      <span className="absolute -top-[5px] left-0 right-0 flex justify-center pointer-events-none" style={{ gap: s.gap }}>
+      <span className="absolute top-[-5px] left-0 right-0 flex justify-center pointer-events-none" style={{ gap: s.gap }}>
         {Array.from({ length: studCount }).map((_, i) => (
           <span key={i} className="lego-stud" style={{ width: s.stud, height: s.stud }} />
         ))}

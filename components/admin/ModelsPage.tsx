@@ -253,7 +253,7 @@ export function ModelsPage() {
           <div className="text-center max-w-md">
             <p className="text-white text-lg mb-2">Couldn't load your models</p>
             <p className="text-gray-400 text-sm mb-4">{error || 'The server request failed.'}</p>
-            <Button onClick={() => refetch()} className="bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-400 hover:to-blue-400">
+            <Button onClick={() => refetch()} className="bg-linear-to-r from-cyan-500 to-blue-500 hover:from-cyan-400 hover:to-blue-400">
               Retry
             </Button>
           </div>
@@ -273,13 +273,13 @@ export function ModelsPage() {
         <div className="flex items-center gap-3">
           <Button
             onClick={navigateToUpload}
-            className="bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-400 hover:to-blue-400"
+            className="bg-linear-to-r from-cyan-500 to-blue-500 hover:from-cyan-400 hover:to-blue-400"
           >
             Upload New Model
           </Button>
           <Button
             onClick={() => navigate('/login')}
-            className="bg-gradient-to-r from-red-500 to-red-600 hover:from-red-400 hover:to-red-500 text-white px-6 py-3 rounded-xl shadow-lg shadow-red-500/25 transform hover:scale-105 transition-all duration-300"
+            className="bg-linear-to-r from-red-500 to-red-600 hover:from-red-400 hover:to-red-500 text-white px-6 py-3 rounded-xl shadow-lg shadow-red-500/25 transform hover:scale-105 transition-all duration-300"
           >
             <LogOut className="w-4 h-4 mr-2" />
             Back to Login
@@ -376,7 +376,7 @@ export function ModelsPage() {
                   alt={model.name}
                   className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                 />
-                <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+                <div className="absolute inset-0 bg-linear-to-t from-black/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
                 <div className="absolute bottom-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
                   <Button
                     onClick={() => handleViewModel(model)}
@@ -457,7 +457,7 @@ export function ModelsPage() {
                     className="w-4 h-4"
                     aria-label="Select model"
                   />
-                  <div className="w-16 h-16 rounded-lg overflow-hidden flex-shrink-0">
+                  <div className="w-16 h-16 rounded-lg overflow-hidden shrink-0">
                     <ImageWithFallback
                       src={model.thumbnail || `https://images.unsplash.com/photo-1586023492125-27b2c045efd7?w=300&h=200&fit=crop`}
                       alt={model.name}

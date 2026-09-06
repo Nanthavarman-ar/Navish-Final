@@ -117,7 +117,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ collabManager, onClose }) => {
           onKeyDown={(e) => { if (e.key === 'Enter') handleSend(); }}
           placeholder={collabManager ? 'Type a message...' : 'Join Multi User first'}
           disabled={!collabManager}
-          className="flex-1 bg-slate-800 border border-slate-600 rounded px-3 py-1.5 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-cyan-500 disabled:opacity-50"
+          className="flex-1 bg-slate-800 border border-slate-600 rounded px-3 py-1.5 text-sm text-white placeholder-gray-500 focus:outline-hidden focus:border-cyan-500 disabled:opacity-50"
         />
         <Button size="sm" onClick={handleSend} disabled={!collabManager || !draft.trim()}>
           <Send className="w-3.5 h-3.5" />

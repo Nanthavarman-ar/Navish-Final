@@ -191,7 +191,7 @@ const NoiseSimulation: React.FC<NoiseSimulationProps> = ({ scene, onNoiseChange 
         });
 
         // Color based on noise level
-        let r = 0, g = 0, b = 0;
+        let r: number, g: number, b: number;
         if (totalNoise > noiseThreshold) {
           // High noise - red
           r = Math.min(1, totalNoise / 100);

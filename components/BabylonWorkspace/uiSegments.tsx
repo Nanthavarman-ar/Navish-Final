@@ -574,6 +574,10 @@ interface CustomPanelsSegmentProps {
   // watchdog in BabylonWorkspace.tsx).
   enableSSR?: boolean;
   onSsrOverrideChange?: (enabled: boolean) => void;
+  // Same pattern as enableSSR/onSsrOverrideChange above, for IBL Shadows (Babylon 9.x's
+  // voxel-traced ambient shadowing pipeline).
+  enableIBLShadows?: boolean;
+  onIblShadowsOverrideChange?: (enabled: boolean) => void;
   sustainabilityReport?: {
     greenScore: number;
     energyEfficiency: number;
@@ -609,8 +613,8 @@ export const CustomPanelsSegment: React.FC<CustomPanelsSegmentProps> = (props) =
 );
 
 // Sub-segment components for CustomPanels
-const CoreFeaturesSegment: React.FC<Pick<CustomPanelsSegmentProps, 'featureStates' | 'sceneRef' | 'engineRef' | 'cameraRef' | 'bimManagerRef' | 'materialManagerRef' | 'aiManagerRef' | 'workspaces' | 'selectedWorkspaceId' | 'handleWorkspaceSelect' | 'handleMaterialApplied' | 'handleAnimationCreate' | 'handleSequencePlay' | 'disableFeature' | 'workspaceState' | 'scenarioManagerRef' | 'moodSceneManagerRef' | 'animationManagerRef' | 'cloudAnchorManagerRef' | 'arCloudAnchorsRef' | 'gpsTransformUtilsRef' | 'xrManagerRef' | 'graphicsQuality' | 'setGraphicsQuality' | 'recommendedQuality' | 'gpuName' | 'deviceCapabilities' | 'enableSSR' | 'onSsrOverrideChange' | 'simulationManagerRef' | 'currentModelId' | 'floorPlans' | 'onFloorPlansChange'>> = ({
-  featureStates, sceneRef, engineRef, cameraRef, bimManagerRef, materialManagerRef, aiManagerRef, workspaces, selectedWorkspaceId, handleWorkspaceSelect, handleMaterialApplied, handleAnimationCreate, handleSequencePlay, disableFeature, workspaceState, scenarioManagerRef, moodSceneManagerRef, animationManagerRef, cloudAnchorManagerRef, arCloudAnchorsRef, gpsTransformUtilsRef, xrManagerRef, graphicsQuality, setGraphicsQuality, recommendedQuality, gpuName, deviceCapabilities, enableSSR, onSsrOverrideChange, simulationManagerRef, currentModelId, floorPlans, onFloorPlansChange
+const CoreFeaturesSegment: React.FC<Pick<CustomPanelsSegmentProps, 'featureStates' | 'sceneRef' | 'engineRef' | 'cameraRef' | 'bimManagerRef' | 'materialManagerRef' | 'aiManagerRef' | 'workspaces' | 'selectedWorkspaceId' | 'handleWorkspaceSelect' | 'handleMaterialApplied' | 'handleAnimationCreate' | 'handleSequencePlay' | 'disableFeature' | 'workspaceState' | 'scenarioManagerRef' | 'moodSceneManagerRef' | 'animationManagerRef' | 'cloudAnchorManagerRef' | 'arCloudAnchorsRef' | 'gpsTransformUtilsRef' | 'xrManagerRef' | 'graphicsQuality' | 'setGraphicsQuality' | 'recommendedQuality' | 'gpuName' | 'deviceCapabilities' | 'enableSSR' | 'onSsrOverrideChange' | 'enableIBLShadows' | 'onIblShadowsOverrideChange' | 'simulationManagerRef' | 'currentModelId' | 'floorPlans' | 'onFloorPlansChange'>> = ({
+  featureStates, sceneRef, engineRef, cameraRef, bimManagerRef, materialManagerRef, aiManagerRef, workspaces, selectedWorkspaceId, handleWorkspaceSelect, handleMaterialApplied, handleAnimationCreate, handleSequencePlay, disableFeature, workspaceState, scenarioManagerRef, moodSceneManagerRef, animationManagerRef, cloudAnchorManagerRef, arCloudAnchorsRef, gpsTransformUtilsRef, xrManagerRef, graphicsQuality, setGraphicsQuality, recommendedQuality, gpuName, deviceCapabilities, enableSSR, onSsrOverrideChange, enableIBLShadows, onIblShadowsOverrideChange, simulationManagerRef, currentModelId, floorPlans, onFloorPlansChange
 }) => {
   const lightingPanel = usePanelStack('top-left', !!featureStates.showLighting);
   const graphicsQualityPanel = usePanelStack('top-right');
@@ -672,7 +676,7 @@ const CoreFeaturesSegment: React.FC<Pick<CustomPanelsSegmentProps, 'featureState
       // was currently active in the 3D scene - reopening the panel could never show it
       // as still selected because it had actually been torn down.
       <Suspense fallback={<div ref={lightingPanel.ref} style={lightingPanel.style} className="fixed bottom-4 left-4 z-50 w-96 max-w-[90vw] h-48 bg-slate-900/95 rounded-xl animate-pulse border border-slate-600" />}>
-      <div ref={lightingPanel.ref} style={{ ...lightingPanel.style, bottom: 16 }} className={`fixed left-4 z-50 w-96 max-w-[90vw] flex-col bg-slate-900/95 backdrop-blur-sm border border-slate-600 rounded-xl shadow-2xl pointer-events-auto overflow-hidden ${featureStates.showLighting ? 'flex' : 'hidden'}`}>
+      <div ref={lightingPanel.ref} style={{ ...lightingPanel.style, bottom: 16 }} className={`fixed left-4 z-50 w-96 max-w-[90vw] flex-col bg-slate-900/95 backdrop-blur-xs border border-slate-600 rounded-xl shadow-2xl pointer-events-auto overflow-hidden ${featureStates.showLighting ? 'flex' : 'hidden'}`}>
         <div className="flex justify-between items-center px-4 py-3 border-b border-slate-600 bg-slate-800/80 shrink-0">
           <span className="text-sm font-semibold text-slate-200 flex items-center gap-2">
             <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" /> Lighting
@@ -687,7 +691,7 @@ const CoreFeaturesSegment: React.FC<Pick<CustomPanelsSegmentProps, 'featureState
     )}
     {featureStates.showGraphicsQuality && (
       <Suspense fallback={<div ref={graphicsQualityPanel.ref} style={graphicsQualityPanel.style} className="fixed right-4 z-50 w-80 max-w-[90vw] h-48 bg-slate-900/95 rounded-xl animate-pulse border border-slate-600" />}>
-      <div ref={graphicsQualityPanel.ref} style={graphicsQualityPanel.style} className="fixed right-4 z-50 w-80 max-w-[90vw] flex flex-col bg-slate-900/95 backdrop-blur-sm border border-slate-600 rounded-xl shadow-2xl pointer-events-auto overflow-hidden">
+      <div ref={graphicsQualityPanel.ref} style={graphicsQualityPanel.style} className="fixed right-4 z-50 w-80 max-w-[90vw] flex flex-col bg-slate-900/95 backdrop-blur-xs border border-slate-600 rounded-xl shadow-2xl pointer-events-auto overflow-hidden">
         <div className="flex justify-between items-center px-4 py-3 border-b border-slate-600 bg-slate-800/80 shrink-0">
           <span className="text-sm font-semibold text-slate-200 flex items-center gap-2">
             <span className="w-2 h-2 rounded-full bg-sky-400" /> Graphics Quality
@@ -703,6 +707,8 @@ const CoreFeaturesSegment: React.FC<Pick<CustomPanelsSegmentProps, 'featureState
             capabilities={deviceCapabilities}
             ssrEnabled={!!enableSSR}
             onSsrToggle={onSsrOverrideChange}
+            iblShadowsEnabled={!!enableIBLShadows}
+            onIblShadowsToggle={onIblShadowsOverrideChange}
           />
         </div>
       </div>
@@ -738,7 +744,7 @@ const CoreFeaturesSegment: React.FC<Pick<CustomPanelsSegmentProps, 'featureState
     )}
     {featureStates.showErgonomicTesting && sceneRef.current && (
       <Suspense fallback={<div ref={ergonomicPanel.ref} style={ergonomicPanel.style} className="fixed right-4 z-50 w-80 h-40 bg-slate-900/95 rounded-lg animate-pulse border border-slate-600" />}>
-      <div ref={ergonomicPanel.ref} style={ergonomicPanel.style} className="fixed right-4 z-50 w-80 max-w-[90vw] max-h-[85vh] flex flex-col bg-slate-900/95 backdrop-blur-sm border border-slate-600 rounded-xl shadow-2xl pointer-events-auto overflow-hidden">
+      <div ref={ergonomicPanel.ref} style={ergonomicPanel.style} className="fixed right-4 z-50 w-80 max-w-[90vw] max-h-[85vh] flex flex-col bg-slate-900/95 backdrop-blur-xs border border-slate-600 rounded-xl shadow-2xl pointer-events-auto overflow-hidden">
         <div className="flex justify-between items-center px-4 py-3 border-b border-slate-600 bg-slate-800/80 shrink-0">
           <span className="text-sm font-semibold text-slate-200">Ergonomic Testing</span>
           <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-400 hover:text-white" onClick={() => disableFeature('showErgonomicTesting')} aria-label="Close Ergonomic Testing">✕</Button>
@@ -751,7 +757,7 @@ const CoreFeaturesSegment: React.FC<Pick<CustomPanelsSegmentProps, 'featureState
     )}
     {featureStates.showTopographyGenerator && sceneRef.current && (
       <Suspense fallback={<div ref={topographyPanel.ref} style={topographyPanel.style} className="fixed right-4 z-50 w-80 h-40 bg-slate-900/95 rounded-lg animate-pulse border border-slate-600" />}>
-      <div ref={topographyPanel.ref} style={topographyPanel.style} className="fixed right-4 z-50 w-80 max-w-[90vw] max-h-[85vh] flex flex-col bg-slate-900/95 backdrop-blur-sm border border-slate-600 rounded-xl shadow-2xl pointer-events-auto overflow-hidden">
+      <div ref={topographyPanel.ref} style={topographyPanel.style} className="fixed right-4 z-50 w-80 max-w-[90vw] max-h-[85vh] flex flex-col bg-slate-900/95 backdrop-blur-xs border border-slate-600 rounded-xl shadow-2xl pointer-events-auto overflow-hidden">
         <div className="flex justify-between items-center px-4 py-3 border-b border-slate-600 bg-slate-800/80 shrink-0">
           <span className="text-sm font-semibold text-slate-200">Topography Generator</span>
           <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-400 hover:text-white" onClick={() => disableFeature('showTopographyGenerator')} aria-label="Close Topography Generator">✕</Button>
@@ -764,7 +770,7 @@ const CoreFeaturesSegment: React.FC<Pick<CustomPanelsSegmentProps, 'featureState
     )}
     {featureStates.showConstructionOverlay && sceneRef.current && (
       <Suspense fallback={<div ref={constructionPanel.ref} style={constructionPanel.style} className="fixed right-4 z-50 w-80 h-40 bg-slate-900/95 rounded-lg animate-pulse border border-slate-600" />}>
-      <div ref={constructionPanel.ref} style={constructionPanel.style} className="fixed right-4 z-50 w-80 max-w-[90vw] max-h-[85vh] flex flex-col bg-slate-900/95 backdrop-blur-sm border border-slate-600 rounded-xl shadow-2xl pointer-events-auto overflow-hidden">
+      <div ref={constructionPanel.ref} style={constructionPanel.style} className="fixed right-4 z-50 w-80 max-w-[90vw] max-h-[85vh] flex flex-col bg-slate-900/95 backdrop-blur-xs border border-slate-600 rounded-xl shadow-2xl pointer-events-auto overflow-hidden">
         <div className="flex justify-between items-center px-4 py-3 border-b border-slate-600 bg-slate-800/80 shrink-0">
           <span className="text-sm font-semibold text-slate-200">Construction Overlay</span>
           <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-400 hover:text-white" onClick={() => disableFeature('showConstructionOverlay')} aria-label="Close Construction Overlay">✕</Button>
@@ -777,7 +783,7 @@ const CoreFeaturesSegment: React.FC<Pick<CustomPanelsSegmentProps, 'featureState
     )}
     {featureStates.showShadowImpactAnalysis && sceneRef.current && engineRef.current && (
       <Suspense fallback={<div ref={shadowImpactPanel.ref} style={shadowImpactPanel.style} className="fixed right-4 z-50 w-96 h-40 bg-slate-900/95 rounded-lg animate-pulse border border-slate-600" />}>
-      <div ref={shadowImpactPanel.ref} style={shadowImpactPanel.style} className="fixed right-4 z-50 w-96 max-w-[90vw] max-h-[85vh] flex flex-col bg-slate-900/95 backdrop-blur-sm border border-slate-600 rounded-xl shadow-2xl pointer-events-auto overflow-hidden">
+      <div ref={shadowImpactPanel.ref} style={shadowImpactPanel.style} className="fixed right-4 z-50 w-96 max-w-[90vw] max-h-[85vh] flex flex-col bg-slate-900/95 backdrop-blur-xs border border-slate-600 rounded-xl shadow-2xl pointer-events-auto overflow-hidden">
         <div className="flex justify-between items-center px-4 py-3 border-b border-slate-600 bg-slate-800/80 shrink-0">
           <span className="text-sm font-semibold text-slate-200">Shadow Impact Analysis</span>
           <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-400 hover:text-white" onClick={() => disableFeature('showShadowImpactAnalysis')} aria-label="Close Shadow Impact Analysis">✕</Button>
@@ -790,7 +796,7 @@ const CoreFeaturesSegment: React.FC<Pick<CustomPanelsSegmentProps, 'featureState
     )}
     {featureStates.showCirculationFlowSimulation && sceneRef.current && engineRef.current && (
       <Suspense fallback={<div ref={circulationPanel.ref} style={circulationPanel.style} className="fixed right-4 z-50 w-96 h-40 bg-slate-900/95 rounded-lg animate-pulse border border-slate-600" />}>
-      <div ref={circulationPanel.ref} style={circulationPanel.style} className="fixed right-4 z-50 w-96 max-w-[90vw] max-h-[85vh] flex flex-col bg-slate-900/95 backdrop-blur-sm border border-slate-600 rounded-xl shadow-2xl pointer-events-auto overflow-hidden">
+      <div ref={circulationPanel.ref} style={circulationPanel.style} className="fixed right-4 z-50 w-96 max-w-[90vw] max-h-[85vh] flex flex-col bg-slate-900/95 backdrop-blur-xs border border-slate-600 rounded-xl shadow-2xl pointer-events-auto overflow-hidden">
         <div className="flex justify-between items-center px-4 py-3 border-b border-slate-600 bg-slate-800/80 shrink-0">
           <span className="text-sm font-semibold text-slate-200">Circulation Flow Simulation</span>
           <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-400 hover:text-white" onClick={() => disableFeature('showCirculationFlowSimulation')} aria-label="Close Circulation Flow Simulation">✕</Button>
@@ -803,7 +809,7 @@ const CoreFeaturesSegment: React.FC<Pick<CustomPanelsSegmentProps, 'featureState
     )}
     {featureStates.showEnergyDashboard && (
       <Suspense fallback={<div ref={energyPanel.ref} style={energyPanel.style} className="fixed right-4 z-50 w-96 h-40 bg-slate-900/95 rounded-lg animate-pulse border border-slate-600" />}>
-      <div ref={energyPanel.ref} style={energyPanel.style} className="fixed right-4 z-50 w-96 max-w-[90vw] max-h-[85vh] flex flex-col bg-slate-900/95 backdrop-blur-sm border border-slate-600 rounded-xl shadow-2xl pointer-events-auto overflow-hidden">
+      <div ref={energyPanel.ref} style={energyPanel.style} className="fixed right-4 z-50 w-96 max-w-[90vw] max-h-[85vh] flex flex-col bg-slate-900/95 backdrop-blur-xs border border-slate-600 rounded-xl shadow-2xl pointer-events-auto overflow-hidden">
         <div className="flex justify-between items-center px-4 py-3 border-b border-slate-600 bg-slate-800/80 shrink-0">
           <span className="text-sm font-semibold text-slate-200">Energy Analysis</span>
           <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-400 hover:text-white" onClick={() => disableFeature('showEnergyDashboard')} aria-label="Close Energy Analysis">✕</Button>
@@ -829,7 +835,7 @@ const CoreFeaturesSegment: React.FC<Pick<CustomPanelsSegmentProps, 'featureState
     )}
     {featureStates.showMeasurementTool && sceneRef.current && engineRef.current && (
       <Suspense fallback={<div ref={measurementPanel.ref} style={measurementPanel.style} className="fixed right-4 z-50 w-96 max-w-[90vw] h-48 bg-slate-900/95 rounded-xl animate-pulse border border-slate-600" />}>
-      <div ref={measurementPanel.ref} style={measurementPanel.style} className="fixed right-4 z-50 w-96 max-w-[90vw] max-h-[85vh] flex flex-col bg-slate-900/95 backdrop-blur-sm border border-slate-600 rounded-xl shadow-2xl pointer-events-auto overflow-hidden">
+      <div ref={measurementPanel.ref} style={measurementPanel.style} className="fixed right-4 z-50 w-96 max-w-[90vw] max-h-[85vh] flex flex-col bg-slate-900/95 backdrop-blur-xs border border-slate-600 rounded-xl shadow-2xl pointer-events-auto overflow-hidden">
         <div className="flex justify-between items-center px-4 py-3 border-b border-slate-600 bg-slate-800/80 shrink-0">
           <span className="text-sm font-semibold text-slate-200 flex items-center gap-2">
             <span className="w-2 h-2 rounded-full bg-emerald-400" /> Measure
@@ -860,7 +866,7 @@ const CoreFeaturesSegment: React.FC<Pick<CustomPanelsSegmentProps, 'featureState
         here. */}
     {featureStates.showCloudAnchorManager && sceneRef.current && arCloudAnchorsRef?.current && cloudAnchorManagerRef?.current && gpsTransformUtilsRef?.current && (
       <Suspense fallback={<div ref={cloudAnchorPanel.ref} style={cloudAnchorPanel.style} className="fixed right-4 z-50 w-96 max-w-[90vw] h-48 bg-slate-900/95 rounded-xl animate-pulse border border-slate-600" />}>
-        <div ref={cloudAnchorPanel.ref} style={{ ...cloudAnchorPanel.style, bottom: 16 }} className="fixed right-4 z-50 w-96 max-w-[90vw] flex flex-col bg-slate-900/95 backdrop-blur-sm border border-slate-600 rounded-xl shadow-2xl overflow-hidden text-white">
+        <div ref={cloudAnchorPanel.ref} style={{ ...cloudAnchorPanel.style, bottom: 16 }} className="fixed right-4 z-50 w-96 max-w-[90vw] flex flex-col bg-slate-900/95 backdrop-blur-xs border border-slate-600 rounded-xl shadow-2xl overflow-hidden text-white">
           <div className="flex justify-between items-center px-4 py-3 border-b border-slate-600 bg-slate-800/80 shrink-0">
             <span className="text-sm font-semibold text-slate-200 flex items-center gap-2">
               <span className="w-2 h-2 rounded-full bg-cyan-400" /> Cloud Anchors
@@ -2191,6 +2197,8 @@ interface RenderCustomPanelsProps {
   deviceCapabilities?: any;
   enableSSR?: CustomPanelsSegmentProps['enableSSR'];
   onSsrOverrideChange?: CustomPanelsSegmentProps['onSsrOverrideChange'];
+  enableIBLShadows?: CustomPanelsSegmentProps['enableIBLShadows'];
+  onIblShadowsOverrideChange?: CustomPanelsSegmentProps['onIblShadowsOverrideChange'];
   sustainabilityReport?: CustomPanelsSegmentProps['sustainabilityReport'];
   floorPlans?: CustomPanelsSegmentProps['floorPlans'];
   onFloorPlansChange?: CustomPanelsSegmentProps['onFloorPlansChange'];

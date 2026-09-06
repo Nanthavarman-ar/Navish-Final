@@ -108,7 +108,7 @@ const ROICalculatorPanel: React.FC<ROICalculatorPanelProps> = ({ costEstimator, 
                   value={annualReturn || ''}
                   onChange={(e) => setAnnualReturn(Math.max(0, Number(e.target.value)))}
                   placeholder="e.g. rent increase, energy savings"
-                  className="flex-1 bg-slate-800 border border-slate-600 rounded px-2 py-1.5 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-cyan-500"
+                  className="flex-1 bg-slate-800 border border-slate-600 rounded px-2 py-1.5 text-sm text-white placeholder-gray-500 focus:outline-hidden focus:border-cyan-500"
                 />
               </div>
             </div>

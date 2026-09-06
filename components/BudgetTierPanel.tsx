@@ -115,7 +115,7 @@ const BudgetTierPanel: React.FC<BudgetTierPanelProps> = ({ costEstimator, sustai
   };
 
   return (
-    <div className="fixed top-20 left-1/2 -translate-x-1/2 z-40 w-[28rem] max-w-[90vw] bg-gray-900/95 border border-cyan-500/20 rounded-lg shadow-2xl text-white">
+    <div className="fixed top-20 left-1/2 -translate-x-1/2 z-40 w-md max-w-[90vw] bg-gray-900/95 border border-cyan-500/20 rounded-lg shadow-2xl text-white">
       <div className="flex items-center justify-between p-4 border-b border-gray-700">
         <div className="flex items-center gap-2">
           <LayoutGrid className="w-4 h-4 text-cyan-400" />
@@ -148,7 +148,7 @@ const BudgetTierPanel: React.FC<BudgetTierPanelProps> = ({ costEstimator, sustai
                     min={0}
                     value={draft[row.label].total}
                     onChange={(e) => setDraft(prev => prev && { ...prev, [row.label]: { ...prev[row.label], total: Number(e.target.value) } })}
-                    className="w-full mt-2 bg-slate-900 border border-slate-600 rounded px-1.5 py-1 text-sm text-center text-gray-100 focus:outline-none focus:border-cyan-500"
+                    className="w-full mt-2 bg-slate-900 border border-slate-600 rounded px-1.5 py-1 text-sm text-center text-gray-100 focus:outline-hidden focus:border-cyan-500"
                     title={`${row.label} total`}
                   />
                 ) : (
@@ -165,7 +165,7 @@ const BudgetTierPanel: React.FC<BudgetTierPanelProps> = ({ costEstimator, sustai
                     min={0}
                     value={draft[row.label].materials}
                     onChange={(e) => setDraft(prev => prev && { ...prev, [row.label]: { ...prev[row.label], materials: Number(e.target.value) } })}
-                    className="w-full mt-1 bg-slate-900 border border-slate-600 rounded px-1.5 py-1 text-xs text-center text-gray-100 focus:outline-none focus:border-cyan-500"
+                    className="w-full mt-1 bg-slate-900 border border-slate-600 rounded px-1.5 py-1 text-xs text-center text-gray-100 focus:outline-hidden focus:border-cyan-500"
                     title={`${row.label} materials`}
                   />
                 ) : (

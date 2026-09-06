@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Scene, Mesh, AbstractMesh, TransformNode, MeshBuilder, StandardMaterial, VideoTexture, DynamicTexture, Texture, ParticleSystem, Color3, Color4, Vector3, Scalar, VertexBuffer, PointerEventTypes, PointLight, ArcRotateCamera } from '@babylonjs/core';
+import { Scene, Mesh, AbstractMesh, TransformNode, MeshBuilder, StandardMaterial, VideoTexture, DynamicTexture, Texture, ParticleSystem, Color3, Color4, Vector3, Quaternion, Scalar, VertexBuffer, PointerEventTypes, PointLight, ArcRotateCamera } from '@babylonjs/core';
 import { X, Fan, Lightbulb, Tv, Trash2, Upload, DoorOpen, Flame, Droplets, FlipHorizontal, Wind, CloudRain, User, PawPrint, ArrowUpDown, Warehouse } from 'lucide-react';
 import { Button } from './ui/button';
 import { showToast } from './utils/toast';
@@ -824,7 +824,25 @@ const InteractiveFixtures: React.FC<InteractiveFixturesProps> = ({ scene, roomId
         if (!fixture.isOn) return;
         if (fixture.type === 'fan') {
           const mesh = resolveFixtureMesh(fixture);
-          if (mesh) mesh.rotation.y += 6 * dt; // roughly one full turn per second at "on" speed
+          // Fan blades placed on a mesh imported from an uploaded glTF/glb model
+          // (the whole point of this feature - see resolveFixtureMesh above)
+          // almost always already have rotationQuaternion set, since that's how
+          // Babylon's glTF loader stores node rotation. Babylon's world matrix
+          // computation prefers rotationQuaternion over .rotation whenever it's
+          // non-null, so mutating .rotation.y on such a mesh silently does
+          // nothing - the blades never visibly turn. Spinning via quaternion
+          // multiplication (mirroring the same fix already used for the XR
+          // placement root in XRManager.ts) works whether or not the mesh has
+          // one, and preserves whatever tilt/orientation the blades were
+          // authored with instead of resetting it to flat.
+          if (mesh) {
+            const deltaSpin = Quaternion.RotationAxis(Vector3.Up(), 6 * dt); // ~one full turn/sec at "on" speed
+            if (mesh.rotationQuaternion) {
+              mesh.rotationQuaternion = mesh.rotationQuaternion.multiply(deltaSpin);
+            } else {
+              mesh.rotation.y += 6 * dt;
+            }
+          }
         } else if (fixture.type === 'tv' && !fixture.videoUrl) {
           // A TV with a real uploaded video is driven by its own video frames instead
           // (see the video-texture effect) - flickering its emissiveColor on top would

@@ -4,7 +4,7 @@ import { useSearchParams } from 'react-router-dom';
 import './BabylonWorkspace.css';
 
 // Core Babylon.js imports only (minimal for initial load)
-import { Engine, Scene, ArcRotateCamera, FreeCamera, UniversalCamera, HemisphericLight, DirectionalLight, Vector3, Vector2, Quaternion, Color3, Color4, Mesh, AbstractMesh, StandardMaterial, DefaultRenderingPipeline, SSAO2RenderingPipeline, SSRRenderingPipeline, HighlightLayer, PBRMaterial, Material, ImageProcessingConfiguration, ColorCurves, PointerInfo, PickingInfo, Camera, PointerEventTypes, ParticleSystem, MeshBuilder, Texture, GizmoManager, GizmoAnchorPoint, ShadowGenerator, CascadedShadowGenerator, Ray } from '@babylonjs/core';
+import { Engine, Scene, ArcRotateCamera, FreeCamera, UniversalCamera, HemisphericLight, DirectionalLight, Vector3, Vector2, Quaternion, Color3, Color4, Mesh, AbstractMesh, StandardMaterial, DefaultRenderingPipeline, SSAO2RenderingPipeline, SSRRenderingPipeline, TAARenderingPipeline, IblShadowsRenderPipeline, HighlightLayer, PBRMaterial, Material, ImageProcessingConfiguration, ColorCurves, PointerInfo, PickingInfo, Camera, PointerEventTypes, ParticleSystem, MeshBuilder, Texture, GizmoManager, GizmoAnchorPoint, ShadowGenerator, CascadedShadowGenerator, Ray } from '@babylonjs/core';
 import { WaterMaterial } from '@babylonjs/materials/water';
 import { PerlinNoiseProceduralTexture } from '@babylonjs/procedural-textures';
 
@@ -611,6 +611,7 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
       loadedModelMeshesRef.current.forEach((m) => {
         if (m.isDisposed()) return;
         shadowGeneratorRef.current?.removeShadowCaster(m);
+        iblShadowsRef.current?.removeShadowCastingMesh(m as Mesh);
         m.dispose();
       });
       loadedModelMeshesRef.current = [];
@@ -805,6 +806,19 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
               m.receiveShadows = true;
             });
           }
+          // Same glass exclusion for IBL Shadows' voxel grid, if that pipeline is active
+          // (Ultra tier - see the enableIBLShadows effect above). updateSceneBounds/
+          // updateVoxelization only need to run once per batch, after every mesh in this
+          // model has been registered, not per-mesh.
+          if (iblShadowsRef.current) {
+            newMeshes.forEach((m) => {
+              if (!isGlassMesh(m)) {
+                iblShadowsRef.current!.addShadowCastingMesh(m as Mesh);
+              }
+            });
+            iblShadowsRef.current.updateSceneBounds();
+            iblShadowsRef.current.updateVoxelization();
+          }
           showToast.dismiss(toastId);
           showToast.success(`Model loaded: ${selectedModel?.name || 'Model'}`);
           setSelectedModel(null);
@@ -971,6 +985,13 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
   // that wins over the tier default - see the quality effect further down and the FPS
   // watchdog effect, which can clear this back to null if it has to force SSR off.
   const [ssrOverride, setSsrOverride] = React.useState<boolean | null>(null);
+  // Real voxel-traced ambient shadowing from the scene's environment texture
+  // (IblShadowsRenderPipeline, new in Babylon 9.x) - distinct from both the CSM sun
+  // shadows and SSAO2's screen-space approximation. Same Ultra-only/overridable/
+  // FPS-watchdog treatment as SSR above since voxelizing + tracing + blurring +
+  // accumulating a shadow buffer every frame is at least as expensive.
+  const [enableIBLShadows, setEnableIBLShadows] = React.useState(false);
+  const [iblShadowsOverride, setIblShadowsOverride] = React.useState<boolean | null>(null);
   const [enableGrain, setEnableGrain] = React.useState(false);
   const [enableVignette, setEnableVignette] = React.useState(false);
   const [viewMode, setViewMode] = React.useState<'walk' | 'orbit' | 'dollhouse' | 'vr' | 'ar'>('orbit');
@@ -1309,6 +1330,11 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
   const pipelineRef = useRef<DefaultRenderingPipeline | null>(null);
   const ssaoPipelineRef = useRef<SSAO2RenderingPipeline | null>(null);
   const ssrPipelineRef = useRef<SSRRenderingPipeline | null>(null);
+  const iblShadowsRef = useRef<IblShadowsRenderPipeline | null>(null);
+  // TAA is constructed once at mount (before any other pipeline - Babylon requires TAA to
+  // be first on the camera) and just toggled via isEnabled afterward, so it never needs
+  // to be recreated/reordered relative to the other pipelines.
+  const taaPipelineRef = useRef<TAARenderingPipeline | null>(null);
   const highlightLayerRef = useRef<HighlightLayer | null>(null);
   // Shadow generator for the scene's "sun" light - lets Sun Study actually show
   // moving shadows instead of only a faint brightness/color shift.
@@ -1468,6 +1494,10 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
   // the desktop choice across a VR/AR session, not about this device genuinely being too
   // slow for SSR regardless of session type.
   const ssrLowFpsStreakRef = useRef(0);
+  // Same idea as ssrLowFpsStreakRef, tracked separately so SSR and IBL Shadows each get
+  // their own independent watchdog - one being the reason for a slow frame rate shouldn't
+  // require the other to also have tripped its own streak before it's turned off.
+  const iblShadowsLowFpsStreakRef = useRef(0);
 
   // AI Manager ref
   const aiManagerRef = useRef<any>(null);
@@ -1639,6 +1669,21 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
         // (and this project's own touchpad pinch-zoom) already behaves.
         camera.wheelDeltaPercentage = 0.01;
         cameraRef.current = camera;
+
+        // Temporal Anti-Aliasing (Babylon 9.x) - Babylon requires this to be the FIRST
+        // post-processing pipeline constructed on the camera, before DefaultRenderingPipeline/
+        // SSAO2/SSR below, all of which are created either right here at mount or later via
+        // their own reactive effects once the device's quality tier is known. Constructing it
+        // now but disabled (isEnabled = false) sidesteps that ordering requirement entirely -
+        // it only ever needs a live isEnabled flip afterward (see the device-detection block
+        // and the graphicsQuality effect further down), never a dispose/recreate.
+        try {
+          const taaPipeline = new TAARenderingPipeline("taa", scene, [camera]);
+          taaPipeline.isEnabled = false;
+          taaPipelineRef.current = taaPipeline;
+        } catch (taaError) {
+          console.warn('TAA rendering pipeline unavailable on this device:', taaError);
+        }
 
         // Create basic lighting (HemisphericLight for ambient)
         const hemiLight = new HemisphericLight("hemiLight", new Vector3(1, 1, 0), scene);
@@ -1860,12 +1905,22 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
         // sampling cost per pixel.
         Texture.DEFAULT_ANISOTROPIC_FILTERING_LEVEL = (resolvedQuality === 'low' || resolvedQuality === 'medium') ? 4 : 8;
 
+        // TAA (see the pipeline constructed disabled right after the camera above) only
+        // costs anything while it's actually accumulating frames, so it's safe at the same
+        // High/Ultra tier as SSAO rather than restricted to Ultra alone.
+        if (taaPipelineRef.current && !shouldAbort()) {
+          taaPipelineRef.current.isEnabled = !capabilities.mobile && (resolvedQuality === 'high' || resolvedQuality === 'ultra');
+        }
+
         // Screen-space reflections were originally tried here using Babylon's older
         // ScreenSpaceReflectionPostProcess and pulled back out for visible flicker under
         // camera movement near geometry edges/gaps. Revisited via SSRRenderingPipeline
         // (Babylon's SSR2, with built-in edge/distance/iteration attenuation meant to fade
         // reflections at exactly those trouble spots instead of hard-cutting them) - see
         // the enableSSR reactive effect below, which only turns it on at Ultra quality.
+        // IBL Shadows (voxel-traced ambient shadowing from the environment texture, see the
+        // create/dispose effect below) gets the same Ultra-only treatment via that same
+        // reactive effect (setEnableIBLShadows sits right next to setEnableSSR there).
 
         // Initialize FeatureManager
         const featureManager = new FeatureManager(capabilities);
@@ -2464,6 +2519,46 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
     }
   }, [enableSSR]);
 
+  // Reactively create/dispose IBL Shadows (Babylon 9.x's voxel-traced ambient shadowing
+  // from the scene's environment texture) - same Ultra-only/overridable treatment as SSR
+  // above. Wrapped in try/catch and gated on IsSupported like the CascadedShadowGenerator
+  // fallback earlier in this file, since voxelization needs a decent WebGL2/WebGPU device.
+  useEffect(() => {
+    const scene = sceneRef.current;
+    const camera = cameraRef.current;
+    if (!scene || !camera) return;
+    if (enableIBLShadows && !iblShadowsRef.current) {
+      try {
+        if (!IblShadowsRenderPipeline.IsSupported) {
+          console.warn('IBL Shadows unsupported on this device - skipping.');
+        } else {
+          const iblShadows = new IblShadowsRenderPipeline("iblShadows", scene, {
+            // 2^6 = 64^3 voxel grid - a real balance point for realtime use; higher
+            // sharpens shadows but multiplies voxelization/tracing cost.
+            resolutionExp: 6,
+            sampleDirections: 8,
+            shadowRemanence: 0.75,
+            // Voxelizes from 3 axes instead of 1 - meaningfully fewer "missing geometry"
+            // gaps in the shadow (thin walls/beams that a single-axis voxelization can
+            // miss entirely), worth the extra cost at the Ultra tier this is already
+            // restricted to.
+            triPlanarVoxelization: true,
+          }, [camera]);
+          // No specific meshes/materials passed here - the model-load effect (see
+          // isGlassMesh/addShadowCaster nearby) registers casters as models are loaded/
+          // swapped. Receivers default to every material in the scene.
+          iblShadows.addShadowReceivingMaterial();
+          iblShadowsRef.current = iblShadows;
+        }
+      } catch (iblError) {
+        console.warn('IBL Shadows pipeline unavailable on this device:', iblError);
+      }
+    } else if (!enableIBLShadows && iblShadowsRef.current) {
+      iblShadowsRef.current.dispose();
+      iblShadowsRef.current = null;
+    }
+  }, [enableIBLShadows]);
+
   // Reactively update post-processing pipeline settings without recreating the scene
   useEffect(() => {
     const pipeline = pipelineRef.current;
@@ -2519,12 +2614,18 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
     // default when the user has explicitly set it - null means "no explicit choice yet",
     // which keeps today's behavior (Ultra only) as the default.
     setEnableSSR(ssrOverride !== null ? ssrOverride : resolved === 'ultra');
+    // Same override precedence as SSR above, via the Graphics Quality panel's own
+    // "Ambient Shadows (IBL)" toggle.
+    setEnableIBLShadows(iblShadowsOverride !== null ? iblShadowsOverride : resolved === 'ultra');
     if (shadowGeneratorRef.current) {
       shadowGeneratorRef.current.mapSize = isHighTier ? 2048 : 1024;
       shadowGeneratorRef.current.filteringQuality = isHighTier ? ShadowGenerator.QUALITY_HIGH : ShadowGenerator.QUALITY_MEDIUM;
     }
     Texture.DEFAULT_ANISOTROPIC_FILTERING_LEVEL = isHighTier ? 8 : 4;
-  }, [graphicsQuality, recommendedQuality, ssrOverride]);
+    if (taaPipelineRef.current) {
+      taaPipelineRef.current.isEnabled = isHighTier;
+    }
+  }, [graphicsQuality, recommendedQuality, ssrOverride, iblShadowsOverride]);
 
   // The top bar's FPS badge (`fps` state) was declared but never actually updated anywhere -
   // always showing a fixed "60 FPS" regardless of the real frame rate. Sampling every 500ms
@@ -2570,6 +2671,30 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
       showToast.info('Turned off Reflections', 'The frame rate dropped too low on this device - reflections have been switched off to keep things smooth.');
     }
   }, [fps, enableSSR]);
+
+  // Same live safety net as the SSR watchdog above, independently for IBL Shadows - one
+  // being on shouldn't require the other to have also tripped its own streak first, and a
+  // device that can hold Ultra-tier SSR fine might still choke specifically on the
+  // voxelization/tracing cost IBL Shadows adds on top.
+  useEffect(() => {
+    if (!enableIBLShadows) {
+      iblShadowsLowFpsStreakRef.current = 0;
+      return;
+    }
+    const LOW_FPS_THRESHOLD = 24;
+    const REQUIRED_STREAK = 3;
+    if (fps > 0 && fps < LOW_FPS_THRESHOLD) {
+      iblShadowsLowFpsStreakRef.current += 1;
+    } else {
+      iblShadowsLowFpsStreakRef.current = 0;
+    }
+    if (iblShadowsLowFpsStreakRef.current >= REQUIRED_STREAK) {
+      iblShadowsLowFpsStreakRef.current = 0;
+      setEnableIBLShadows(false);
+      setIblShadowsOverride(false);
+      showToast.info('Turned off Ambient Shadows', 'The frame rate dropped too low on this device - IBL shadows have been switched off to keep things smooth.');
+    }
+  }, [fps, enableIBLShadows]);
 
   // Reactively toggle spatial audio without recreating AudioManager
   useEffect(() => {
@@ -4295,9 +4420,9 @@ const getCategoryDescription = (categoryName: string): string => {
     bimManagerRef
   })}
         <div className={layoutClasses.mainWorkspace}>
-          {/* Top bar - flex-shrink-0 so it stays visible */}
+          {/* Top bar - shrink-0 so it stays visible */}
           {topBarVisible && (
-            <div className="flex-shrink-0 w-full z-10 bg-gray-900 border-b border-gray-700">
+            <div className="shrink-0 w-full z-10 bg-gray-900 border-b border-gray-700">
               {renderTopBar({
             fps,
             activeFeatures,
@@ -4540,6 +4665,8 @@ const getCategoryDescription = (categoryName: string): string => {
               deviceCapabilities,
               enableSSR,
               onSsrOverrideChange: setSsrOverride,
+              enableIBLShadows,
+              onIblShadowsOverrideChange: setIblShadowsOverride,
               sustainabilityReport,
               onRainToggle,
               rainOn,
@@ -4634,7 +4761,7 @@ const getCategoryDescription = (categoryName: string): string => {
         {layoutMode !== 'immersive' && !leftPanelVisible && createPortal(
           <button
             type="button"
-            className="fixed left-0 top-1/2 -translate-y-1/2 z-[99998] h-16 w-6 flex items-center justify-center rounded-r-md bg-gray-800 hover:bg-gray-700 border border-l-0 border-gray-600 text-gray-400 hover:text-white shadow-lg transition-colors cursor-pointer"
+            className="fixed left-0 top-1/2 -translate-y-1/2 z-99998 h-16 w-6 flex items-center justify-center rounded-r-md bg-gray-800 hover:bg-gray-700 border border-l-0 border-gray-600 text-gray-400 hover:text-white shadow-lg transition-colors cursor-pointer"
             style={{ pointerEvents: 'auto' }}
             onMouseDown={(e) => {
               e.preventDefault();
@@ -4657,7 +4784,7 @@ const getCategoryDescription = (categoryName: string): string => {
         {layoutMode !== 'immersive' && !topBarVisible && createPortal(
           <button
             type="button"
-            className="fixed top-0 left-1/2 -translate-x-1/2 z-[99998] w-16 h-6 flex items-center justify-center rounded-b-md bg-gray-800 hover:bg-gray-700 border border-t-0 border-gray-600 text-gray-400 hover:text-white shadow-lg transition-colors cursor-pointer"
+            className="fixed top-0 left-1/2 -translate-x-1/2 z-99998 w-16 h-6 flex items-center justify-center rounded-b-md bg-gray-800 hover:bg-gray-700 border border-t-0 border-gray-600 text-gray-400 hover:text-white shadow-lg transition-colors cursor-pointer"
             style={{ pointerEvents: 'auto' }}
             onMouseDown={(e) => {
               e.preventDefault();

@@ -15,6 +15,11 @@ interface GraphicsQualityPanelProps {
   // explicit choice that wins over the tier default from then on.
   ssrEnabled?: boolean;
   onSsrToggle?: (enabled: boolean) => void;
+  // Same idea as ssrEnabled/onSsrToggle above, for IBL Shadows (Babylon 9.x's voxel-traced
+  // ambient shadowing from the environment texture) - its own live state/override/watchdog
+  // in BabylonWorkspace.tsx, independent of SSR's.
+  iblShadowsEnabled?: boolean;
+  onIblShadowsToggle?: (enabled: boolean) => void;
 }
 
 const OPTIONS: { id: QualityLevel; label: string; description: string }[] = [
@@ -30,7 +35,7 @@ const OPTIONS: { id: QualityLevel; label: string; description: string }[] = [
 // for that tradeoff (previously the app only auto-detected a quality tier with no way to
 // see or override it; see the reactive effect in BabylonWorkspace.tsx keyed on
 // graphicsQuality/recommendedQuality that actually applies these levels).
-const GraphicsQualityPanel: React.FC<GraphicsQualityPanelProps> = ({ value, onChange, recommended, gpuName, capabilities, ssrEnabled, onSsrToggle }) => {
+const GraphicsQualityPanel: React.FC<GraphicsQualityPanelProps> = ({ value, onChange, recommended, gpuName, capabilities, ssrEnabled, onSsrToggle, iblShadowsEnabled, onIblShadowsToggle }) => {
   return (
     <div className="space-y-3 text-sm">
       <p className="text-xs text-slate-400">
@@ -88,6 +93,28 @@ const GraphicsQualityPanel: React.FC<GraphicsQualityPanelProps> = ({ value, onCh
             Adds real reflections on glossy/wet surfaces, on any tier - not just Ultra. May
             cost frame rate on this device; it'll turn itself back off automatically if the
             frame rate drops too much.
+          </p>
+        </div>
+      )}
+      {onIblShadowsToggle && (
+        <div className="pt-3 border-t border-slate-700">
+          <button
+            type="button"
+            onClick={() => onIblShadowsToggle(!iblShadowsEnabled)}
+            aria-pressed={!!iblShadowsEnabled}
+            className={`w-full flex items-center justify-between px-3 py-2 rounded-md border transition-colors ${
+              iblShadowsEnabled ? 'border-blue-500 bg-blue-500/10 text-white' : 'border-slate-700 bg-slate-800/60 text-slate-300 hover:border-slate-500'
+            }`}
+          >
+            <span className="font-medium">Ambient Shadows (IBL)</span>
+            <span className={`text-xs px-2 py-0.5 rounded ${iblShadowsEnabled ? 'bg-blue-500 text-white' : 'bg-slate-700 text-slate-400'}`}>
+              {iblShadowsEnabled ? 'On' : 'Off'}
+            </span>
+          </button>
+          <p className="text-xs text-slate-400 mt-1.5">
+            Adds soft, realistic shadowing from the environment lighting itself, on any tier -
+            not just Ultra. The most GPU-hungry effect here; it'll turn itself back off
+            automatically if the frame rate drops too much.
           </p>
         </div>
       )}

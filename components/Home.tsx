@@ -217,7 +217,7 @@ export function Home() {
                 <CardContent>
                   <Button
                     onClick={() => navigate('/admin/clients')}
-                    className="w-full bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-400 hover:to-pink-400"
+                    className="w-full bg-linear-to-r from-purple-500 to-pink-500 hover:from-purple-400 hover:to-pink-400"
                   >
                     Manage Users
                   </Button>
@@ -237,7 +237,7 @@ export function Home() {
                 <CardContent>
                   <Button
                     onClick={() => navigate('/admin/models')}
-                    className="w-full bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-400 hover:to-blue-400"
+                    className="w-full bg-linear-to-r from-cyan-500 to-blue-500 hover:from-cyan-400 hover:to-blue-400"
                   >
                     Manage Models
                   </Button>
@@ -257,7 +257,7 @@ export function Home() {
                 <CardContent>
                   <Button
                     onClick={() => navigate('/admin/settings')}
-                    className="w-full bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-400 hover:to-emerald-400"
+                    className="w-full bg-linear-to-r from-green-500 to-emerald-500 hover:from-green-400 hover:to-emerald-400"
                   >
                     System Settings
                   </Button>
@@ -271,7 +271,7 @@ export function Home() {
               <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
                 <Button
                   onClick={() => setWorkspaceModalOpen(true)}
-                  className="bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-400 hover:to-emerald-500 text-white px-6 py-3 font-semibold shadow-lg hover:shadow-xl transition-all duration-300"
+                  className="bg-linear-to-r from-green-500 to-emerald-600 hover:from-green-400 hover:to-emerald-500 text-white px-6 py-3 font-semibold shadow-lg hover:shadow-xl transition-all duration-300"
                 >
                   3D Workspace →
                 </Button>
@@ -295,7 +295,7 @@ export function Home() {
 
       {/* Quick 3D Workspace Preview Section */}
       {user && (
-      <section className="py-16 bg-gradient-to-r from-green-50 to-emerald-50">
+      <section className="py-16 bg-linear-to-r from-green-50 to-emerald-50">
         <div className="container mx-auto px-4">
           <div className="max-w-4xl mx-auto text-center">
             <h2 className="text-3xl font-bold mb-6 text-gray-800">Quick 3D Workspace Preview</h2>
@@ -308,7 +308,7 @@ export function Home() {
                 <DialogTrigger asChild>
                   <Button
                     size="lg"
-                    className="bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-400 hover:to-emerald-500 text-white px-8 py-4 text-lg font-semibold shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-105"
+                    className="bg-linear-to-r from-green-500 to-emerald-600 hover:from-green-400 hover:to-emerald-500 text-white px-8 py-4 text-lg font-semibold shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-105"
                   >
                     <Maximize2 className="w-5 h-5 mr-2" />
                     Open Quick Preview

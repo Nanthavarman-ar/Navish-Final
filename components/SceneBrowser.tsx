@@ -49,7 +49,7 @@ const SceneBrowser: React.FC<SceneBrowserProps> = ({
 
     // Add all meshes
     scene.meshes.forEach(mesh => {
-      if (!mesh.name.startsWith('__') && !mesh.name.includes('shadow') && !mesh.name.includes('traffic_viz')) {
+      if (!mesh.name.startsWith('__') && !mesh.name.includes('shadow-sm') && !mesh.name.includes('traffic_viz')) {
         objects.push({
           id: mesh.id,
           name: mesh.name,

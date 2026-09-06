@@ -37,7 +37,7 @@ const MaterialManagerWrapper: React.FC<MaterialManagerWrapperProps> = ({ scene, 
   }, [scene, socket, userId]);
 
   return (
-    <div className="absolute top-15 right-2.5 w-80 bg-black bg-opacity-90 rounded-lg p-4 text-white text-xs z-[1000]">
+    <div className="absolute top-15 right-2.5 w-80 bg-black bg-opacity-90 rounded-lg p-4 text-white text-xs z-1000">
       <h3 className="m-0 mb-4 text-blue-500">🧱 Material Manager</h3>
       <p>Advanced material management system initialized.</p>
       <p>Material presets and properties available.</p>

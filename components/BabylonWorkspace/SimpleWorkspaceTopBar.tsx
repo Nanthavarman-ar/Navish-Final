@@ -290,7 +290,7 @@ export function SimpleWorkspaceTopBar({
             </Button>
           </Tip>
           {showSharePanel && (
-            <div className="absolute top-full right-0 mt-1 z-[100]">
+            <div className="absolute top-full right-0 mt-1 z-100">
               <ShareEmbedPanel workspaceId={workspaceId} onClose={() => setShowSharePanel(false)} />
             </div>
           )}

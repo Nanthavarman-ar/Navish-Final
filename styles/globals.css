@@ -1,8 +1,80 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import 'tailwindcss';
+
+@custom-variant dark (&:is(.dark *));
+
+@theme {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+
+  --radius-lg: var(--radius);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-sm: calc(var(--radius) - 4px);
+
+  --font-sans: var(--font-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-display), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-mono), ui-monospace, SFMono-Regular, monospace;
+}
 
 /*
+  The default border color has changed to `currentcolor` in Tailwind CSS v4,
+  so we've added these compatibility styles to make sure everything still
+  looks the same as it did with Tailwind CSS v3.
+
+  If we ever want to remove these styles, we need to add an explicit border
+  color utility to any element that depends on these defaults.
+*/
+@layer base {
+  *,
+  ::after,
+  ::before,
+  ::backdrop,
+  ::file-selector-button {
+    border-color: var(--color-gray-200, currentcolor);
+  }
+}
+
+@layer utilities {
+  /*
  * Naviz design tokens - "blueprint" direction.
  * Named palette:
  *   Graphite   #0B1120  - dark base surface
@@ -13,86 +85,88 @@
  *   Ink        #0F172A  - primary text on light surfaces
  */
 
-:root {
-  --font-size: 16px;
-  --font-sans: 'Manrope', ui-sans-serif, system-ui, -apple-system, sans-serif;
-  --font-display: 'Space Grotesk', ui-sans-serif, system-ui, -apple-system, sans-serif;
-  --font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, monospace;
+  :root {
+    --font-size: 16px;
+    --font-sans: 'Manrope', ui-sans-serif, system-ui, -apple-system, sans-serif;
+    --font-display:
+      'Space Grotesk', ui-sans-serif, system-ui, -apple-system, sans-serif;
+    --font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, monospace;
 
-  --background: #FAFAF9;
-  --foreground: #0F172A;
-  --card: #ffffff;
-  --card-foreground: #0F172A;
-  --popover: #ffffff;
-  --popover-foreground: #0F172A;
-  --primary: #0891B2;
-  --primary-foreground: #ffffff;
-  --secondary: #F1F5F9;
-  --secondary-foreground: #0F172A;
-  --muted: #F1F5F9;
-  --muted-foreground: #64748B;
-  --accent: #ECFEFF;
-  --accent-foreground: #0E7490;
-  --destructive: #DC2626;
-  --destructive-foreground: #ffffff;
-  --border: rgba(15, 23, 42, 0.1);
-  --input: transparent;
-  --input-background: #F1F5F9;
-  --switch-background: #CBD5E1;
-  --font-weight-medium: 500;
-  --font-weight-normal: 400;
-  --ring: #06B6D4;
-  --chart-1: #06B6D4;
-  --chart-2: #F59E0B;
-  --chart-3: #6366F1;
-  --chart-4: #22C55E;
-  --chart-5: #EC4899;
-  --radius: 0.5rem;
-  --sidebar: #ffffff;
-  --sidebar-foreground: #0F172A;
-  --sidebar-primary: #0891B2;
-  --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: #F1F5F9;
-  --sidebar-accent-foreground: #0F172A;
-  --sidebar-border: rgba(15, 23, 42, 0.1);
-  --sidebar-ring: #06B6D4;
-}
+    --background: #fafaf9;
+    --foreground: #0f172a;
+    --card: #ffffff;
+    --card-foreground: #0f172a;
+    --popover: #ffffff;
+    --popover-foreground: #0f172a;
+    --primary: #0891b2;
+    --primary-foreground: #ffffff;
+    --secondary: #f1f5f9;
+    --secondary-foreground: #0f172a;
+    --muted: #f1f5f9;
+    --muted-foreground: #64748b;
+    --accent: #ecfeff;
+    --accent-foreground: #0e7490;
+    --destructive: #dc2626;
+    --destructive-foreground: #ffffff;
+    --border: rgba(15, 23, 42, 0.1);
+    --input: transparent;
+    --input-background: #f1f5f9;
+    --switch-background: #cbd5e1;
+    --font-weight-medium: 500;
+    --font-weight-normal: 400;
+    --ring: #06b6d4;
+    --chart-1: #06b6d4;
+    --chart-2: #f59e0b;
+    --chart-3: #6366f1;
+    --chart-4: #22c55e;
+    --chart-5: #ec4899;
+    --radius: 0.5rem;
+    --sidebar: #ffffff;
+    --sidebar-foreground: #0f172a;
+    --sidebar-primary: #0891b2;
+    --sidebar-primary-foreground: #ffffff;
+    --sidebar-accent: #f1f5f9;
+    --sidebar-accent-foreground: #0f172a;
+    --sidebar-border: rgba(15, 23, 42, 0.1);
+    --sidebar-ring: #06b6d4;
+  }
 
-.dark {
-  --background: #0B1120;
-  --foreground: #E2E8F0;
-  --card: #131B2E;
-  --card-foreground: #E2E8F0;
-  --popover: #131B2E;
-  --popover-foreground: #E2E8F0;
-  --primary: #22D3EE;
-  --primary-foreground: #0B1120;
-  --secondary: #1B2438;
-  --secondary-foreground: #E2E8F0;
-  --muted: #1B2438;
-  --muted-foreground: #8B99AF;
-  --accent: #17293A;
-  --accent-foreground: #67E8F9;
-  --destructive: #F87171;
-  --destructive-foreground: #0B1120;
-  --border: rgba(226, 232, 240, 0.1);
-  --input: #1B2438;
-  --ring: #22D3EE;
-  --font-weight-medium: 500;
-  --font-weight-normal: 400;
-  --chart-1: #22D3EE;
-  --chart-2: #F59E0B;
-  --chart-3: #818CF8;
-  --chart-4: #4ADE80;
-  --chart-5: #F472B6;
-  --sidebar: #0E1524;
-  --sidebar-foreground: #E2E8F0;
-  --sidebar-primary: #22D3EE;
-  --sidebar-primary-foreground: #0B1120;
-  --sidebar-accent: #1B2438;
-  --sidebar-accent-foreground: #E2E8F0;
-  --sidebar-border: rgba(226, 232, 240, 0.1);
-  --sidebar-ring: #22D3EE;
+  .dark {
+    --background: #0b1120;
+    --foreground: #e2e8f0;
+    --card: #131b2e;
+    --card-foreground: #e2e8f0;
+    --popover: #131b2e;
+    --popover-foreground: #e2e8f0;
+    --primary: #22d3ee;
+    --primary-foreground: #0b1120;
+    --secondary: #1b2438;
+    --secondary-foreground: #e2e8f0;
+    --muted: #1b2438;
+    --muted-foreground: #8b99af;
+    --accent: #17293a;
+    --accent-foreground: #67e8f9;
+    --destructive: #f87171;
+    --destructive-foreground: #0b1120;
+    --border: rgba(226, 232, 240, 0.1);
+    --input: #1b2438;
+    --ring: #22d3ee;
+    --font-weight-medium: 500;
+    --font-weight-normal: 400;
+    --chart-1: #22d3ee;
+    --chart-2: #f59e0b;
+    --chart-3: #818cf8;
+    --chart-4: #4ade80;
+    --chart-5: #f472b6;
+    --sidebar: #0e1524;
+    --sidebar-foreground: #e2e8f0;
+    --sidebar-primary: #22d3ee;
+    --sidebar-primary-foreground: #0b1120;
+    --sidebar-accent: #1b2438;
+    --sidebar-accent-foreground: #e2e8f0;
+    --sidebar-border: rgba(226, 232, 240, 0.1);
+    --sidebar-ring: #22d3ee;
+  }
 }
 
 @layer base {

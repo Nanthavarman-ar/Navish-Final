@@ -118,7 +118,10 @@ function ChartTooltipContent({
   color,
   nameKey,
   labelKey,
-}: React.ComponentProps<typeof RechartsPrimitive.Tooltip> &
+}: RechartsPrimitive.TooltipContentProps<
+  RechartsPrimitive.TooltipValueType,
+  string | number
+> &
   React.ComponentProps<"div"> & {
     hideLabel?: boolean;
     hideIndicator?: boolean;
@@ -173,7 +176,7 @@ function ChartTooltipContent({
   return (
     <div
       className={cn(
-        "border-border/50 bg-background grid min-w-[8rem] items-start gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs shadow-xl",
+        "border-border/50 bg-background grid min-w-32 items-start gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs shadow-xl",
         className,
       )}
     >
@@ -186,7 +189,7 @@ function ChartTooltipContent({
 
           return (
             <div
-              key={item.dataKey}
+              key={`${key}-${index}`}
               className={cn(
                 "[&>svg]:text-muted-foreground flex w-full flex-wrap items-stretch gap-2 [&>svg]:h-2.5 [&>svg]:w-2.5",
                 indicator === "dot" && "items-center",
@@ -202,7 +205,7 @@ function ChartTooltipContent({
                     !hideIndicator && (
                       <div
                         className={cn(
-                          "shrink-0 rounded-[2px] border-(--color-border) bg-(--color-bg)",
+                          "shrink-0 rounded-[2px] border-border bg-(--color-bg)",
                           {
                             "h-2.5 w-2.5": indicator === "dot",
                             "w-1": indicator === "line",
@@ -257,7 +260,11 @@ function ChartLegendContent({
   verticalAlign = "bottom",
   nameKey,
 }: React.ComponentProps<"div"> &
-  Pick<RechartsPrimitive.LegendProps, "payload" | "verticalAlign"> & {
+  Pick<RechartsPrimitive.LegendProps, "verticalAlign"> & {
+    // Recharts v3 split the Legend's own props (LegendProps, e.g.
+    // verticalAlign above) from the payload it hands to custom content
+    // renderers (LegendPayload) - they're no longer the same type.
+    payload?: ReadonlyArray<RechartsPrimitive.LegendPayload>;
     hideIcon?: boolean;
     nameKey?: string;
   }) {

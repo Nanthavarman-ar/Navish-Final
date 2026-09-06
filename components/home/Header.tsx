@@ -188,7 +188,7 @@ export function Header() {
   return (
     <nav className="absolute top-0 left-0 right-0 z-20 p-6">
       <div className="max-w-7xl mx-auto flex justify-between items-center">
-        <Link to="/home" className="text-2xl font-bold bg-gradient-to-r from-cyan-400 to-purple-400 bg-clip-text text-transparent">
+        <Link to="/home" className="text-2xl font-bold bg-linear-to-r from-cyan-400 to-purple-400 bg-clip-text text-transparent">
           NAVIZ
         </Link>
         <div className="flex gap-4">

@@ -53,6 +53,11 @@ export interface TextureLoadOptions {
   invertY?: boolean;
   samplingMode?: number;
   anisotropicFilteringLevel?: number;
+  // Whether this texture holds sRGB color data (a diffuse/albedo/emissive photo,
+  // default true) or linear data that must NOT be gamma-decoded (a normal/bump,
+  // metallic, roughness, or AO map). Getting this wrong on a non-color map distorts
+  // the values the shader reads (e.g. a normal map's XYZ direction) into wrong lighting.
+  gammaSpace?: boolean;
   onLoad?: (texture: any) => void;
   onError?: (message: string, error: any) => void;
 }

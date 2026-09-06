@@ -372,7 +372,7 @@ const ComprehensiveButtonTest: React.FC = () => {
             try {
               const features = [
                 'weather', 'flood', 'wind', 'noise', 'traffic',
-                'shadow', 'circulation', 'sunlight', 'energy'
+                'shadow-sm', 'circulation', 'sunlight', 'energy'
               ];
 
               for (const feature of features) {

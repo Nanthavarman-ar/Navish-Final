@@ -65,7 +65,7 @@ export class FeatureManager {
       {
         id: 'shadows',
         name: 'Dynamic Shadows',
-        description: 'Enable real-time shadow casting and receiving',
+        description: 'Enable real-time shadow-sm casting and receiving',
         category: 'rendering',
         defaultEnabled: true,
         requiresCapability: ['webgl2'],

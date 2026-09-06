@@ -74,7 +74,7 @@ const TrafficParkingSimulationPage: React.FC = () => {
   return (
     <div className="min-h-screen bg-slate-900 text-white">
       {/* Header */}
-      <header className="bg-slate-800/50 backdrop-blur-sm border-b border-slate-700 px-6 py-4">
+      <header className="bg-slate-800/50 backdrop-blur-xs border-b border-slate-700 px-6 py-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-4">
             <Button
@@ -111,7 +111,7 @@ const TrafficParkingSimulationPage: React.FC = () => {
           </Card>
 
           {/* Simulation Component */}
-          <div className="bg-slate-800/30 backdrop-blur-sm rounded-lg border border-slate-700 p-6">
+          <div className="bg-slate-800/30 backdrop-blur-xs rounded-lg border border-slate-700 p-6">
             <TrafficParkingSimulation
               simulationManager={simulationManager}
               onSimulationComplete={handleSimulationComplete}

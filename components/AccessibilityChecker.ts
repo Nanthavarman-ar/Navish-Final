@@ -191,8 +191,8 @@ export class AccessibilityChecker {
     const maxRiser = 7; // ADA maximum riser height
     const minTread = 11; // ADA minimum tread depth
 
-    let violationAmount = 0;
-    let description = '';
+    let violationAmount: number;
+    let description: string;
 
     if (riserInches > maxRiser) {
       violationAmount = riserInches - maxRiser;
@@ -287,8 +287,8 @@ export class AccessibilityChecker {
     const minKneeClearanceDepth = 19; // ADA minimum knee clearance depth
     const minKneeClearanceWidth = 30; // ADA minimum knee clearance width
 
-    let violationAmount = 0;
-    let description = '';
+    let violationAmount: number;
+    let description: string;
 
     if (surfaceHeightInches < minSurfaceHeight) {
       violationAmount = minSurfaceHeight - surfaceHeightInches;

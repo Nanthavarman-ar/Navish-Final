@@ -10,7 +10,7 @@ const PresenterMode: React.FC<PresenterModeProps> = ({ scene, isActive }) => {
   if (!isActive) return null;
   
   return (
-    <div className="absolute top-4 left-4 bg-white p-2 rounded shadow">
+    <div className="absolute top-4 left-4 bg-white p-2 rounded shadow-sm">
       Presenter Mode Active
     </div>
   );

@@ -185,7 +185,7 @@ const LeftPanel: React.FC<LeftPanelProps> = ({
     >
       <div className="ambient-glow" aria-hidden><span className="ambient-glow-blob" /></div>
       {/* Header - relative z-10 so buttons stay above any overflow content */}
-      <CardHeader className="flex-shrink-0 border-b border-gray-700 bg-gray-800/90 backdrop-blur-sm relative z-10">
+      <CardHeader className="shrink-0 border-b border-gray-700 bg-gray-800/90 backdrop-blur-xs relative z-10">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-1">
             <button

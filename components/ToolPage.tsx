@@ -82,7 +82,7 @@ const ToolPage: React.FC<{ page: ToolPageId }> = ({ page }) => {
                 // This hands the flag to enable straight to BabylonWorkspace via a
                 // query param it reads on mount (see BabylonWorkspace.tsx).
                 <Button
-                  className="bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-400 hover:to-blue-400"
+                  className="bg-linear-to-r from-cyan-500 to-blue-500 hover:from-cyan-400 hover:to-blue-400"
                   onClick={() => navigate(`/workspace?feature=${workspaceFeature}`)}
                 >
                   <ExternalLink className="w-4 h-4 mr-2" />

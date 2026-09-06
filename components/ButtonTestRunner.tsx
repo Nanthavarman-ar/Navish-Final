@@ -20,7 +20,7 @@ const ButtonTestRunner = () => {
     { id: 'flood', selector: '[title="Flood Simulation"]', name: 'Flood Toggle' },
     { id: 'wind', selector: '[title="Wind Tunnel"]', name: 'Wind Tunnel Toggle' },
     { id: 'noise', selector: '[title="Noise Simulation"]', name: 'Noise Toggle' },
-    { id: 'shadow', selector: '[title="Shadow Analysis"]', name: 'Shadow Toggle' },
+    { id: 'shadow-sm', selector: '[title="Shadow Analysis"]', name: 'Shadow Toggle' },
     { id: 'measure', selector: '[title="Measure Tool"]', name: 'Measure Tool Toggle' },
     { id: 'ai-advisor', selector: '[title="AI Structural Advisor"]', name: 'AI Advisor Toggle' },
     { id: 'property-inspector', selector: '[title="Property Inspector"]', name: 'Property Inspector Toggle' },

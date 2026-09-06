@@ -100,7 +100,7 @@ export const toolPageDefinitions: Record<string, ToolPageDefinition> = {
   },
   'sunlight-analysis': {
     title: 'Sunlight Analysis',
-    description: 'Study daylight penetration, solar heat gain, and shadow casting.',
+    description: 'Study daylight penetration, solar heat gain, and shadow-sm casting.',
     focus: 'Slide time-of-day and date to observe seasonal sun paths.',
     status: 'Daylight toolset',
     workspaceFeature: 'showSunStudy',
@@ -112,12 +112,12 @@ export const toolPageDefinitions: Record<string, ToolPageDefinition> = {
   },
   'shadow-impact-analysis': {
     title: 'Shadow Impact Analysis',
-    description: 'Compare neighboring shadow envelopes to protect daylight rights.',
-    focus: 'Overlay shadow diagrams over multiple time ranges.',
+    description: 'Compare neighboring shadow-sm envelopes to protect daylight rights.',
+    focus: 'Overlay shadow-sm diagrams over multiple time ranges.',
     status: 'Urban design support',
     workspaceFeature: 'showShadowImpactAnalysis',
     highlights: [
-      'Capture before/after shadow overlays',
+      'Capture before/after shadow-sm overlays',
       'Export images for planning submissions',
       'Run diurnal studies across seasons'
     ]

@@ -897,7 +897,7 @@ const CirculationFlowSimulation: React.FC<CirculationFlowSimulationProps> = ({
               max="200"
               value={peopleCount}
               onChange={(e) => setPeopleCount(Number(e.target.value))}
-              className="w-full h-1 bg-slate-600 outline-none"
+              className="w-full h-1 bg-slate-600 outline-hidden"
             />
             <div className="text-xs text-slate-400 text-center">{peopleCount}</div>
           </div>
@@ -914,7 +914,7 @@ const CirculationFlowSimulation: React.FC<CirculationFlowSimulationProps> = ({
               step="0.5"
               value={simulationSpeed}
               onChange={(e) => setSimulationSpeed(Number(e.target.value))}
-              className="w-full h-1 bg-slate-600 outline-none"
+              className="w-full h-1 bg-slate-600 outline-hidden"
             />
             <div className="text-xs text-slate-400 text-center">{simulationSpeed}x</div>
           </div>

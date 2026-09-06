@@ -235,7 +235,7 @@ const LightingMoodBoards: React.FC<LightingMoodBoardsProps> = ({ scene, onLighti
   // Update color temperature effect
   const updateColorTemperature = (temperature: number) => {
     // Simple color temperature adjustment
-    let r = 1.0, g = 1.0, b = 1.0;
+    let r: number, g: number, b: number;
 
     if (temperature < 5000) {
       // Warmer colors

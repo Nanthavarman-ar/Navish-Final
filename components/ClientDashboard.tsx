@@ -109,10 +109,10 @@ export function ClientDashboard() {
                       className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                     />
                   </Suspense>
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+                  <div className="absolute inset-0 bg-linear-to-t from-black/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
                   <Button
                     onClick={() => handleOpenWorkspace(model)}
-                    className="absolute bottom-4 left-1/2 transform -translate-x-1/2 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-400 hover:to-pink-400 opacity-0 group-hover:opacity-100 transition-all duration-300"
+                    className="absolute bottom-4 left-1/2 transform -translate-x-1/2 bg-linear-to-r from-purple-500 to-pink-500 hover:from-purple-400 hover:to-pink-400 opacity-0 group-hover:opacity-100 transition-all duration-300"
                     size="sm"
                   >
                     <Eye className="w-4 h-4 mr-2" />
@@ -152,7 +152,7 @@ export function ClientDashboard() {
               <Card key={model.id} className="bg-slate-800/50 border-slate-700 hover:border-purple-500/50 transition-all duration-300">
                 <CardContent className="p-4">
                   <div className="flex items-center gap-4">
-                    <div className="w-20 h-20 rounded-lg overflow-hidden flex-shrink-0">
+                    <div className="w-20 h-20 rounded-lg overflow-hidden shrink-0">
                       <Suspense fallback={
                         <div className="w-full h-full bg-slate-700 animate-pulse flex items-center justify-center">
                           <div className="text-gray-400 text-xs">Loading...</div>
@@ -187,7 +187,7 @@ export function ClientDashboard() {
                     <div className="flex items-center gap-2">
                       <Button
                         onClick={() => handleOpenWorkspace(model)}
-                        className="bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-400 hover:to-pink-400"
+                        className="bg-linear-to-r from-purple-500 to-pink-500 hover:from-purple-400 hover:to-pink-400"
                         size="sm"
                       >
                         <Eye className="w-4 h-4 mr-2" />
@@ -235,7 +235,7 @@ export function ClientDashboard() {
           in a corner regardless of scroll position. */}
       <div className="ambient-glow" style={{ position: 'fixed' }} aria-hidden><span className="ambient-glow-blob" /></div>
       {/* Header - relative z-10 so it stacks above the ambient-glow layer */}
-      <header className="relative z-10 bg-slate-800/50 backdrop-blur-sm border-b border-slate-700 px-6 py-4">
+      <header className="relative z-10 bg-slate-800/50 backdrop-blur-xs border-b border-slate-700 px-6 py-4">
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold text-white">My Models</h1>

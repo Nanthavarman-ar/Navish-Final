@@ -169,6 +169,17 @@ export class XRManager {
   private static readonly VIGNETTE_TURN_WEIGHT = 4;
   private static readonly VIGNETTE_TURN_DURATION_MS = 250;
 
+  // AR passthrough shows the user's real environment through the camera feed, but the
+  // desktop scene's skybox mesh (LightingPresets.tsx's procedural sky dome or HDRI
+  // skybox) is still just an ordinary opaque mesh sitting in the scene - nothing about
+  // entering an AR session removes it on its own. Left alone, it draws over the
+  // passthrough feed and (being infiniteDistance, i.e. always centered on the camera)
+  // visually rides along with the camera/model instead of staying "outside" like a real
+  // sky would, reading as the model dragging the sky along with it. Only relevant for AR
+  // (immersive-ar) - VR has no real-world passthrough to obscure, so the skybox should
+  // stay visible there as the virtual sky it's meant to be.
+  private hiddenSkyboxMeshes: AbstractMesh[] | null = null;
+
   private initPromise: Promise<void>;
 
   constructor(scene: Scene) {
@@ -469,6 +480,24 @@ export class XRManager {
     }
   }
 
+  // Hides the skybox mesh(es) for the duration of an AR session - see hiddenSkyboxMeshes
+  // above. infiniteDistance is the same marker computePrecipitationBounds (in
+  // BabylonWorkspace.tsx) already uses to identify skybox/sky-dome meshes generically,
+  // regardless of which lighting mode created them.
+  private hideSkyboxForAR(): void {
+    const skyMeshes = this.scene.meshes.filter((m) => m.infiniteDistance && m.isEnabled());
+    if (skyMeshes.length === 0) return;
+    skyMeshes.forEach((m) => m.setEnabled(false));
+    this.hiddenSkyboxMeshes = skyMeshes;
+  }
+
+  private restoreSkyboxAfterAR(): void {
+    if (this.hiddenSkyboxMeshes) {
+      this.hiddenSkyboxMeshes.forEach((m) => m.setEnabled(true));
+      this.hiddenSkyboxMeshes = null;
+    }
+  }
+
   // Enter VR mode
   async enterVR(): Promise<boolean> {
     await this.initPromise;
@@ -596,6 +625,7 @@ export class XRManager {
       this.xrCamera = this.xrExperience.baseExperience.camera;
       this.applyWalkingCollisions(this.xrCamera);
       this.currentSessionMode = 'immersive-ar';
+      this.hideSkyboxForAR();
 
       // Enable spatial audio if audio manager is available
       if (this.audioManager && typeof this.audioManager.enableSpatialAudio === 'function') {
@@ -618,6 +648,7 @@ export class XRManager {
     } catch (error) {
       console.error('Failed to enter AR mode:', error);
       this.teardownAROverlayUI();
+      this.restoreSkyboxAfterAR();
       return false;
     }
   }
@@ -1347,6 +1378,7 @@ export class XRManager {
       this.teardownCustomMovement();
       this.teardownGrounding();
       this.restorePreXRVignette();
+      this.restoreSkyboxAfterAR();
 
       // End XR session
       await this.xrExperience.baseExperience.sessionManager.exitXRAsync();

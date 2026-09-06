@@ -49,7 +49,7 @@ const ShadowImpactAnalysis: React.FC<ShadowImpactAnalysisProps> = ({
       );
 
       if (buildings.length === 0) {
-        showToast.warning('No model loaded', 'Load a model first to analyze shadow impact.');
+        showToast.warning('No model loaded', 'Load a model first to analyze shadow-sm impact.');
         setIsAnalyzing(false);
         return;
       }
@@ -182,19 +182,19 @@ const ShadowImpactAnalysis: React.FC<ShadowImpactAnalysisProps> = ({
     const recommendations: string[] = [];
 
     if (coverage > 70) {
-      recommendations.push("High shadow coverage detected. Consider reducing building height or adjusting orientation.");
+      recommendations.push("High shadow-sm coverage detected. Consider reducing building height or adjusting orientation.");
     }
 
     const heavilyAffected = buildings.filter(b => b.shadowPercentage > 50);
     if (heavilyAffected.length > 0) {
-      recommendations.push(`${heavilyAffected.length} buildings have significant shadow impact. Consider spacing adjustments.`);
+      recommendations.push(`${heavilyAffected.length} buildings have significant shadow-sm impact. Consider spacing adjustments.`);
     }
 
     if (buildings.some(b => b.affectedHours.length > 8)) {
-      recommendations.push("Some buildings experience extended shadow periods. Consider solar panel placement adjustments.");
+      recommendations.push("Some buildings experience extended shadow-sm periods. Consider solar panel placement adjustments.");
     }
 
-    recommendations.push("Consider seasonal variations in shadow patterns for comprehensive analysis.");
+    recommendations.push("Consider seasonal variations in shadow-sm patterns for comprehensive analysis.");
 
     return recommendations;
   };

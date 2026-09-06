@@ -276,7 +276,7 @@ export const ARAnchorUI: React.FC<ARAnchorUIProps> = ({
                 value={formData.modelUrl}
                 onChange={(e) => setFormData(prev => ({ ...prev, modelUrl: e.target.value }))}
                 placeholder="https://example.com/model.glb"
-                className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-hidden focus:ring-2 focus:ring-blue-500"
               />
             </div>
 
@@ -298,7 +298,7 @@ export const ARAnchorUI: React.FC<ARAnchorUIProps> = ({
                       alt: prev.gpsCoordinates?.alt || 0
                     }
                   }))}
-                  className="flex-1 px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="flex-1 px-3 py-2 border border-gray-300 rounded focus:outline-hidden focus:ring-2 focus:ring-blue-500"
                 />
                 <input
                   type="number"
@@ -313,7 +313,7 @@ export const ARAnchorUI: React.FC<ARAnchorUIProps> = ({
                       alt: prev.gpsCoordinates?.alt || 0
                     }
                   }))}
-                  className="flex-1 px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="flex-1 px-3 py-2 border border-gray-300 rounded focus:outline-hidden focus:ring-2 focus:ring-blue-500"
                 />
                 <input
                   type="number"
@@ -328,7 +328,7 @@ export const ARAnchorUI: React.FC<ARAnchorUIProps> = ({
                       alt: parseFloat(e.target.value)
                     }
                   }))}
-                  className="px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="px-3 py-2 border border-gray-300 rounded focus:outline-hidden focus:ring-2 focus:ring-blue-500"
                 />
                 <button
                   type="button"

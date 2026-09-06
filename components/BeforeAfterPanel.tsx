@@ -122,7 +122,7 @@ const BeforeAfterPanel: React.FC<BeforeAfterPanelProps> = ({ scene, engine, onCl
           <>
             <div
               ref={containerRef}
-              className="relative w-full aspect-[4/3] rounded overflow-hidden select-none cursor-ew-resize border border-slate-700"
+              className="relative w-full aspect-4/3 rounded overflow-hidden select-none cursor-ew-resize border border-slate-700"
               onMouseDown={() => { draggingRef.current = true; }}
               onMouseUp={() => { draggingRef.current = false; }}
               onMouseLeave={() => { draggingRef.current = false; }}
@@ -155,7 +155,7 @@ const BeforeAfterPanel: React.FC<BeforeAfterPanelProps> = ({ scene, engine, onCl
           </>
         ) : beforeImage ? (
           <div className="space-y-2">
-            <div className="relative w-full aspect-[4/3] rounded overflow-hidden border border-slate-700">
+            <div className="relative w-full aspect-4/3 rounded overflow-hidden border border-slate-700">
               <img src={beforeImage} alt="Before" className="w-full h-full object-cover" draggable={false} />
               <span className="absolute top-2 left-2 text-[10px] font-technical bg-black/60 px-1.5 py-0.5 rounded">BEFORE (captured)</span>
             </div>

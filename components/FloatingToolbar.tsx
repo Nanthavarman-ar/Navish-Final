@@ -64,7 +64,7 @@ const FloatingToolbar: React.FC<FloatingToolbarProps> = ({
 
   return (
     <div
-      className="bg-background/95 backdrop-blur border border-gray-600 rounded-lg shadow-lg p-2 flex flex-col gap-2"
+      className="bg-background/95 backdrop-blur-sm border border-gray-600 rounded-lg shadow-lg p-2 flex flex-col gap-2"
       aria-label="Floating Toolbar"
     >
       <div className="flex justify-between items-center mb-1">
