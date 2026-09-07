@@ -230,6 +230,7 @@ interface KeyboardShortcutsHelpProps {
 const keyboardShortcutsList = [
   { keys: 'Ctrl+1/2/3', label: 'Switch layout modes' },
   { keys: 'Ctrl+H/J/K', label: 'Toggle panels' },
+  { keys: 'Shift+Scroll', label: 'Fast zoom' },
   { keys: 'W/F', label: 'Weather / flood simulation' },
   { keys: 'T', label: 'Measurement tool' },
   { keys: 'A/U', label: 'AI helpers' },

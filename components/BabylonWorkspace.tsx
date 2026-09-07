@@ -205,6 +205,11 @@ function createSnowflakeTexture(scene: Scene): Texture {
 // an interior at all regardless of how transparent the glass material itself looks.
 const GLASS_NAME_PATTERN = /glass|window|glazing|pane/i;
 
+// Shared between the camera's initial setup and the Shift-held fast-zoom effect below -
+// both need to agree on what "normal" actually is to revert to it correctly.
+const CAMERA_WHEEL_DELTA_NORMAL = 0.01;
+const CAMERA_WHEEL_DELTA_FAST = 0.06;
+
 function isGlassMesh(mesh: AbstractMesh): boolean {
   return GLASS_NAME_PATTERN.test(`${mesh.name || ''} ${mesh.material?.name || ''}`);
 }
@@ -1463,7 +1468,7 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
       (newCamera as ArcRotateCamera).upperRadiusLimit = Math.max(modelSpan * 4, 30);
       // See the matching comment on the main scene-init camera for why percentage-based
       // zoom (not the fixed-step default) is what this project actually wants.
-      (newCamera as ArcRotateCamera).wheelDeltaPercentage = 0.01;
+      (newCamera as ArcRotateCamera).wheelDeltaPercentage = CAMERA_WHEEL_DELTA_NORMAL;
     }
 
     applyMovementKeys(newCamera);
@@ -1724,8 +1729,13 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
         // fast" once zoomed in close. wheelDeltaPercentage instead moves the camera by a
         // PERCENTAGE of its current distance to the target every tick - fast when far
         // away, fine/precise up close - which is how every professional CAD/BIM viewer
-        // (and this project's own touchpad pinch-zoom) already behaves.
-        camera.wheelDeltaPercentage = 0.01;
+        // (and this project's own touchpad pinch-zoom) already behaves. Even so, crossing
+        // a genuinely huge distance (zoomed all the way out to see a whole site, then
+        // scrolling in toward the building) still takes many ticks before a 1%-per-tick
+        // percentage compounds into a visible difference - see the Shift-held fast-zoom
+        // effect further down for the "close that gap quickly" case this alone doesn't
+        // cover.
+        camera.wheelDeltaPercentage = CAMERA_WHEEL_DELTA_NORMAL;
         cameraRef.current = camera;
 
         // Temporal Anti-Aliasing (Babylon 9.x) - Babylon requires this to be the FIRST
@@ -4318,6 +4328,38 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
   }, [topBarVisible, leftPanelVisible, rightPanelVisible, bottomPanelVisible, updateState, setLayoutMode, handleFeatureToggle, featureStates, handleMirrorSelected, handleDeleteSelected]);
+
+  // Shift+scroll = fast zoom. wheelDeltaPercentage (see the camera setup above) already
+  // makes scroll-zoom fast-when-far/precise-when-close, but a model can be viewed across a
+  // genuinely huge range - zoomed all the way out to see a whole site, then scrolling in
+  // toward one building - and even at 1%/tick, that full range still takes many, many
+  // ticks before the percentage compounds into a visible difference; reported as "zoom
+  // pannum bothu slow-a irukku" from a fully zoomed-out start. Holding Shift temporarily
+  // raises wheelDeltaPercentage several times over for exactly that "close a large
+  // distance quickly" case, independent of which camera mode is active - reads
+  // cameraRef.current fresh on every key event rather than depending on a specific camera
+  // instance, so it keeps working across a walk/orbit/dollhouse mode switch (which
+  // disposes and replaces the camera - see switchCamera). Reverts on window blur too, not
+  // just keyup, so alt-tabbing away mid-hold (a missed keyup) can't leave zoom stuck fast.
+  React.useEffect(() => {
+    const applyWheelDelta = (fast: boolean) => {
+      const cam = cameraRef.current;
+      if (cam && 'wheelDeltaPercentage' in cam) {
+        (cam as ArcRotateCamera).wheelDeltaPercentage = fast ? CAMERA_WHEEL_DELTA_FAST : CAMERA_WHEEL_DELTA_NORMAL;
+      }
+    };
+    const handleShiftDown = (e: KeyboardEvent) => { if (e.key === 'Shift') applyWheelDelta(true); };
+    const handleShiftUp = (e: KeyboardEvent) => { if (e.key === 'Shift') applyWheelDelta(false); };
+    const handleBlur = () => applyWheelDelta(false);
+    window.addEventListener('keydown', handleShiftDown);
+    window.addEventListener('keyup', handleShiftUp);
+    window.addEventListener('blur', handleBlur);
+    return () => {
+      window.removeEventListener('keydown', handleShiftDown);
+      window.removeEventListener('keyup', handleShiftUp);
+      window.removeEventListener('blur', handleBlur);
+    };
+  }, []);
 
   // Voice command listener - toggle features from AI Voice Assistant
   React.useEffect(() => {
