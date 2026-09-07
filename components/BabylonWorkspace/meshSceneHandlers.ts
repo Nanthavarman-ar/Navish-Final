@@ -9,9 +9,22 @@ import { Scene, ArcRotateCamera, AbstractMesh, Mesh, Vector3, PointerEventTypes,
 // hotspot/annotation marker still got it selected (and shown in the Move/Rotate/Delete
 // toolbar) via THIS hook even after the other listener was fixed, since they'd drifted
 // out of sync - a single shared predicate can't drift again.
+//
+// The skybox check below closes a real, confirmed bug (caught by reviewing a screen
+// recording of an actual session): this predicate never excluded the procedural sky/HDRI
+// skybox mesh by name, unlike the equivalent lists already hardened for the same "skybox
+// gets mistaken for a real, interactable part of the model" class of bug in XRManager.ts's
+// getPlaceableMeshes() and ARScalePanel.tsx's EXCLUDED_NAME_PATTERN (both fixed earlier
+// this session for AR placement dragging the sky along with the model). A click on empty
+// sky - very reachable, since the skybox is a 1000-unit dome wrapped around the entire
+// camera - was selecting and highlighting the skybox itself: the HighlightLayer's isStroke
+// outline pass then has to trace the silhouette of a mesh that fills the ENTIRE screen from
+// the inside, which is what crashed the frame rate to 1 FPS in the recording (60 -> 6 -> 1
+// FPS across the moment the skybox got selected).
 export const isSelectableMesh = (mesh: AbstractMesh): boolean =>
   mesh.isEnabled() && mesh.isVisible && mesh.isPickable &&
-  !/^(ground|ceiling_light|measure_|annotation_pin_|annotation_popup_panel_|hotspot_marker_|swatch_marker_|swatch_popup_panel_|cursor_|collab_|sound_privacy_marker_|ambient_zone_|fixture_marker_|__root__)/i.test(mesh.name || '');
+  !/skybox/i.test(mesh.name || '') &&
+  !/^(ground|ceiling_light|measure_|preview_|measurement_|annotation_pin_|annotation_popup_panel_|hotspot_marker_|swatch_marker_|swatch_popup_panel_|fixture_marker_|fixture_person_|fixture_pet_|fixture_rain_plane_|ambient_zone_|cursor_|collab_|sound_privacy_marker_|mood_light_|ar_reticle|ar_placement_root|__root__)/i.test(mesh.name || '');
 
 // A fence/railing/tiled surface (or, for InteractiveFixtures, several identical light
 // fixtures/fan models placed around a house) is very often many separate meshes that all
@@ -90,12 +103,24 @@ export const useMeshSceneHandlers = ({
     // clicking the ground/floor (very reachable by "clicking outside" a
     // model, since it usually sits right behind/around it) left the old
     // highlight glowing forever with no way back to "nothing selected".
-    const skipHighlight = mesh.name && (
+    // Confirmed by reviewing a screen recording of an actual session: selecting a single
+    // giant mesh (a whole un-split apartment building exported as one "Geom3D_" mesh, in
+    // that recording) pinned the frame rate at a sustained 2 FPS for the entire minute it
+    // stayed selected - not a one-time hitch, a continuous per-frame cost. isStroke mode's
+    // outline pass has to render the selected mesh into its own glow buffer and trace its
+    // silhouette every frame; for a mesh with hundreds of thousands of vertices covering
+    // most of the screen, that's a second, nearly full-scene draw pass added on top of the
+    // model's own already-heavy main render, every single frame for as long as it's
+    // selected. A vertex-count ceiling is a blunt but cheap-to-check proxy for exactly the
+    // kind of mesh where this becomes a real problem - normal furniture/fixture/room-scale
+    // selections (the actual point of the glow) sit nowhere near it.
+    const HIGHLIGHT_MAX_VERTICES = 50000;
+    const skipHighlight = Boolean(mesh.name && (
       /^ground$/i.test(mesh.name) ||
       /^groundMaterial$/i.test(mesh.name) ||
       mesh.name.toLowerCase().includes('floor') ||
       mesh.name.toLowerCase().includes('floorplan')
-    );
+    )) || mesh.getTotalVertices() > HIGHLIGHT_MAX_VERTICES;
     if (highlightLayerRef.current) {
       if (selectedMesh) highlightLayerRef.current.removeMesh(selectedMesh);
       if (!skipHighlight) highlightLayerRef.current.addMesh(mesh, Color3.FromHexString("#4488ff"));
