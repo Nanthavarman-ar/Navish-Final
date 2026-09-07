@@ -62,9 +62,18 @@ const DEFAULT_ELEVATOR_TRAVEL = 3; // metres - one typical storey height
 // rather than silently corrupting the model - the size a real one could plausibly be,
 // generous enough not to reject genuinely large fixtures (a big garage door, a tall
 // curtain) while still catching "that's obviously the whole wall".
+// water's 1.5m was sized around this fixture's own instruction text ("Click the tap/sink")
+// - too tight for the other real thing "Running Water" gets used for, a pool/pond/
+// fountain surface, which easily runs several metres across even as a perfectly legitimate,
+// genuinely distinct mesh with nothing merged into it. Reported: even an isolated
+// single-mesh test model (nothing else around it) still got rejected with the "looks like
+// part of the building" message - confirming the cap itself, not merged geometry, was the
+// actual blocker. Raised well past any real residential pool/pond size while staying far
+// below "that's obviously the whole building" territory (the 527m case this was built to
+// catch).
 const MAX_FIXTURE_MESH_SIZE: Partial<Record<FixtureType, number>> = {
   door: 3,
-  water: 1.5,
+  water: 8,
   curtain: 4,
   rain: 5,
   elevator: 5,
