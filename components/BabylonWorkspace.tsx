@@ -64,6 +64,7 @@ import { SustainabilityManager, SustainabilityReport } from './SustainabilityMan
 import { PresentationManager } from './PresentationManager';
 import { IoTManager } from './IoTManager';
 import { captureSceneEdits, applySceneEdits, mergeAndSaveSceneEdits, loadSceneEdits, type SceneEditsData } from './utils/sceneEditsPersistence';
+import { mergeDecorativeMeshes } from './utils/meshMerging';
 
 // UI Component imports
 import FeatureButton from './FeatureButton';
@@ -784,6 +785,15 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
             // camera - see scene.collisionsEnabled above for why this was a no-op before.
             if (m.getTotalVertices() > 0) m.checkCollisions = true;
           });
+          // Collapses small repeated decorative clutter (bushes, hedges, railings,
+          // fences, rocks, lamps - see meshMerging.ts) sharing a material into one mesh
+          // per group, cutting draw calls on mesh-heavy architectural imports. Mutates
+          // newMeshes in place, so BIM registration, both shadow-caster loops below, and
+          // the async freeze-loop (via loadedModelMeshesRef.current, the same array
+          // object) all automatically see the corrected post-merge list. Must run before
+          // BIM registration specifically - that snapshots direct mesh references, which
+          // would go stale the moment a merge disposes the originals.
+          mergeDecorativeMeshes(newMeshes, scene);
           // Register the real loaded meshes as a BIM model so Cost Estimator,
           // ROI Calculator, Budget Tier Comparison, and Ergonomic/Energy/
           // Shadow Analysis (all of which look up bimManager.getModelById())
