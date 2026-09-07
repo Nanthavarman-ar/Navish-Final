@@ -106,10 +106,17 @@ export function UploadPage() {
       const extension = '.' + file.name.split('.').pop()?.toLowerCase();
       // Model files now go to Cloudflare R2 (see components/utils/r2ModelUpload.ts) -
       // its free tier has no per-file size cap (only a 10GB TOTAL storage ceiling),
-      // unlike Supabase Storage's Free-plan-wide 50MB-per-file hard limit. 500MB here
-      // is an app-level sanity guard (a multi-GB model would strain the viewer/AR
-      // experience regardless of where it's stored), not a storage-backend limit.
-      const maxSize = 500 * 1024 * 1024;
+      // unlike Supabase Storage's Free-plan-wide 50MB-per-file hard limit. This is an
+      // app-level sanity guard (a multi-GB model would strain the viewer/AR experience
+      // regardless of where it's stored), not a storage-backend limit - raised from the
+      // original 500MB now that modelOptimizer.ts actually exists (geometry simplify,
+      // KTX2 texture compression, meshopt) to bring a heavy file back down to something
+      // the viewer can handle, which wasn't true when 500MB was first chosen. Still a
+      // real ceiling, not unlimited - the optimizer itself decodes textures/geometry
+      // into memory (raw pixel/vertex buffers, well past the on-disk file size) before
+      // re-encoding, so an arbitrarily large source file risks exhausting the browser
+      // tab's own memory during THAT step, a failure mode no try/catch here can prevent.
+      const maxSize = 1024 * 1024 * 1024;
 
       if (!supportedFormats.includes(extension)) {
         invalidFiles.push(
@@ -121,7 +128,7 @@ export function UploadPage() {
       }
 
       if (file.size > maxSize) {
-        invalidFiles.push(`${file.name} (file too large, max 500MB)`);
+        invalidFiles.push(`${file.name} (file too large, max 1GB)`);
         return;
       }
 
@@ -385,7 +392,7 @@ export function UploadPage() {
                   Drop your 3D models here
                 </h3>
                 <p className="text-gray-400 mb-4">
-                  or click to browse your files (Max 500MB per file)
+                  or click to browse your files (Max 1GB per file)
                 </p>
                 <div className="grid grid-cols-3 gap-2 max-w-sm mx-auto">
                   {supportedFormats.map((format) => (
