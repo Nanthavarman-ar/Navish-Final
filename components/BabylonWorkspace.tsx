@@ -66,6 +66,7 @@ import { IoTManager } from './IoTManager';
 import { captureSceneEdits, applySceneEdits, mergeAndSaveSceneEdits, loadSceneEdits, type SceneEditsData } from './utils/sceneEditsPersistence';
 import { mergeDecorativeMeshes } from './utils/meshMerging';
 import { runChunked } from './utils/runChunked';
+import { enhanceImportedMaterials } from './utils/materialEnhancement';
 
 // UI Component imports
 import FeatureButton from './FeatureButton';
@@ -763,6 +764,16 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
           // finish fine given a few more seconds.
           if (cancelled) return;
           await mergeDecorativeMeshes(newMeshes, scene);
+          // Gives any "untouched" imported material (still at whatever flat default the
+          // source file's exporter left it with) a believable per-element PBR response by
+          // name (glass, metal, floor, wood, fabric, generic) - see materialEnhancement.ts
+          // for exactly what it will and won't touch. This is what actually closes the
+          // "walls look flat/plastic, not like Enscape" gap - the PBR pipeline, HDRI, and
+          // post-processing were already in place, but nothing was tuning the model's own
+          // material response until now. Cheap (property sets only, no textures/geometry
+          // touched) so left synchronous rather than chunked like the passes above.
+          if (cancelled) return;
+          enhanceImportedMaterials(newMeshes);
           // Register the real loaded meshes as a BIM model so Cost Estimator,
           // ROI Calculator, Budget Tier Comparison, and Ergonomic/Energy/
           // Shadow Analysis (all of which look up bimManager.getModelById())
