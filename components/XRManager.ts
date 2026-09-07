@@ -1381,40 +1381,50 @@ export class XRManager {
     this.resetHoldTimers.clear();
     this.vrSpawnPosition = null;
 
+    // Disable spatial audio if audio manager is available
+    if (this.audioManager && typeof this.audioManager.disableSpatialAudio === 'function') {
+      this.audioManager.disableSpatialAudio();
+    }
+
+    // Remove the AR reticle/overlay/select-listener while the session is still live -
+    // a no-op if AR placement was never set up (e.g. exiting a VR session).
+    this.teardownARPlacement();
+    this.teardownCustomTeleportation();
+    this.teardownCustomMovement();
+    this.teardownGrounding();
+    this.restorePreXRVignette();
+    this.restoreSkyboxAfterAR();
+
+    // End XR session - if this throws (e.g. the headset already tore the session down on
+    // its own, like the "remove and exit" gesture case handled elsewhere in this file),
+    // the cleanup below still has to run: the previous version returned straight to the
+    // catch below on any failure here, leaving this.xrExperience non-null - a subsequent
+    // enterVR()/enterAR() call would then see an XR session that's supposedly still
+    // active (it isn't), and the desktop camera/quality settings never got restored either.
     try {
-      // Disable spatial audio if audio manager is available
-      if (this.audioManager && typeof this.audioManager.disableSpatialAudio === 'function') {
-        this.audioManager.disableSpatialAudio();
-      }
-
-      // Remove the AR reticle/overlay/select-listener while the session is still live -
-      // a no-op if AR placement was never set up (e.g. exiting a VR session).
-      this.teardownARPlacement();
-      this.teardownCustomTeleportation();
-      this.teardownCustomMovement();
-      this.teardownGrounding();
-      this.restorePreXRVignette();
-      this.restoreSkyboxAfterAR();
-
-      // End XR session
       await this.xrExperience.baseExperience.sessionManager.exitXRAsync();
-      this.restorePreXRQuality();
+    } catch (error) {
+      console.error('WebXR session did not exit cleanly - continuing with local cleanup anyway:', error);
+    }
 
+    try {
+      this.restorePreXRQuality();
       // Restore original camera
       if (this.originalCamera) {
         this.scene.activeCamera = this.originalCamera;
       }
-
-      // Clean up
       this.xrExperience.dispose();
+    } catch (error) {
+      console.error('Error cleaning up after XR exit:', error);
+    } finally {
+      // Always reset these, regardless of whether anything above threw - a stale non-null
+      // xrExperience is what actually breaks the NEXT enterVR()/enterAR() call.
       this.xrExperience = null;
       this.xrCamera = null;
       this.currentSessionMode = 'none';
-
-      console.log('Exited XR mode');
-    } catch (error) {
-      console.error('Failed to exit XR mode:', error);
     }
+
+    console.log('Exited XR mode');
   }
 
   // Configure XR features

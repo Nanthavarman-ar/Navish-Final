@@ -1499,6 +1499,11 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
   // once they exit.
   const desktopSSAOPreferenceRef = useRef<boolean>(false);
   const desktopSSRPreferenceRef = useRef<boolean>(false);
+  // Same reasoning as SSAO/SSR above - IBL Shadows does real-time voxelization (a 64^3
+  // grid, tri-planar) every frame, at least as expensive as SSR, but the VR/AR entry
+  // handlers below were never updated to force it off too when it was added - it kept
+  // running unthrottled through an entire XR session on a standalone headset's GPU.
+  const desktopIBLShadowsPreferenceRef = useRef<boolean>(false);
   // Consecutive-low-FPS sample count while SSR is on (see the watchdog effect further
   // down) - separate from desktopSSRPreferenceRef above, which is only about remembering
   // the desktop choice across a VR/AR session, not about this device genuinely being too
@@ -3612,6 +3617,10 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
                 // SSAO - same headset-GPU-headroom reasoning applies.
                 desktopSSRPreferenceRef.current = enableSSR;
                 setEnableSSR(false);
+                // IBL Shadows voxelizes the scene in real time (a 64^3 grid, tri-planar) -
+                // at least as expensive as SSR, same headset-GPU-headroom reasoning.
+                desktopIBLShadowsPreferenceRef.current = enableIBLShadows;
+                setEnableIBLShadows(false);
                 showToast.success('VR mode enabled');
               } else {
                 // Without this, featureStates.showVR stayed true (handleFeatureToggle
@@ -3637,6 +3646,8 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
                 setEnableSSAO(false);
                 desktopSSRPreferenceRef.current = enableSSR;
                 setEnableSSR(false);
+                desktopIBLShadowsPreferenceRef.current = enableIBLShadows;
+                setEnableIBLShadows(false);
                 showToast.success('AR mode enabled');
               } else {
                 // Same fix as the VR branch above - a false success here previously left
@@ -3984,10 +3995,12 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
         // XR Features
         if ((id === 'showVR' || id === 'showAR') && xrManagerRef.current) {
           xrManagerRef.current.exitXR();
-          // Restore whatever SSAO/SSR were set to on the desktop before they were
-          // force-disabled for the XR session - see the showVR/showAR enter handlers above.
+          // Restore whatever SSAO/SSR/IBL Shadows were set to on the desktop before they
+          // were force-disabled for the XR session - see the showVR/showAR enter handlers
+          // above.
           setEnableSSAO(desktopSSAOPreferenceRef.current);
           setEnableSSR(desktopSSRPreferenceRef.current);
+          setEnableIBLShadows(desktopIBLShadowsPreferenceRef.current);
         }
         if (id === 'showSpatialAudio' && audioManagerRef.current) {
           audioManagerRef.current.disableSpatialAudio();
