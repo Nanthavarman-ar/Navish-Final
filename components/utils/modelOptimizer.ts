@@ -15,9 +15,10 @@
 // unoptimized" - optimization is a bonus, never a reason an otherwise-fine upload fails.
 import { Document, WebIO } from '@gltf-transform/core';
 import { ALL_EXTENSIONS, EXTMeshoptCompression } from '@gltf-transform/extensions';
-import { dedup, prune, textureCompress, weld, meshopt } from '@gltf-transform/functions';
+import { dedup, prune, textureCompress, weld, meshopt, simplify, getMeshVertexCount, VertexCountMethod } from '@gltf-transform/functions';
 import { MeshoptDecoder } from 'meshoptimizer/decoder';
 import { MeshoptEncoder } from 'meshoptimizer/encoder';
+import { MeshoptSimplifier } from 'meshoptimizer/simplifier';
 
 export interface ModelOptimizationResult {
   file: File;
@@ -33,7 +34,7 @@ let ioPromise: Promise<WebIO> | null = null;
 function getIO(): Promise<WebIO> {
   if (!ioPromise) {
     ioPromise = (async () => {
-      await Promise.all([MeshoptDecoder.ready, MeshoptEncoder.ready]);
+      await Promise.all([MeshoptDecoder.ready, MeshoptEncoder.ready, MeshoptSimplifier.ready]);
       const io = new WebIO()
         .registerExtensions(ALL_EXTENSIONS)
         .registerDependencies({
@@ -44,6 +45,15 @@ function getIO(): Promise<WebIO> {
     })();
   }
   return ioPromise;
+}
+
+// Sums vertex count across every mesh in the document - simpler than going through
+// getSceneVertexCount (which wants a gltf-transform Scene, not the Document this
+// pipeline works with) and good enough for a before/after "how much did this help"
+// figure, not a precise render-cost estimate.
+function totalVertexCount(document: Document): number {
+  return document.getRoot().listMeshes()
+    .reduce((sum, mesh) => sum + getMeshVertexCount(mesh, VertexCountMethod.RENDER), 0);
 }
 
 /**
@@ -65,6 +75,31 @@ export async function optimizeGlbFile(
     onStage?.('Removing duplicate data...');
     await document.transform(weld(), dedup(), prune());
     optimizations.push('Removed duplicate vertices/data');
+
+    // Geometry simplification (meshoptimizer's simplifier, via gltf-transform's simplify())
+    // - the missing piece dedup/prune/meshopt above don't touch: those cut file size and
+    // load time, but every triangle that survives them still gets rendered every frame at
+    // its original density. A SketchUp/Revit export commonly has far more tessellation
+    // than an architectural walkthrough actually needs (a flat wall panel exported as
+    // hundreds of coplanar triangles, a rounded column with way more segments than are
+    // visible at normal viewing distance) - that excess density is exactly what turns
+    // into runtime lag (more vertices to transform, more draw overhead) on a genuinely
+    // "high mesh" model, independent of file size. error=0.001 (0.1% of each mesh's own
+    // radius) is a hard cap the algorithm won't cross even if it means falling short of
+    // the 0.5 ratio target - an already-simple primitive (a wall's 4-vertex quad) has
+    // nothing to gain from simplification and stays untouched, while a genuinely dense
+    // one gets thinned out, both without visibly changing shape.
+    const vertsBefore = totalVertexCount(document);
+    onStage?.('Simplifying geometry...');
+    await document.transform(
+      weld(),
+      simplify({ simplifier: MeshoptSimplifier, ratio: 0.5, error: 0.001 })
+    );
+    const vertsAfter = totalVertexCount(document);
+    if (vertsBefore > 0 && vertsAfter < vertsBefore) {
+      const reducedPct = Math.round((1 - vertsAfter / vertsBefore) * 100);
+      optimizations.push(`Simplified geometry (${reducedPct}% fewer vertices)`);
+    }
 
     onStage?.('Compressing textures...');
     // Normal maps encode a surface direction, not color - lossy WebP recompression
