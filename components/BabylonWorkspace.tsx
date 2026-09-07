@@ -3006,6 +3006,49 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
     return () => { scene.onPointerObservable.remove(observer); };
   }, [featureStates.showTeleportManager, featureStates.showMeasurementTool]);
 
+  // Double-click a mesh to frame it, however far away the camera currently is - the
+  // percentage-based scroll-zoom above (and its Shift-held fast variant) still needs many
+  // ticks to close a genuinely large distance, since each tick only closes a PERCENTAGE of
+  // whatever's left; jumping straight to "center on this mesh, at a distance sized to it"
+  // sidesteps that entirely regardless of how far out the camera started. Same
+  // bounds-then-jump shape as runAutoZoom above, just scoped to one mesh's own bounding box
+  // instead of the whole scene's, and the same temporarily-widen-then-restore
+  // lowerRadiusLimit/upperRadiusLimit trick - the camera's current limits (tightened for
+  // whatever it was last framing) would otherwise silently clamp the jump short.
+  useEffect(() => {
+    const scene = sceneRef.current;
+    if (!scene) return;
+
+    const observer = scene.onPointerObservable.add((pointerInfo) => {
+      if (pointerInfo.type !== PointerEventTypes.POINTERDOUBLETAP) return;
+      if (featureStates.showTeleportManager || featureStates.showMeasurementTool) return;
+      const mesh = pointerInfo.pickInfo?.pickedMesh;
+      if (!mesh || !isSelectableMesh(mesh)) return;
+      const camera = cameraRef.current;
+      if (!camera || !(camera as any).setTarget) return;
+      const arcCam = camera as ArcRotateCamera;
+
+      mesh.computeWorldMatrix(true);
+      const hv = (mesh as any).getHierarchyBoundingVectors?.();
+      const min = hv ? hv.min : mesh.getBoundingInfo().boundingBox.minimumWorld;
+      const max = hv ? hv.max : mesh.getBoundingInfo().boundingBox.maximumWorld;
+      const center = new Vector3((min.x + max.x) / 2, (min.y + max.y) / 2, (min.z + max.z) / 2);
+      const size = Math.max(max.x - min.x, max.y - min.y, max.z - min.z, 0.1);
+      const wantedRadius = Math.max(size * 1.5, 2);
+
+      const prevLower = arcCam.lowerRadiusLimit;
+      const prevUpper = arcCam.upperRadiusLimit;
+      arcCam.lowerRadiusLimit = 1;
+      arcCam.upperRadiusLimit = Math.max(wantedRadius * 2, 1000);
+      arcCam.setTarget(center);
+      arcCam.radius = wantedRadius;
+      arcCam.lowerRadiusLimit = prevLower;
+      arcCam.upperRadiusLimit = prevUpper;
+    });
+
+    return () => { scene.onPointerObservable.remove(observer); };
+  }, [featureStates.showTeleportManager, featureStates.showMeasurementTool]);
+
   // Desktop click-to-teleport: when active, clicking a floor/walkable surface smoothly
   // moves the camera there. This is the desktop equivalent of the VR teleportation
   // already wired up in XRManager (which uses controller pointing instead of a mouse
