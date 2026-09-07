@@ -82,11 +82,31 @@ const FLOOR_CLEARCOAT_ROUGHNESS = 0.15;
 const LIGHT_FIXTURE_EMISSIVE_COLOR = new Color3(1, 0.85, 0.55);
 const LIGHT_FIXTURE_EMISSIVE_INTENSITY = 0.6;
 
+// Reported regression, root-caused after this shipped: metal/lamp materials were coming
+// out solid black on some models, "works on some models, not others" on the rest -
+// BabylonWorkspace.tsx's own scene-init comment (search "render glass/metal/mirror
+// surfaces flat or black with nothing to reflect") already documents exactly why - a
+// physically-based metallic surface has almost no diffuse response at all (real metals
+// don't scatter light the way a painted wall does), so it needs environment/IBL
+// reflections to look lit, not just the scene's directional+hemispheric analytical
+// lights. That file's own fix (scene.createDefaultEnvironment(), dimmed to
+// environmentIntensity = 0.25 - deliberately low, to avoid a DIFFERENT problem: washed-out
+// highlights and a mismatched blue rim at grazing angles) was tuned around whatever
+// metallic values already existed in a model's own source materials, not around this
+// pass additionally pushing MORE materials to a high metallic value on top of that. And
+// that default environment is itself best-effort - see its own try/catch - a CDN/offline
+// failure leaves PBR reflections with nothing at all, which is the likely explanation for
+// "works on some models, not others": whichever session loaded first cached (or didn't)
+// that environment texture. metallic values here are kept low enough that every material
+// this pass touches still reads reasonably under plain analytical lights alone, with or
+// without a working environment texture - real "metal" architectural elements (railings,
+// window frames, grilles) are rarely pure/mirror-metallic in practice anyway, even before
+// paint/dirt/oxidation is considered.
 function classify(label: string): MaterialLook | null {
   if (WATER_PATTERN.test(label)) return null;
   if (GLASS_PATTERN.test(label)) return { metallic: 0, roughness: 0.05, glassAlpha: 0.2 };
-  if (LIGHT_FIXTURE_PATTERN.test(label)) return { metallic: 0.6, roughness: 0.4, emissive: true };
-  if (METAL_PATTERN.test(label)) return { metallic: 0.85, roughness: 0.35 };
+  if (LIGHT_FIXTURE_PATTERN.test(label)) return { metallic: 0.2, roughness: 0.4, emissive: true };
+  if (METAL_PATTERN.test(label)) return { metallic: 0.3, roughness: 0.4 };
   if (FLOOR_PATTERN.test(label)) return { metallic: 0, roughness: 0.3, clearcoat: true };
   if (WOOD_PATTERN.test(label)) return { metallic: 0, roughness: 0.55 };
   if (FABRIC_PATTERN.test(label)) return { metallic: 0, roughness: 0.85 };
