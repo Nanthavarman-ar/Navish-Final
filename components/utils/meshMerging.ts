@@ -1,4 +1,5 @@
 import { AbstractMesh, Mesh, Scene, Vector3 } from '@babylonjs/core';
+import { runChunked } from './runChunked';
 
 // Small, repeated decorative clutter - trees' foliage aside (see exclusion note below),
 // bushes/hedges/railings/fences/rocks/lamps in a real architectural export are commonly
@@ -52,28 +53,34 @@ function isMergeCandidate(mesh: AbstractMesh, modelDiagonal: number): mesh is Me
  * Structural/interactive elements (walls, doors, windows, furniture) and anything this
  * app's own tools created are never touched, so per-element selection (Material editor,
  * Measure tool, BIM cost estimate) keeps working exactly as before for those.
+ *
+ * Async and chunked (see runChunked) rather than one flat pass - on a heavy, high-mesh-
+ * count import this is one of several back-to-back per-mesh scans that run right after
+ * load (alongside shadow-caster registration and BIM registration in BabylonWorkspace.tsx)
+ * with nothing yielding to the browser in between, which is what was tripping Chrome's own
+ * "Page Unresponsive" hang detector on large models rather than the work being slow per se.
  */
-export function mergeDecorativeMeshes(meshes: AbstractMesh[], _scene: Scene): void {
+export async function mergeDecorativeMeshes(meshes: AbstractMesh[], _scene: Scene): Promise<void> {
   if (meshes.length === 0) return;
 
   let min = meshes[0].getBoundingInfo().boundingBox.minimumWorld.clone();
   let max = meshes[0].getBoundingInfo().boundingBox.maximumWorld.clone();
-  for (const m of meshes) {
-    if (m.getTotalVertices() === 0) continue;
+  await runChunked(meshes, (m) => {
+    if (m.getTotalVertices() === 0) return;
     const bb = m.getBoundingInfo().boundingBox;
     min = Vector3.Minimize(min, bb.minimumWorld);
     max = Vector3.Maximize(max, bb.maximumWorld);
-  }
+  });
   const modelDiagonal = max.subtract(min).length();
 
   const groups = new Map<unknown, Mesh[]>();
-  for (const mesh of meshes) {
-    if (!isMergeCandidate(mesh, modelDiagonal)) continue;
+  await runChunked(meshes, (mesh) => {
+    if (!isMergeCandidate(mesh, modelDiagonal)) return;
     const key = mesh.material!;
     const group = groups.get(key);
     if (group) group.push(mesh);
     else groups.set(key, [mesh]);
-  }
+  });
 
   const merged: Mesh[] = [];
   const mergedAway = new Set<AbstractMesh>();

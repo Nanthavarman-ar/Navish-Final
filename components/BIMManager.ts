@@ -1,5 +1,6 @@
 import { Engine, Scene, Mesh, InstancedMesh, Vector3, Color3, StandardMaterial, PBRMaterial, TransformNode, SceneLoader } from '@babylonjs/core';
 import { CostEstimator, CostEstimate, CostBreakdown } from './CostEstimator';
+import { runChunked } from './utils/runChunked';
 
 export interface BIMElement {
   id: string;
@@ -1256,7 +1257,11 @@ export class BIMManager {
   // Comparison, Ergonomic/Energy/Shadow Analysis all call getModelById()
   // and got nothing back, showing "load a model first" even with a real
   // model fully loaded and visible in the 3D view).
-  registerLoadedModelFromScene(modelId: string, name: string): BIMModel {
+  // Async and chunked (see runChunked) - on a heavy, high-mesh-count import this mapping
+  // is one of several per-mesh passes running right after load with nothing yielding to
+  // the browser in between, which was long enough to trip Chrome's own "Page Unresponsive"
+  // hang detector on large models.
+  async registerLoadedModelFromScene(modelId: string, name: string): Promise<BIMModel> {
     const meshes = this.scene.meshes.filter((m): m is Mesh =>
       m instanceof Mesh &&
       m.getTotalVertices() > 0 &&
@@ -1285,11 +1290,12 @@ export class BIMManager {
       return 'concrete_standard';
     };
 
-    const elements: BIMElement[] = meshes.map((mesh, index) => {
+    const elements: BIMElement[] = [];
+    await runChunked(meshes, (mesh, index) => {
       const type = inferType(mesh.name);
       const bb = mesh.getBoundingInfo().boundingBox;
       const size = bb.maximum.subtract(bb.minimum);
-      return {
+      elements.push({
         id: mesh.id || `element_${index}`,
         name: mesh.name || `Element ${index + 1}`,
         type,
@@ -1307,7 +1313,7 @@ export class BIMManager {
         },
         mesh,
         visible: mesh.isVisible,
-      };
+      });
     });
 
     const model: BIMModel = {

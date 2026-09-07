@@ -65,6 +65,7 @@ import { PresentationManager } from './PresentationManager';
 import { IoTManager } from './IoTManager';
 import { captureSceneEdits, applySceneEdits, mergeAndSaveSceneEdits, loadSceneEdits, type SceneEditsData } from './utils/sceneEditsPersistence';
 import { mergeDecorativeMeshes } from './utils/meshMerging';
+import { runChunked } from './utils/runChunked';
 
 // UI Component imports
 import FeatureButton from './FeatureButton';
@@ -711,7 +712,7 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
       // model.
       getSceneLoaderModule().then(([{ SceneLoader }]) => {
         const meshesBefore = new Set(scene.meshes);
-        SceneLoader.Append('', url, scene, () => {
+        SceneLoader.Append('', url, scene, async () => {
           if (cancelled) return;
           const newMeshes = scene.meshes.filter((m) => !meshesBefore.has(m));
           loadedModelMeshesRef.current = newMeshes;
@@ -722,55 +723,14 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
           // directly from selectedModel rather than reading the currentModelId state
           // variable, since this closure was created before this same effect's own
           // setCurrentModelId() call above would have taken effect.
+          //
+          // Kicked off here (not awaited yet) so this fetch runs in parallel with the
+          // merge/BIM/shadow-registration work below rather than after it - it's only
+          // actually awaited further down, once that work (which the freeze loop needs to
+          // run after - see the comment there) has finished.
           const loadedModelId = selectedModel?.id ? String(selectedModel.id) : 'default-model';
-          loadSceneEdits(loadedModelId).then((savedEdits) => {
-            if (cancelled) return;
-            if (savedEdits) {
-              sceneEditsRef.current = savedEdits;
-              applySceneEdits(loadedModelMeshesRef.current, savedEdits);
-              // Restores the saved Home view (see setHomeView) on this device too - previously
-              // this only ever lived in a plain useRef, so it reset the moment you navigated
-              // away and back, let alone opened the model on a different device.
-              const home = savedEdits.homeView;
-              const cam = cameraRef.current;
-              if (home && cam && typeof cam.setTarget === 'function') {
-                const target = new Vector3(home.target.x, home.target.y, home.target.z);
-                cam.setTarget(target);
-                cam.alpha = home.alpha;
-                cam.beta = home.beta;
-                cam.radius = home.radius;
-                homeViewRef.current = { alpha: home.alpha, beta: home.beta, radius: home.radius, target };
-                scenarioManagerRef.current?.setHomeCenter(target);
-              }
-              // Restores the model's saved floor plan PDFs on this device too (see
-              // handleFloorPlansChange/Minimap.tsx) - previously localStorage-only.
-              setFloorPlans(savedEdits.floorPlans || []);
-            }
-            // Freezing has to wait until AFTER any saved position/rotation/scaling edits
-            // above are applied - freezeWorldMatrix() makes a mesh skip recomputing its
-            // world matrix from its transform entirely, so freezing first would make
-            // applySceneEdits' mesh.position.set() calls silently do nothing visually.
-            // A real architectural import (2,000+ separate meshes) recomputing every
-            // static mesh's matrix and re-syncing its bounding info every frame for
-            // nothing - none of them move on their own - is real, measurable per-frame
-            // cost; the gizmo attach effect below unfreezes/refreezes whichever single
-            // mesh is actually being edited, so this doesn't break moving/editing meshes,
-            // only skips redoing work for the thousands that never move.
-            // Deliberately NOT using scene.createOrUpdateSelectionOctree() here even though
-            // it's the other standard win for a mesh-heavy scene: Babylon builds it once
-            // from a snapshot of scene.meshes at call time, and once it exists, the active-
-            // mesh list for BOTH rendering and scene.pick() candidates comes ONLY from the
-            // octree - not a union with anything added after. Every marker this app creates
-            // post-load (hotspots, annotations, swatches, measurements, ambient audio zones)
-            // would silently stop rendering/being pickable the moment one was added after
-            // this ran, without touching every one of those tools to rebuild the octree on
-            // every marker add/remove. Not worth that regression risk for this win.
-            loadedModelMeshesRef.current.forEach((m) => {
-              if (m.getTotalVertices() === 0) return;
-              m.freezeWorldMatrix();
-              m.doNotSyncBoundingInfo = true;
-            });
-          });
+          const savedEditsPromise = loadSceneEdits(loadedModelId);
+
           removePlaceholderGeometry(scene);
           // Some exported CAD/BIM files mark certain nodes hidden (e.g. glTF's
           // KHR_node_visibility, from an alternate design option or hidden layer in the
@@ -789,21 +749,32 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
           // fences, rocks, lamps - see meshMerging.ts) sharing a material into one mesh
           // per group, cutting draw calls on mesh-heavy architectural imports. Mutates
           // newMeshes in place, so BIM registration, both shadow-caster loops below, and
-          // the async freeze-loop (via loadedModelMeshesRef.current, the same array
-          // object) all automatically see the corrected post-merge list. Must run before
-          // BIM registration specifically - that snapshots direct mesh references, which
-          // would go stale the moment a merge disposes the originals.
-          mergeDecorativeMeshes(newMeshes, scene);
+          // the freeze loop further down (via loadedModelMeshesRef.current, the same
+          // array object) all automatically see the corrected post-merge list. Must run
+          // before BIM registration specifically - that snapshots direct mesh references,
+          // which would go stale the moment a merge disposes the originals.
+          //
+          // Awaited (and chunked internally, along with BIM registration and both
+          // shadow-caster loops below) rather than left as one long synchronous run - on
+          // a genuinely "high mesh" import (thousands of separate meshes) these four
+          // per-mesh passes running back-to-back with nothing yielding to the browser in
+          // between was long enough for Chrome to conclude the tab had hung and show its
+          // own "Page Unresponsive" dialog, even though the work itself was going to
+          // finish fine given a few more seconds.
+          if (cancelled) return;
+          await mergeDecorativeMeshes(newMeshes, scene);
           // Register the real loaded meshes as a BIM model so Cost Estimator,
           // ROI Calculator, Budget Tier Comparison, and Ergonomic/Energy/
           // Shadow Analysis (all of which look up bimManager.getModelById())
           // have real data instead of showing "load a model first" forever.
+          if (cancelled) return;
           if (bimManagerRef.current && selectedModel?.id) {
-            bimManagerRef.current.registerLoadedModelFromScene(String(selectedModel.id), selectedModel?.name || 'Uploaded Model');
+            await bimManagerRef.current.registerLoadedModelFromScene(String(selectedModel.id), selectedModel?.name || 'Uploaded Model');
           }
+          if (cancelled) return;
           const shadowGenerator = shadowGeneratorRef.current;
           if (shadowGenerator) {
-            newMeshes.forEach((m) => {
+            await runChunked(newMeshes, (m) => {
               // A window/glass pane cast a fully opaque shadow like a solid wall would,
               // even after enhanceRealisticMaterials makes it look transparent - shadow
               // maps are depth-only and don't account for material alpha, so sunlight
@@ -816,22 +787,76 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
               m.receiveShadows = true;
             });
           }
+          if (cancelled) return;
           // Same glass exclusion for IBL Shadows' voxel grid, if that pipeline is active
           // (Ultra tier - see the enableIBLShadows effect above). updateSceneBounds/
           // updateVoxelization only need to run once per batch, after every mesh in this
           // model has been registered, not per-mesh.
           if (iblShadowsRef.current) {
-            newMeshes.forEach((m) => {
+            await runChunked(newMeshes, (m) => {
               if (!isGlassMesh(m)) {
                 iblShadowsRef.current!.addShadowCastingMesh(m as Mesh);
               }
             });
+            if (cancelled) return;
             iblShadowsRef.current.updateSceneBounds();
             iblShadowsRef.current.updateVoxelization();
           }
           showToast.dismiss(toastId);
           showToast.success(`Model loaded: ${selectedModel?.name || 'Model'}`);
           setSelectedModel(null);
+
+          const savedEdits = await savedEditsPromise;
+          if (cancelled) return;
+          if (savedEdits) {
+            sceneEditsRef.current = savedEdits;
+            applySceneEdits(loadedModelMeshesRef.current, savedEdits);
+            // Restores the saved Home view (see setHomeView) on this device too - previously
+            // this only ever lived in a plain useRef, so it reset the moment you navigated
+            // away and back, let alone opened the model on a different device.
+            const home = savedEdits.homeView;
+            const cam = cameraRef.current;
+            if (home && cam && typeof cam.setTarget === 'function') {
+              const target = new Vector3(home.target.x, home.target.y, home.target.z);
+              cam.setTarget(target);
+              cam.alpha = home.alpha;
+              cam.beta = home.beta;
+              cam.radius = home.radius;
+              homeViewRef.current = { alpha: home.alpha, beta: home.beta, radius: home.radius, target };
+              scenarioManagerRef.current?.setHomeCenter(target);
+            }
+            // Restores the model's saved floor plan PDFs on this device too (see
+            // handleFloorPlansChange/Minimap.tsx) - previously localStorage-only.
+            setFloorPlans(savedEdits.floorPlans || []);
+          }
+          // Freezing has to wait until AFTER any saved position/rotation/scaling edits
+          // above are applied - freezeWorldMatrix() makes a mesh skip recomputing its
+          // world matrix from its transform entirely, so freezing first would make
+          // applySceneEdits' mesh.position.set() calls silently do nothing visually. It
+          // also has to wait until AFTER mergeDecorativeMeshes above, now guaranteed by
+          // running sequentially after it (rather than racing it via a separate promise
+          // chain, as this used to) - freezing a mesh that merge is about to dispose, or
+          // missing the freshly-created merged mesh entirely, both silently no-op.
+          // A real architectural import (2,000+ separate meshes) recomputing every
+          // static mesh's matrix and re-syncing its bounding info every frame for
+          // nothing - none of them move on their own - is real, measurable per-frame
+          // cost; the gizmo attach effect below unfreezes/refreezes whichever single
+          // mesh is actually being edited, so this doesn't break moving/editing meshes,
+          // only skips redoing work for the thousands that never move.
+          // Deliberately NOT using scene.createOrUpdateSelectionOctree() here even though
+          // it's the other standard win for a mesh-heavy scene: Babylon builds it once
+          // from a snapshot of scene.meshes at call time, and once it exists, the active-
+          // mesh list for BOTH rendering and scene.pick() candidates comes ONLY from the
+          // octree - not a union with anything added after. Every marker this app creates
+          // post-load (hotspots, annotations, swatches, measurements, ambient audio zones)
+          // would silently stop rendering/being pickable the moment one was added after
+          // this ran, without touching every one of those tools to rebuild the octree on
+          // every marker add/remove. Not worth that regression risk for this win.
+          await runChunked(loadedModelMeshesRef.current, (m) => {
+            if (m.getTotalVertices() === 0) return;
+            m.freezeWorldMatrix();
+            m.doNotSyncBoundingInfo = true;
+          });
         }, (event) => {
           if (cancelled) return;
           const retrySuffix = attempt > 0 ? ` (retry ${attempt}/${MAX_RETRIES})` : '';
