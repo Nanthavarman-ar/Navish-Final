@@ -657,11 +657,27 @@ export class XRManager {
   // annotation pins, the reticle/placement root themselves, etc), matching the same
   // exclusion pattern already used for teleport floor detection and the desktop AR
   // Scale panel, so placement/scale only ever moves the actual loaded model.
+  //
+  // The sky/skybox mesh (proceduralSkybox from LightingPresets.tsx's Sky Dome, or
+  // hdrSkyBox from an uploaded HDRI) was missing from this list entirely - it's a
+  // 1000-unit, infiniteDistance mesh, and reparenting/scaling that into the AR placement
+  // root along with the real model is exactly what "the sky comes along stuck to the
+  // floor/model" was: the tap-to-place transform was dragging the entire sky dome into
+  // the placement too, not just the building. Matched by a separate substring check
+  // (not the prefix list below) since neither name actually starts with "sky".
+  // Also added every marker/prop-mesh prefix from features built after this list was
+  // last updated (Material Swatches, Hotspot Navigation, Interactive Fixtures, Ambient
+  // Audio zones, Measure Tool's preview/result meshes) - each of those has the same bug
+  // this fixes for the sky: without an exclusion, AR placement would try to drag admin-
+  // placed UI markers and prop geometry into the anchor transform right along with the
+  // building.
   private getPlaceableMeshes(): AbstractMesh[] {
-    return this.scene.meshes.filter(
-      (m) => m.isEnabled() &&
-        !/^(ground|measure_|annotation_|cursor_|collab_|sound_privacy_marker_|mood_light_|ar_reticle|ar_placement_root|__root__)/i.test(m.name || '')
-    );
+    return this.scene.meshes.filter((m) => {
+      const name = m.name || '';
+      if (!m.isEnabled()) return false;
+      if (/skybox/i.test(name)) return false;
+      return !/^(ground|measure_|preview_|measurement_|annotation_|swatch_marker_|swatch_popup_panel_|hotspot_marker_|fixture_marker_|fixture_person_|fixture_pet_|fixture_rain_plane_|ambient_zone_|cursor_|collab_|sound_privacy_marker_|mood_light_|ar_reticle|ar_placement_root|__root__)/i.test(name);
+    });
   }
 
   // Lazily creates (or returns the existing) TransformNode that placement/scale acts

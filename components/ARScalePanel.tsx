@@ -15,8 +15,17 @@ interface ARScalePanelProps {
   xrManagerRef?: React.RefObject<XRManager | null>;
 }
 
-// Meshes that shouldn't be scaled along with the model (helper/tool geometry)
-const EXCLUDED_NAME_PATTERN = /^(ground|floor|measure_|preview_|measurement_|annotation_|cursor_|__root__)/i;
+// Meshes that shouldn't be scaled along with the model (helper/tool geometry) - kept in
+// sync with XRManager.ts's own getPlaceableMeshes exclusion list (the live-AR path this
+// panel drives once a session is active), since the same "sky/marker mesh gets dragged
+// into the placement/scale transform along with the real model" bug applies to both:
+// the sky mesh (proceduralSkybox/hdrSkyBox, matched separately below since neither name
+// starts with "sky") is 1000 units across, so including it here also silently breaks the
+// Tabletop auto-fit calculation (applyTabletopFit), which measures this same mesh list's
+// bounding box to compute a scale - a 1000-unit "object" in that box makes the real
+// model's actual footprint negligible by comparison.
+const EXCLUDED_NAME_PATTERN = /^(ground|floor|measure_|preview_|measurement_|annotation_|swatch_marker_|swatch_popup_panel_|hotspot_marker_|fixture_marker_|fixture_person_|fixture_pet_|fixture_rain_plane_|ambient_zone_|cursor_|collab_|sound_privacy_marker_|mood_light_|__root__)/i;
+const isSkyboxMesh = (name: string) => /skybox/i.test(name);
 
 const ARScalePanel: React.FC<ARScalePanelProps> = ({ scene, onClose, xrManagerRef }) => {
   const { ref: panelRef, style: panelStyle } = usePanelStack('bottom-left');
@@ -48,7 +57,7 @@ const ARScalePanel: React.FC<ARScalePanelProps> = ({ scene, onClose, xrManagerRe
   };
 
   const getScalableMeshes = useCallback((): AbstractMesh[] => {
-    return scene.meshes.filter((m) => m.name && !EXCLUDED_NAME_PATTERN.test(m.name) && !m.parent);
+    return scene.meshes.filter((m) => m.name && !EXCLUDED_NAME_PATTERN.test(m.name) && !isSkyboxMesh(m.name) && !m.parent);
   }, [scene]);
 
   const applyScale = useCallback((newScale: number) => {
