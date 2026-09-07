@@ -319,9 +319,12 @@ function createPetProp(scene: Scene, id: string, position: Vector3, variant: 'do
 
   if (variant === 'cat') {
     // A curled tail is one of the clearest cat-vs-dog silhouette cues even at this level
-    // of abstraction.
-    const tail = MeshBuilder.CreateTorus(`fixture_pet_tail_${id}`, { diameter: 0.18, thickness: 0.025, tessellation: 12 }, scene);
-    tail.position.set(-0.28, 0.2, 0);
+    // of abstraction. Both the size and position need the same `* scale` every other part
+    // of this body gets - this was left unscaled, so the tail sat at the DOG's body-scale
+    // distance from a body that's actually 25% smaller for a cat, floating visibly
+    // detached from it rather than tucked against the body.
+    const tail = MeshBuilder.CreateTorus(`fixture_pet_tail_${id}`, { diameter: 0.18 * scale, thickness: 0.025 * scale, tessellation: 12 }, scene);
+    tail.position.set(-0.28 * scale, 0.2 * scale, 0);
     tail.rotation.x = Math.PI / 2;
     tail.material = fur;
     tail.parent = root;
@@ -385,6 +388,9 @@ const InteractiveFixtures: React.FC<InteractiveFixturesProps> = ({ scene, roomId
   // make "resting position" a moving target.
   const moverNodesRef = useRef<Map<string, { node: TransformNode; baseY: number }>>(new Map());
   const vertexWavesRef = useRef<Map<string, VertexWaveState>>(new Map());
+  // Original blade orientation for each 'fan' fixture, so it can be restored on delete -
+  // see the effect further down that reads/writes this.
+  const fanOriginalRotationsRef = useRef<Map<string, { rotationQuaternion: Quaternion | null; rotation: Vector3 }>>(new Map());
   const rainOverlaysRef = useRef<Map<string, { plane: Mesh; texture: DynamicTexture }>>(new Map());
   const propNodesRef = useRef<Map<string, (PersonPropParts | PetPropParts) & { variant: string }>>(new Map());
   const fixturesRef = useRef<SavedFixture[]>([]);
@@ -527,7 +533,12 @@ const InteractiveFixtures: React.FC<InteractiveFixturesProps> = ({ scene, roomId
       if (!existing || existing.url !== fixture.videoUrl) {
         existing?.texture.dispose();
         const videoUrl = fixture.videoUrl;
-        const texture = new VideoTexture(`fixture_tv_video_${fixture.id}`, videoUrl, scene, true, false, undefined, {
+        // invertY=true (was false) - reported the video plays upside down. A <video>
+        // element's own pixel rows run top-to-bottom, the opposite of the V-coordinate
+        // convention Babylon's default Texture already flips for automatically (regular
+        // Texture defaults invertY=true for exactly this reason) - VideoTexture doesn't
+        // inherit that default, it has to be requested explicitly.
+        const texture = new VideoTexture(`fixture_tv_video_${fixture.id}`, videoUrl, scene, true, true, undefined, {
           autoPlay: true,
           loop: true,
           muted: true,
@@ -677,13 +688,52 @@ const InteractiveFixtures: React.FC<InteractiveFixturesProps> = ({ scene, roomId
     });
   }, [fixtures, scene, resolveFixtureMesh]);
 
+  // Restores each 'fan' fixture's blade rotation to whatever it was before the fixture
+  // ever spun it, the moment the fixture is deleted. The spin animation (render loop
+  // below) mutates the mesh's own rotationQuaternion/rotation directly every frame while
+  // "on" - deleteFixture only ever removes the fixture from state, nothing else was
+  // putting the mesh itself back, so the blades stayed frozen at whatever angle they'd
+  // last spun to. Reported as "delete panna model palaya edathuke poi ninnukanum" (after
+  // deleting, the model should go back to its original position) - it wasn't.
+  // resolvedMeshCacheRef (not resolveFixtureMesh, which needs a live `fixture` object
+  // that no longer exists once removed from state) still holds the mesh reference here -
+  // nothing clears that cache entry for a 'fan' id specifically.
+  useEffect(() => {
+    const currentIds = new Set(fixtures.filter((f) => f.type === 'fan').map((f) => f.id));
+    fanOriginalRotationsRef.current.forEach((original, id) => {
+      if (currentIds.has(id)) return;
+      const mesh = resolvedMeshCacheRef.current.get(id);
+      if (mesh) {
+        mesh.rotationQuaternion = original.rotationQuaternion ? original.rotationQuaternion.clone() : null;
+        mesh.rotation = original.rotation.clone();
+      }
+      fanOriginalRotationsRef.current.delete(id);
+    });
+
+    fixtures.forEach((fixture) => {
+      if (fixture.type !== 'fan' || fanOriginalRotationsRef.current.has(fixture.id)) return;
+      const mesh = resolveFixtureMesh(fixture);
+      if (!mesh) return;
+      fanOriginalRotationsRef.current.set(fixture.id, {
+        rotationQuaternion: mesh.rotationQuaternion ? mesh.rotationQuaternion.clone() : null,
+        rotation: mesh.rotation.clone(),
+      });
+    });
+  }, [fixtures, resolveFixtureMesh]);
+
   // Caches each 'curtain'/'wind' fixture's original vertex positions once, so the render
   // loop below can displace them from a stable baseline every frame rather than drifting
-  // (re-reading already-displaced positions as the new "original" would compound).
+  // (re-reading already-displaced positions as the new "original" would compound). Also
+  // restores those original positions to the mesh when the fixture is deleted - same "put
+  // it back" gap as the fan rotation above, just for vertex data instead of a transform:
+  // without this, a deleted curtain/wind fixture left the mesh's vertices permanently
+  // displaced at whatever wave phase they were last at.
   useEffect(() => {
     const currentIds = new Set(fixtures.filter((f) => f.type === 'curtain' || f.type === 'wind').map((f) => f.id));
-    vertexWavesRef.current.forEach((_, id) => {
-      if (!currentIds.has(id)) vertexWavesRef.current.delete(id);
+    vertexWavesRef.current.forEach((state, id) => {
+      if (currentIds.has(id)) return;
+      state.mesh.updateVerticesData(VertexBuffer.PositionKind, state.originalPositions, true);
+      vertexWavesRef.current.delete(id);
     });
 
     fixtures.forEach((fixture) => {

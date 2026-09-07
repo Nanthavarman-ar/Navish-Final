@@ -16,7 +16,17 @@ const DECORATIVE_NAME_PATTERN = /bush|shrub|hedge|rail|baluster|fence|planter|ro
 // mesh to still exist under its saved meshId after a reload. Also excludes anything
 // matching this app's own structural/fixture-type keywords as a safety net against an
 // ambiguous name (e.g. "Fence_Door").
-const STRUCTURAL_EXCLUDE_PATTERN = /wall|floor|ceiling|door|window|glass|beam|column|pillar|roof|slab|stair|tree|plant|foliage|vine|ivy|fan\b|\btv\b|curtain|elevator|shutter/i;
+//
+// lamp/lantern/candle/fireplace/sconce/chandelier/pendant are the SAME "a fixture type
+// needs the exact original mesh" reasoning as tree/plant above, just missed when this was
+// first written - DECORATIVE_NAME_PATTERN above already matches "lamp"/"lantern" as
+// candidates to merge away, and InteractiveFixtures.tsx's Light Switch/Fireplace-Candle
+// fixture types place themselves onto exactly that kind of mesh ("Click the bulb/fixture",
+// "Click the fireplace/candle"). A merged-away lamp/candle mesh is exactly the same
+// "clicking what looks like the fixture actually picks the whole merged blob instead" bug
+// already handled for door/curtain/elevator/shutter via MAX_FIXTURE_MESH_SIZE in that
+// file - reported this session as a fire/candle fixture ending up "in the wrong place".
+const STRUCTURAL_EXCLUDE_PATTERN = /wall|floor|ceiling|door|window|glass|beam|column|pillar|roof|slab|stair|tree|plant|foliage|vine|ivy|fan\b|\btv\b|curtain|elevator|shutter|lamp|lantern|candle|fireplace|sconce|chandelier|pendant/i;
 
 // Same non-model-helper-mesh prefix list already reused verbatim in BIMManager.ts
 // (registerLoadedModelFromScene), computePrecipitationBounds (BabylonWorkspace.tsx), and
