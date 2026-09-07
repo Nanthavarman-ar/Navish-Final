@@ -1513,6 +1513,13 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
   // their own independent watchdog - one being the reason for a slow frame rate shouldn't
   // require the other to also have tripped its own streak before it's turned off.
   const iblShadowsLowFpsStreakRef = useRef(0);
+  // Same watchdog pattern again for CSM's autoCalcDepthBounds (see the long comment where
+  // the CascadedShadowGenerator is constructed) - a third independent full-frame GPU cost
+  // that can be too much on its own even if SSR/IBL Shadows are both already off. Unlike
+  // those two, there's no user-facing override to reconcile against - once the watchdog
+  // trips, this sticky flag just stops the tier-gating effects from turning it back on.
+  const csmLowFpsStreakRef = useRef(0);
+  const csmAutoDepthBoundsDisabledByWatchdogRef = useRef(false);
 
   // AI Manager ref
   const aiManagerRef = useRef<any>(null);
@@ -1743,7 +1750,18 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
           // large flat surfaces (roads, floors), most visible when the sun direction
           // rotates and the splits shift. Fitting each cascade to the real scene depth
           // instead removes that mismatch.
-          csm.autoCalcDepthBounds = true;
+          //
+          // NOT enabled here unconditionally - autoCalcDepthBounds runs a full extra
+          // DepthRenderer pass over the whole scene plus a GPU min/max reduction, every
+          // single frame, regardless of whether the camera or light actually moved. On a
+          // heavy architectural import (thousands of meshes) that's a real, constant
+          // per-frame cost on top of the shadow map render itself - reported as general
+          // lag "loading aagi ullukulla work panna slow" and specifically worse while
+          // dragging the sun/light sliders, since that's exactly when the main thread is
+          // also busiest. Gated below (with the rest of the SSAO/shadow-map-size tier
+          // checks) to only capable desktop tiers, at a reduced refresh rate, and backed
+          // by its own FPS watchdog further down - the same "static tier guess plus a
+          // live safety net" pattern already used for SSR and IBL Shadows.
           // Babylon's shadow bias defaults to bias=0.00005, normalBias=0 - normalBias is
           // specifically what pushes a shadow sample along the surface normal to avoid
           // the surface self-intersecting its own shadow map, and at 0 that correction
@@ -1910,6 +1928,15 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
         if (!capabilities.mobile && (resolvedQuality === 'high' || resolvedQuality === 'ultra') && shadowGeneratorRef.current && !shouldAbort()) {
           shadowGeneratorRef.current.mapSize = 2048;
           shadowGeneratorRef.current.filteringQuality = ShadowGenerator.QUALITY_HIGH;
+        }
+        // autoCalcDepthBounds (see the long comment where CSM is constructed above) - same
+        // capable-desktop-only gate as mapSize/SSAO, plus a refresh rate of 2 instead of the
+        // default 1 (recompute every OTHER frame rather than every frame) to roughly halve
+        // its cost even where it is on. Still backed by its own FPS watchdog further down in
+        // case even that's too much for a given device.
+        if (!capabilities.mobile && (resolvedQuality === 'high' || resolvedQuality === 'ultra') && shadowGeneratorRef.current instanceof CascadedShadowGenerator && !csmAutoDepthBoundsDisabledByWatchdogRef.current && !shouldAbort()) {
+          shadowGeneratorRef.current.autoCalcDepthBounds = true;
+          shadowGeneratorRef.current.autoCalcDepthBoundsRefreshRate = 2;
         }
 
         // Sharper textures at oblique viewing angles (a wall/floor texture stays crisp
@@ -2635,6 +2662,13 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
     if (shadowGeneratorRef.current) {
       shadowGeneratorRef.current.mapSize = isHighTier ? 2048 : 1024;
       shadowGeneratorRef.current.filteringQuality = isHighTier ? ShadowGenerator.QUALITY_HIGH : ShadowGenerator.QUALITY_MEDIUM;
+      // Same capable-tier gate as at creation time, plus the watchdog's sticky
+      // "don't turn this back on" flag - see the long comment where CSM is constructed.
+      if (shadowGeneratorRef.current instanceof CascadedShadowGenerator) {
+        const wantAutoDepthBounds = isHighTier && !csmAutoDepthBoundsDisabledByWatchdogRef.current;
+        shadowGeneratorRef.current.autoCalcDepthBounds = wantAutoDepthBounds;
+        if (wantAutoDepthBounds) shadowGeneratorRef.current.autoCalcDepthBoundsRefreshRate = 2;
+      }
     }
     Texture.DEFAULT_ANISOTROPIC_FILTERING_LEVEL = isHighTier ? 8 : 4;
     if (taaPipelineRef.current) {
@@ -2710,6 +2744,36 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
       showToast.info('Turned off Ambient Shadows', 'The frame rate dropped too low on this device - IBL shadows have been switched off to keep things smooth.');
     }
   }, [fps, enableIBLShadows]);
+
+  // Third independent watchdog, for CSM's autoCalcDepthBounds (see the long comment where
+  // the CascadedShadowGenerator is constructed) - a full extra depth pre-pass plus GPU
+  // min/max reduction every couple of frames, on top of whatever SSR/IBL Shadows already
+  // cost. Reported symptom this backs: general lag right after a model finishes loading,
+  // worse specifically while dragging the sun/light sliders (main thread busiest exactly
+  // then) and while selecting/dragging meshes - all sharing the same frame budget this
+  // watches. No user-facing override exists for this one, so tripping it just disables it
+  // and sets the sticky ref the tier-gating effects above check before re-enabling it.
+  useEffect(() => {
+    const shadowGenerator = shadowGeneratorRef.current;
+    const csmActive = shadowGenerator instanceof CascadedShadowGenerator && shadowGenerator.autoCalcDepthBounds;
+    if (!csmActive) {
+      csmLowFpsStreakRef.current = 0;
+      return;
+    }
+    const LOW_FPS_THRESHOLD = 24;
+    const REQUIRED_STREAK = 3;
+    if (fps > 0 && fps < LOW_FPS_THRESHOLD) {
+      csmLowFpsStreakRef.current += 1;
+    } else {
+      csmLowFpsStreakRef.current = 0;
+    }
+    if (csmLowFpsStreakRef.current >= REQUIRED_STREAK) {
+      csmLowFpsStreakRef.current = 0;
+      csmAutoDepthBoundsDisabledByWatchdogRef.current = true;
+      (shadowGenerator as CascadedShadowGenerator).autoCalcDepthBounds = false;
+      showToast.info('Reduced shadow quality', 'The frame rate dropped too low on this device - simplified sun shadows to keep things smooth.');
+    }
+  }, [fps]);
 
   // Reactively toggle spatial audio without recreating AudioManager
   useEffect(() => {

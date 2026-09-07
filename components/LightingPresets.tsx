@@ -289,22 +289,36 @@ const LightingPresets: React.FC<LightingPresetsProps> = ({ scene, onPresetChange
   // snapping back to the hardcoded defaults. skyMode is only saved as 'flat'/'procedural'
   // here - 'hdri' is skipped because the actual HDRI file has its own restore path above
   // (loadHdriFromDb) which sets skyMode itself once the file is confirmed to still exist.
+  //
+  // Debounced - dragging the Sun/Angle/Ambient/Exposure sliders fires this effect on every
+  // intermediate value, and localStorage.setItem is synchronous, blocking the main thread
+  // it runs on. Cheap on its own, but it was adding up on top of the render's own per-frame
+  // cost (shadow map, post-processing) exactly while the user is actively dragging - one of
+  // several small contributors to the reported "sun rotate pannavo lag" alongside the
+  // Babylon-side CSM fix in BabylonWorkspace.tsx. Waiting until the drag actually pauses
+  // still persists well within user expectation.
+  const persistDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
-    try {
-      const previous = loadPersistedLightingSettings();
-      const next: PersistedLightingSettings = {
-        mode,
-        selectedPreset,
-        customIntensity,
-        customAngle,
-        ambientIntensity,
-        exposure,
-        skyMode: skyMode === 'hdri' ? (previous.skyMode ?? 'flat') : skyMode,
-      };
-      localStorage.setItem(LIGHTING_SETTINGS_KEY, JSON.stringify(next));
-    } catch {
-      // localStorage unavailable (private browsing, etc) - lighting still works in-session
-    }
+    if (persistDebounceRef.current) clearTimeout(persistDebounceRef.current);
+    persistDebounceRef.current = setTimeout(() => {
+      persistDebounceRef.current = null;
+      try {
+        const previous = loadPersistedLightingSettings();
+        const next: PersistedLightingSettings = {
+          mode,
+          selectedPreset,
+          customIntensity,
+          customAngle,
+          ambientIntensity,
+          exposure,
+          skyMode: skyMode === 'hdri' ? (previous.skyMode ?? 'flat') : skyMode,
+        };
+        localStorage.setItem(LIGHTING_SETTINGS_KEY, JSON.stringify(next));
+      } catch {
+        // localStorage unavailable (private browsing, etc) - lighting still works in-session
+      }
+    }, 400);
+    return () => { if (persistDebounceRef.current) clearTimeout(persistDebounceRef.current); };
   }, [mode, selectedPreset, customIntensity, customAngle, ambientIntensity, exposure, skyMode]);
 
   // Time Simulation (merged from the old standalone Sun Study panel): scrub
