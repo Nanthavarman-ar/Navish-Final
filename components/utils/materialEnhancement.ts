@@ -1,4 +1,4 @@
-import { AbstractMesh, Material, PBRMaterial } from '@babylonjs/core';
+import { AbstractMesh, Color3, Material, PBRMaterial } from '@babylonjs/core';
 
 // Closes the "walls look flat/plastic, not like Enscape" gap reported this session -
 // confirmed by code search that nothing in this app actually tunes an imported model's
@@ -27,7 +27,13 @@ import { AbstractMesh, Material, PBRMaterial } from '@babylonjs/core';
 // - Reuses the exact same numeric presets MaterialEditor.tsx's own type switcher already
 //   uses for "default"/"glassSimple"/"cloth" materials, rather than inventing new numbers,
 //   so a material this pass touches looks the same as if a person had picked that same
-//   preset by hand in the Material Editor.
+//   preset by hand in the Material Editor. Floor clearcoat and lamp emissive glow (see
+//   FLOOR_CLEARCOAT_*/LIGHT_FIXTURE_* below) follow the same "reuse an existing precedent,
+//   keep it subtle" rule - clearCoat is the same feature/API MaterialEditor's carPaint/
+//   carbon presets already use, and the lamp glow is a material-only emissive tint (no
+//   real dynamic light, no shadow cost) specifically because a furnished interior can
+//   easily have a dozen-plus lamp-looking meshes, and a dozen-plus extra real-time lights
+//   is exactly the kind of frame-rate cost this session has spent effort cutting elsewhere.
 // - Every material is visited at most once (materials are commonly shared across many
 //   meshes) via the `processed` set, and the whole thing is wrapped per-material so one
 //   unexpected material shape can't take down the rest of the pass.
@@ -36,6 +42,9 @@ const METAL_PATTERN = /steel|metal|aluminu?m|chrome|iron\b|railing|balustrade|hi
 const FLOOR_PATTERN = /floor|tile|marble|granite|terrazzo|slab/i;
 const WOOD_PATTERN = /wood|timber|plywood|veneer|\bdoor\b/i;
 const FABRIC_PATTERN = /fabric|carpet|\brug\b|sofa|cushion|curtain|upholstery/i;
+// Lamps/fixtures get a modest always-on warm glow rather than a real dynamic light - see
+// the note on LIGHT_FIXTURE_LOOK below for why a real light per mesh isn't worth the cost.
+const LIGHT_FIXTURE_PATTERN = /\blamp\b|chandelier|sconce|\bbulb\b|pendant.?light|ceiling.?light/i;
 // Left alone entirely - InteractiveFixtures' "Running Water" fixture and
 // EnhancedFloodSimulation already own what "water" should look like in this app; a
 // generically-named water surface in an uploaded model is rare enough not to be worth the
@@ -47,13 +56,38 @@ interface MaterialLook {
   roughness: number;
   /** Only glass gets this - see MaterialEditor.tsx's 'glassSimple' preset. */
   glassAlpha?: number;
+  /** Only floors get this - a subtle polished-surface highlight, not a mirror finish. */
+  clearcoat?: boolean;
+  /** Only lamp/light fixtures get this - a warm always-on glow, not a real dynamic light. */
+  emissive?: boolean;
 }
+
+// A believable "polished floor" look needs a second, sharper specular response on top of
+// the base one (why real floor finishes read as glossy even though the base material
+// itself is quite rough) - this is exactly what MaterialEditor.tsx's own 'carPaint'/
+// 'carbon' presets already use clearCoat for, reused here at a much subtler intensity
+// (floors aren't car paint - this should read as "polished", not "wet").
+const FLOOR_CLEARCOAT_INTENSITY = 0.3;
+const FLOOR_CLEARCOAT_ROUGHNESS = 0.15;
+
+// A real dynamic PointLight per lamp mesh (the way InteractiveFixtures does for a
+// deliberately hand-placed 'light' fixture, one at a time) doesn't scale to "every lamp-
+// looking mesh already in a furnished interior import" - a single apartment model can
+// easily have a dozen-plus ceiling lights/sconces/lamps, and a dozen-plus extra real-time
+// shadow-casting lights is a genuine, direct frame-rate cost this session has spent a lot
+// of effort cutting elsewhere. A material-only emissive glow (no light, no shadow, just
+// the mesh itself looking lit) gets the same "this room has warm practical lighting"
+// visual read Enscape shows for the same reason real-time renderers default to it - for
+// basically free, since it's a property set on a material that's already being drawn.
+const LIGHT_FIXTURE_EMISSIVE_COLOR = new Color3(1, 0.85, 0.55);
+const LIGHT_FIXTURE_EMISSIVE_INTENSITY = 0.6;
 
 function classify(label: string): MaterialLook | null {
   if (WATER_PATTERN.test(label)) return null;
   if (GLASS_PATTERN.test(label)) return { metallic: 0, roughness: 0.05, glassAlpha: 0.2 };
+  if (LIGHT_FIXTURE_PATTERN.test(label)) return { metallic: 0.6, roughness: 0.4, emissive: true };
   if (METAL_PATTERN.test(label)) return { metallic: 0.85, roughness: 0.35 };
-  if (FLOOR_PATTERN.test(label)) return { metallic: 0, roughness: 0.3 };
+  if (FLOOR_PATTERN.test(label)) return { metallic: 0, roughness: 0.3, clearcoat: true };
   if (WOOD_PATTERN.test(label)) return { metallic: 0, roughness: 0.55 };
   if (FABRIC_PATTERN.test(label)) return { metallic: 0, roughness: 0.85 };
   // Generic fallback (wall/plaster/paint/concrete/anything unnamed) - MaterialEditor.tsx's
@@ -83,7 +117,14 @@ export function enhanceImportedMaterials(meshes: AbstractMesh[]): number {
     if (material.metallicTexture || material.microSurfaceTexture || material.alpha < 1) continue;
 
     try {
-      const label = `${mesh.name || ''} ${material.name || ''}`;
+      // Underscore-separated names (this app's own convention, per the "mood_light_"/
+      // "swatch_marker_" style prefixes elsewhere, and extremely common in exported CAD/
+      // BIM mesh names too - "Ceiling_Lamp_02") - \b treats "_" as a word character, so a
+      // \b-bounded pattern like \blamp\b would silently NOT match "Ceiling_Lamp_02"
+      // ("_Lamp_" has no real word boundary around it as far as regex \b is concerned).
+      // Normalizing underscores to spaces first is what makes \b actually mean "start/end
+      // of a real word" for names like this.
+      const label = `${mesh.name || ''} ${material.name || ''}`.replace(/_/g, ' ');
       const look = classify(label);
       if (!look) continue;
 
@@ -92,6 +133,15 @@ export function enhanceImportedMaterials(meshes: AbstractMesh[]): number {
       if (look.glassAlpha !== undefined) {
         material.alpha = look.glassAlpha;
         material.transparencyMode = PBRMaterial.PBRMATERIAL_ALPHABLEND;
+      }
+      if (look.clearcoat) {
+        material.clearCoat.isEnabled = true;
+        material.clearCoat.intensity = FLOOR_CLEARCOAT_INTENSITY;
+        material.clearCoat.roughness = FLOOR_CLEARCOAT_ROUGHNESS;
+      }
+      if (look.emissive) {
+        material.emissiveColor = LIGHT_FIXTURE_EMISSIVE_COLOR;
+        material.emissiveIntensity = LIGHT_FIXTURE_EMISSIVE_INTENSITY;
       }
       enhancedCount++;
     } catch (error) {

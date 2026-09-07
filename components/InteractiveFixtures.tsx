@@ -490,6 +490,26 @@ const InteractiveFixtures: React.FC<InteractiveFixturesProps> = ({ scene, roomId
   // so play() is never blocked by the browser's autoplay policy regardless of exactly how
   // the click that triggers it propagates through React state - a silently-never-playing
   // "TV" would be a worse regression than losing audio.
+  //
+  // autoPlay:true here (not false) is deliberate, not the obvious default - Babylon's
+  // OWN internal handling of autoPlay:false is a one-shot "play just long enough to
+  // capture a single poster frame, then pause itself again" dance (see
+  // VideoTexture._createInternalTexture in @babylonjs/core), which used to run
+  // concurrently with this effect's own explicit play()/pause() call below - two
+  // independent play/pause attempts racing on the same video element. With autoPlay:true,
+  // Babylon just starts the video and reports it as loaded normally (no internal
+  // play-then-immediately-pause step to race against); the isOn-driven play()/pause()
+  // call below is then the ONLY thing controlling playback, immediately pausing it back
+  // down within the same tick if the fixture isn't currently on.
+  //
+  // Passing a real onError (previously omitted entirely, silently defaulting to a
+  // console-only Logger.Error inside Babylon that never reached the user) is what turns
+  // "TV shows the flat placeholder glow instead of the video, for no visible reason" into
+  // an actual diagnosable message - a cross-origin video load blocked by the R2 bucket's
+  // CORS policy (a real possibility - see r2ModelUpload.ts's own comment: its documented
+  // CORS requirement only covers PUT for uploading, not necessarily GET-with-CORS-headers
+  // for a <video> element to read the file back as a WebGL texture) surfaces here instead
+  // of failing invisibly.
   useEffect(() => {
     const currentVideoIds = new Set(fixtures.filter((f) => f.type === 'tv' && f.videoUrl).map((f) => f.id));
     videoTexturesRef.current.forEach((entry, id) => {
@@ -506,10 +526,22 @@ const InteractiveFixtures: React.FC<InteractiveFixturesProps> = ({ scene, roomId
       const existing = videoTexturesRef.current.get(fixture.id);
       if (!existing || existing.url !== fixture.videoUrl) {
         existing?.texture.dispose();
-        const texture = new VideoTexture(`fixture_tv_video_${fixture.id}`, fixture.videoUrl, scene, true, false, undefined, {
-          autoPlay: false,
+        const videoUrl = fixture.videoUrl;
+        const texture = new VideoTexture(`fixture_tv_video_${fixture.id}`, videoUrl, scene, true, false, undefined, {
+          autoPlay: true,
           loop: true,
           muted: true,
+        }, (message) => {
+          console.error(`[InteractiveFixtures] TV video failed to load (${videoUrl}):`, message);
+          showToast.error('TV video could not play', message || 'The uploaded video failed to load - it may be blocked by the video host\'s CORS policy, or an unsupported format.');
+        });
+        // Extra safety net alongside the onError above - a decode/network failure on the
+        // underlying <video> element (wrong codec, 404, connection drop mid-stream) fires
+        // its own native 'error' event, which VideoTexture's onError callback above does
+        // not always observe (that one is scoped to the initial play() attempt).
+        texture.video.addEventListener('error', () => {
+          const mediaError = texture.video.error;
+          console.error(`[InteractiveFixtures] TV video element error (${videoUrl}):`, mediaError);
         });
         const mat = new StandardMaterial(`fixture_tv_mat_${fixture.id}`, scene);
         // Preserves whatever the original screen mesh's material had for double-sidedness -
@@ -521,11 +553,11 @@ const InteractiveFixtures: React.FC<InteractiveFixturesProps> = ({ scene, roomId
         mat.emissiveColor = new Color3(1, 1, 1);
         mat.disableLighting = true;
         mesh.material = mat;
-        videoTexturesRef.current.set(fixture.id, { texture, url: fixture.videoUrl });
+        videoTexturesRef.current.set(fixture.id, { texture, url: videoUrl });
       }
       const video = videoTexturesRef.current.get(fixture.id)?.texture.video;
       if (video) {
-        if (fixture.isOn) video.play().catch(() => {});
+        if (fixture.isOn) video.play().catch((error) => console.warn('[InteractiveFixtures] TV video play() rejected:', error));
         else video.pause();
       }
     });
