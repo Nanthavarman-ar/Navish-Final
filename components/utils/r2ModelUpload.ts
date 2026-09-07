@@ -6,11 +6,21 @@
 //
 // Unlike Supabase's TUS-based resumable upload, R2 has no built-in resumable protocol -
 // this implements the equivalent resilience manually: the file is split into ~8MB parts,
-// each requested and uploaded (via a short-lived presigned URL from the Edge Function)
-// one at a time, and any single part that fails is retried on its own with backoff
-// rather than needing to restart the whole file from byte zero. That per-part retry is
-// what actually matters on a slow/unstable connection - restarting a 200MB upload from
-// scratch because one part hiccuped is the failure mode this is built to avoid.
+// each requested and uploaded (via a short-lived presigned URL from the Edge Function),
+// and any single part that fails is retried on its own with backoff rather than needing
+// to restart the whole file from byte zero. That per-part retry is what actually matters
+// on a slow/unstable connection - restarting a 200MB upload from scratch because one part
+// hiccuped is the failure mode this is built to avoid.
+//
+// Parts upload CONCURRENTLY (see PARALLEL_PARTS below), not one at a time - each part is
+// two full network round-trips (an Edge Function call for a presigned URL, then the PUT
+// itself to R2), and for a large file split into dozens/hundreds of 8MB parts, doing them
+// strictly sequentially means paying that round-trip latency dozens/hundreds of times in a
+// row with nothing overlapping. /r2-part-url is stateless per call (just signs a URL for
+// whatever partNumber it's given, no server-side ordering requirement - see
+// server/index.tsx), so nothing about correctness depends on parts starting or finishing
+// in numeric order; only /r2-complete-upload's own parts list needs to be sorted by
+// partNumber before it's sent; see below.
 //
 // Requires the four /r2-* Edge Function endpoints in server/index.tsx, and the R2
 // bucket's CORS policy to allow PUT from this app's origin AND expose the ETag response
@@ -24,6 +34,11 @@ import { supabase } from '../../supabase/client';
 // even for a large file.
 const CHUNK_SIZE_BYTES = 8 * 1024 * 1024;
 const MAX_PART_RETRIES = 5;
+// Matches the AWS SDK's own Upload helper default (queueSize: 4) - enough to overlap
+// several round-trips' worth of latency and use more of the available bandwidth than one
+// stream can alone, without opening so many connections at once that a slower/shared
+// connection's parts start meaningfully competing with each other for bandwidth.
+const PARALLEL_PARTS = 4;
 
 export interface R2UploadProgress {
   bytesUploaded: number;
@@ -106,17 +121,38 @@ export async function uploadFileToR2(
   const parts: { partNumber: number; eTag: string }[] = [];
 
   try {
-    for (let partNumber = 1; partNumber <= totalParts; partNumber++) {
-      const start = (partNumber - 1) * CHUNK_SIZE_BYTES;
-      const end = Math.min(start + CHUNK_SIZE_BYTES, file.size);
-      const chunk = file.slice(start, end);
+    // Simple worker-pool: PARALLEL_PARTS "workers" each pull the next not-yet-started
+    // part number and process it (get a presigned URL, upload with retry) until none are
+    // left. bytesUploaded is tracked as a running total of completed parts' own sizes,
+    // not by partNumber order - parts finish out of numeric order under concurrency, so
+    // "the end offset of the highest part started so far" (the old sequential loop's
+    // implicit progress measure) would no longer correctly reflect what's actually done.
+    let nextPartNumber = 1;
+    let bytesUploaded = 0;
+    const runWorker = async () => {
+      while (true) {
+        const partNumber = nextPartNumber++;
+        if (partNumber > totalParts) return;
 
-      const { url } = await callFunction(functionsBaseUrl, '/r2-part-url', { key, uploadId, partNumber });
-      const eTag = await uploadPartWithRetry(url, chunk);
-      parts.push({ partNumber, eTag });
+        const start = (partNumber - 1) * CHUNK_SIZE_BYTES;
+        const end = Math.min(start + CHUNK_SIZE_BYTES, file.size);
+        const chunk = file.slice(start, end);
 
-      onProgress?.({ bytesUploaded: end, bytesTotal: file.size });
-    }
+        const { url } = await callFunction(functionsBaseUrl, '/r2-part-url', { key, uploadId, partNumber });
+        const eTag = await uploadPartWithRetry(url, chunk);
+        parts.push({ partNumber, eTag });
+
+        bytesUploaded += end - start;
+        onProgress?.({ bytesUploaded, bytesTotal: file.size });
+      }
+    };
+    await Promise.all(
+      Array.from({ length: Math.min(PARALLEL_PARTS, totalParts) }, () => runWorker())
+    );
+    // S3-compatible multipart completion (R2 included) requires the parts list sorted
+    // ascending by PartNumber - concurrent workers finish in whatever order their
+    // individual round-trips happen to land in, not numeric order.
+    parts.sort((a, b) => a.partNumber - b.partNumber);
 
     const result = await callFunction(functionsBaseUrl, '/r2-complete-upload', { key, uploadId, parts });
     return { key, url: result.url };
