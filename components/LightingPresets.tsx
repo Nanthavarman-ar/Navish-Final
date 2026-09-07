@@ -98,6 +98,33 @@ async function deleteHdriFromDb(): Promise<void> {
 // silent failure with nothing to explain why it didn't survive the next reload.
 const HDRI_PERSIST_WARN_BYTES = 80 * 1024 * 1024;
 
+// Babylon's HDRCubeTexture always decodes the FULL source resolution on the CPU (RGBE
+// parse + panorama-to-cubemap projection) before resampling down to whatever cube face
+// size is requested (512 here, see applyHdriFile) - so a "16k"/"32k" source file (meant
+// for offline/print rendering, not real-time) costs the same huge one-time CPU decode no
+// matter how small the actual on-screen result ends up. That decode runs again in full
+// every time this component mounts (see the restore-on-mount effect below), not just on
+// upload - a 16k HDRI saved once means every future open of this model pays this cost.
+// This is the actual explanation for "romba neram kalichi thaa kaatuthu" (only shows
+// after a long wait) and the workspace/model feeling frozen right after opening.
+const HDR_RESOLUTION_WARN_PIXELS = 6000 * 3000; // ~ an 6K-wide equirect and up
+
+// Radiance HDR files are ASCII-headered - "-Y <height> +X <width>" appears as plain text
+// within the first ~200 bytes, before the binary pixel data starts. Reading just that
+// tiny slice (not the whole multi-hundred-MB file) is enough to warn about an oversized
+// HDRI BEFORE paying the actual decode cost, instead of only finding out it was too big
+// after the freeze already happened.
+async function peekHdrResolution(file: Blob): Promise<{ width: number; height: number } | null> {
+  try {
+    const headerText = await file.slice(0, 512).text();
+    const match = headerText.match(/[+-]Y\s+(\d+)\s+[+-]X\s+(\d+)/);
+    if (!match) return null;
+    return { height: Number(match[1]), width: Number(match[2]) };
+  } catch {
+    return null;
+  }
+}
+
 interface LightingPreset {
   id: string;
   name: string;
@@ -492,6 +519,20 @@ const LightingPresets: React.FC<LightingPresetsProps> = ({ scene, onPresetChange
     if (file.size > HDRI_PERSIST_WARN_BYTES) {
       showToast.info('Large HDRI file', `${(file.size / (1024 * 1024)).toFixed(0)}MB - this browser may not have room to keep it saved for next time. It'll still work for this session.`);
     }
+    // See HDR_RESOLUTION_WARN_PIXELS above - a "16k"/"32k" source is a real-time
+    // performance problem regardless of file size (a well-compressed one can still be
+    // under the byte threshold above). This check runs after applyHdriFile already
+    // started the actual decode - it can't prevent this load's freeze, only explain it
+    // and steer the NEXT choice, since blocking the file the user just explicitly
+    // picked would be more disruptive than explaining why it's slow.
+    peekHdrResolution(file).then((res) => {
+      if (res && res.width * res.height > HDR_RESOLUTION_WARN_PIXELS) {
+        showToast.info(
+          'Very high-res HDRI',
+          `${res.width}x${res.height} is meant for offline rendering, not real-time - decoding it can freeze the page for several seconds, and it'll do that again every time this model opens. A 2K or 4K version of the same HDRI looks the same in the viewport and loads almost instantly.`
+        );
+      }
+    });
     // Was a console.warn only on failure and nothing at all on success - IndexedDB quotas
     // vary a lot by browser (much smaller in Safari/private browsing especially), so a
     // real, common failure here looked identical to it just working, and there was no
@@ -527,6 +568,15 @@ const LightingPresets: React.FC<LightingPresetsProps> = ({ scene, onPresetChange
         setHdriIntensity(saved.intensity);
         setEnvLightingIntensity(saved.envLightingIntensity);
         setHdriRotation(saved.rotation);
+        // A large/high-res saved HDRI pays its full CPU decode cost again right now, on
+        // this same mount that's also loading the model - see HDR_RESOLUTION_WARN_PIXELS
+        // above for why. Flagging it here (not just at original upload time) matters
+        // because THIS is the freeze that repeats on every future open of this model,
+        // not the one-time upload - and gives a concrete way out (the Remove button next
+        // to "Loaded: <file>" further down) instead of it looking like the app just hangs.
+        if (saved.blob.size > HDRI_PERSIST_WARN_BYTES) {
+          showToast.info('Loading a large saved HDRI', `${saved.fileName} (${(saved.blob.size / (1024 * 1024)).toFixed(0)}MB) may take a moment and repeats every time this model opens - use "Remove" next to it in the Lighting panel and pick a 2K/4K version if this feels slow.`);
+        }
         applyHdriFile(saved.blob, saved.fileName, saved.intensity, saved.envLightingIntensity, saved.rotation);
       })
       .catch(err => console.warn('[LightingPresets] Could not restore saved HDRI:', err));
