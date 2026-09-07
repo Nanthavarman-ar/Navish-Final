@@ -43,11 +43,24 @@ const MovementControlPanel: React.FC<MovementControlPanelProps> = ({ scene, came
 
     runCheck();
     if (isLive) {
-      observerRef.current = scene.onBeforeRenderObservable.add(runCheck);
+      // Was scene.onBeforeRenderObservable (runs every single rendered frame, so up to
+      // ~60 times/sec) - each tick does 4 full scene.pickWithRay calls, one per direction,
+      // and Babylon's ray-scene intersection cost scales with how many pickable meshes
+      // are in the scene. On a real architectural interior (hundreds/thousands of
+      // meshes - furniture, tiles, fixtures) that's a genuinely heavy CPU cost paid 4x
+      // every frame, for as long as this panel is open with Live tracking on (the
+      // default) - competing with rendering AND with the browser's own main thread for
+      // everything else (scroll, clicks, other panels), not something any graphics-
+      // quality setting can help with since this never touches the GPU at all. A person
+      // walking through a space checking clearance doesn't need frame-perfect updates -
+      // a few times a second reads as smoothly "live" while cutting this cost by ~12x.
+      const CHECK_INTERVAL_MS = 200;
+      const intervalId = setInterval(runCheck, CHECK_INTERVAL_MS);
+      observerRef.current = intervalId;
     }
     return () => {
       if (observerRef.current) {
-        scene.onBeforeRenderObservable.remove(observerRef.current);
+        clearInterval(observerRef.current);
         observerRef.current = null;
       }
     };
