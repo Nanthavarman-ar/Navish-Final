@@ -262,45 +262,50 @@ const LeftPanel: React.FC<LeftPanelProps> = ({
           />
         </div>
 
-        {/* Core Tools - the ones almost everyone uses, always one tap away */}
-        <div className="mt-3 pt-3 border-t border-gray-700">
-          <div className="text-xs font-medium text-gray-400 mb-2">Core Tools</div>
-          <div className="grid grid-cols-3 gap-2">
-            {CORE_TOOLS.map(({ id, name, icon: Icon }) => (
-              <Button
-                key={id}
-                size="sm"
-                variant={activeFeatures.has(id) ? 'default' : 'outline'}
-                className="h-11 px-2 text-xs flex-col gap-1"
-                onClick={() => onFeatureToggle(id, !activeFeatures.has(id))}
-                title={name}
-              >
-                <Icon className="w-4 h-4" />
-                {name}
-              </Button>
-            ))}
-          </div>
-        </div>
+        {/* Core Tools / Simulations - always-visible quick access, but hidden while
+            searching so they don't push the actual matching results (rendered further
+            down in the scrollable Tool Categories list) below the fold. */}
+        {!isSearching && (
+          <>
+            <div className="mt-3 pt-3 border-t border-gray-700">
+              <div className="text-xs font-medium text-gray-400 mb-2">Core Tools</div>
+              <div className="grid grid-cols-3 gap-2">
+                {CORE_TOOLS.map(({ id, name, icon: Icon }) => (
+                  <Button
+                    key={id}
+                    size="sm"
+                    variant={activeFeatures.has(id) ? 'default' : 'outline'}
+                    className="h-11 px-2 text-xs flex-col gap-1"
+                    onClick={() => onFeatureToggle(id, !activeFeatures.has(id))}
+                    title={name}
+                  >
+                    <Icon className="w-4 h-4" />
+                    {name}
+                  </Button>
+                ))}
+              </div>
+            </div>
 
-        {/* Simulations */}
-        <div className="mt-3 pt-3 border-t border-gray-700">
-          <div className="text-xs font-medium text-gray-400 mb-2">Simulations</div>
-          <div className="grid grid-cols-3 gap-2">
-            {SIMULATION_FEATURES.map(({ id, name, icon: Icon }) => (
-              <Button
-                key={id}
-                size="sm"
-                variant={activeFeatures.has(id) ? 'default' : 'outline'}
-                className="h-11 px-2 text-xs flex-col gap-1"
-                onClick={() => onFeatureToggle(id, !activeFeatures.has(id))}
-                title={`${name} Simulation`}
-              >
-                <Icon className="w-4 h-4" />
-                {name}
-              </Button>
-            ))}
-          </div>
-        </div>
+            <div className="mt-3 pt-3 border-t border-gray-700">
+              <div className="text-xs font-medium text-gray-400 mb-2">Simulations</div>
+              <div className="grid grid-cols-3 gap-2">
+                {SIMULATION_FEATURES.map(({ id, name, icon: Icon }) => (
+                  <Button
+                    key={id}
+                    size="sm"
+                    variant={activeFeatures.has(id) ? 'default' : 'outline'}
+                    className="h-11 px-2 text-xs flex-col gap-1"
+                    onClick={() => onFeatureToggle(id, !activeFeatures.has(id))}
+                    title={`${name} Simulation`}
+                  >
+                    <Icon className="w-4 h-4" />
+                    {name}
+                  </Button>
+                ))}
+              </div>
+            </div>
+          </>
+        )}
       </CardHeader>
 
       {/* Content - relative z-10 so it stacks above the absolutely-positioned ambient-glow layer */}
