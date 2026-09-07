@@ -2692,9 +2692,19 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
     // default when the user has explicitly set it - null means "no explicit choice yet",
     // which keeps today's behavior (Ultra only) as the default.
     setEnableSSR(ssrOverride !== null ? ssrOverride : resolved === 'ultra');
-    // Same override precedence as SSR above, via the Graphics Quality panel's own
-    // "Ambient Shadows (IBL)" toggle.
-    setEnableIBLShadows(iblShadowsOverride !== null ? iblShadowsOverride : resolved === 'ultra');
+    // NOT resolved === 'ultra' by default, unlike SSR above - confirmed real conflict
+    // (reported: switching to Ultra broke rendering into a dark/blank background with only
+    // the selection-highlight glow visible, on a real RTX 2050). IblShadowsRenderPipeline's
+    // constructor calls scene.enableGeometryBufferRenderer(...) and forces
+    // generateNormalsInWorldSpace = true on it (see @babylonjs/core's
+    // Rendering/IBLShadows/iblShadowsRenderPipeline.js) - the exact same shared
+    // GeometryBufferRenderer that SSR's own forceGeometryBuffer=true above deliberately
+    // depends on (see that comment: turning on Babylon's default PrePassRenderer path
+    // instead "broke the background rendering" once already). Both defaulting on
+    // simultaneously at Ultra reintroduced that same failure mode through a different
+    // pipeline. Kept fully available via its own "Ambient Shadows (IBL)" toggle - this
+    // only removes it from Ultra's automatic default, not the feature itself.
+    setEnableIBLShadows(iblShadowsOverride !== null ? iblShadowsOverride : false);
     if (shadowGeneratorRef.current) {
       shadowGeneratorRef.current.mapSize = isHighTier ? 2048 : 1024;
       shadowGeneratorRef.current.filteringQuality = isHighTier ? ShadowGenerator.QUALITY_HIGH : ShadowGenerator.QUALITY_MEDIUM;
