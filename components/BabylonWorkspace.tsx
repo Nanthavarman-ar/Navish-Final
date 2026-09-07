@@ -1043,6 +1043,32 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
   // accumulating a shadow buffer every frame is at least as expensive.
   const [enableIBLShadows, setEnableIBLShadows] = React.useState(false);
   const [iblShadowsOverride, setIblShadowsOverride] = React.useState<boolean | null>(null);
+  // SSR and IBL Shadows both reconfigure the scene's shared GeometryBufferRenderer when
+  // enabled (see their creation effects further down for the exact mechanism - confirmed
+  // by reading @babylonjs/core's own IblShadowsRenderPipeline source, which forces
+  // generateNormalsInWorldSpace=true on it, conflicting with what SSR's own
+  // forceGeometryBuffer=true depends on). Having both active at once is what broke
+  // rendering into a black scene with only bloom-lit edges glowing (reported this
+  // session). Not defaulting IBL Shadows on at Ultra alongside SSR (an earlier fix this
+  // same session) only closed the AUTOMATIC path into that combination - manually
+  // toggling both on via the Graphics Quality panel's own switches hits the exact same
+  // conflict, which these wrappers close too: turning one on while the other is
+  // currently active turns the other off, with an explanation, rather than allowing the
+  // broken combination through any path.
+  const handleSsrOverrideChange = React.useCallback((value: boolean | null) => {
+    setSsrOverride(value);
+    if (value === true && enableIBLShadows) {
+      setIblShadowsOverride(false);
+      showToast.info('Turned off Ambient Shadows', 'Reflections and Ambient Shadows conflict with each other when both are on at once - only one can be active at a time.');
+    }
+  }, [enableIBLShadows]);
+  const handleIblShadowsOverrideChange = React.useCallback((value: boolean | null) => {
+    setIblShadowsOverride(value);
+    if (value === true && enableSSR) {
+      setSsrOverride(false);
+      showToast.info('Turned off Reflections', 'Reflections and Ambient Shadows conflict with each other when both are on at once - only one can be active at a time.');
+    }
+  }, [enableSSR]);
   const [enableGrain, setEnableGrain] = React.useState(false);
   const [enableVignette, setEnableVignette] = React.useState(false);
   const [viewMode, setViewMode] = React.useState<'walk' | 'orbit' | 'dollhouse' | 'vr' | 'ar'>('orbit');
@@ -4882,9 +4908,9 @@ const getCategoryDescription = (categoryName: string): string => {
               gpuName,
               deviceCapabilities,
               enableSSR,
-              onSsrOverrideChange: setSsrOverride,
+              onSsrOverrideChange: handleSsrOverrideChange,
               enableIBLShadows,
-              onIblShadowsOverrideChange: setIblShadowsOverride,
+              onIblShadowsOverrideChange: handleIblShadowsOverrideChange,
               sustainabilityReport,
               onRainToggle,
               rainOn,
