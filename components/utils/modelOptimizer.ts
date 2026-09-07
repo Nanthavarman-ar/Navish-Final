@@ -31,6 +31,7 @@ import { ktx2 } from 'ktx2-encoder/gltf-transform';
 import { MeshoptDecoder } from 'meshoptimizer/decoder';
 import { MeshoptEncoder } from 'meshoptimizer/encoder';
 import { MeshoptSimplifier } from 'meshoptimizer/simplifier';
+import { yieldToBrowser } from './runChunked';
 
 export interface ModelOptimizationResult {
   file: File;
@@ -85,7 +86,20 @@ export async function optimizeGlbFile(
     const document: Document = await io.readBinary(bytes);
     const optimizations: string[] = [];
 
+    // A yieldToBrowser() after every onStage() below (not just once at the start) is what
+    // actually matters here, not a cosmetic nicety - each document.transform() call is
+    // itself a black-box library function (gltf-transform's own weld/dedup/simplify/
+    // meshopt, or ktx2-encoder's WASM encode) with no yield points of its own inside it,
+    // and awaiting a promise that never truly suspends (no real macrotask/animation-frame
+    // boundary, just microtasks resolving back-to-back) does NOT hand control back to the
+    // browser to paint or process input - the same class of bug already found and fixed
+    // for the model-LOAD path this session (see runChunked.ts), just on the upload side
+    // instead. On a genuinely heavy model (many thousands of vertices/textures) that adds
+    // up to the same "Page Unresponsive" freeze, just during optimization instead of
+    // viewing. This also means the onStage toast text actually paints before the next
+    // heavy stage starts, instead of potentially being silently skipped over.
     onStage?.('Removing duplicate data...');
+    await yieldToBrowser();
     await document.transform(weld(), dedup(), prune());
     optimizations.push('Removed duplicate vertices/data');
 
@@ -104,6 +118,7 @@ export async function optimizeGlbFile(
     // one gets thinned out, both without visibly changing shape.
     const vertsBefore = totalVertexCount(document);
     onStage?.('Simplifying geometry...');
+    await yieldToBrowser();
     await document.transform(
       weld(),
       simplify({ simplifier: MeshoptSimplifier, ratio: 0.5, error: 0.001 })
@@ -115,6 +130,7 @@ export async function optimizeGlbFile(
     }
 
     onStage?.('Resizing textures...');
+    await yieldToBrowser();
     // Resize only here (no targetFormat - keeps each texture's current format), so this
     // step's job is purely capping dimensions before the KTX2 passes below encode
     // whatever's left. Same [2048, 2048] ceiling the old WebP step used.
@@ -137,10 +153,12 @@ export async function optimizeGlbFile(
     // honest even in the all-textures-failed case rather than always claiming success.
     const totalTextures = document.getRoot().listTextures().length;
     onStage?.('Compressing color textures (KTX2)...');
+    await yieldToBrowser();
     await document.transform(
       ktx2({ slots: /^(?!normalTexture).*$/, isUASTC: true, isPerceptual: true, generateMipmap: true })
     );
     onStage?.('Compressing normal maps (KTX2)...');
+    await yieldToBrowser();
     await document.transform(
       ktx2({ slots: /^normalTexture$/, isUASTC: true, isPerceptual: false, isNormalMap: true, generateMipmap: true })
     );
@@ -154,11 +172,13 @@ export async function optimizeGlbFile(
     }
 
     onStage?.('Compressing geometry...');
+    await yieldToBrowser();
     document.createExtension(EXTMeshoptCompression).setRequired(true);
     await document.transform(meshopt({ encoder: MeshoptEncoder }));
     optimizations.push('Compressed geometry (meshopt)');
 
     onStage?.('Finalizing...');
+    await yieldToBrowser();
     const optimizedBytes = await io.writeBinary(document);
     const optimizedFile = new File(
       [optimizedBytes],

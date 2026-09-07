@@ -7,6 +7,14 @@
 // show its own "Page Unresponsive" dialog, even though the work itself would have
 // finished fine given a few more seconds.
 //
+// Hands control back to the browser for one frame - awaiting a promise that resolves on
+// its own (a microtask) does NOT do this; only a real macrotask/animation-frame boundary
+// lets the browser paint or respond to input, which is the actual difference between "the
+// work looks frozen" and "the work is visibly progressing".
+export function yieldToBrowser(): Promise<void> {
+  return new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+}
+
 // Processing a batch at a time and yielding via requestAnimationFrame between batches
 // keeps the browser's own hang detector satisfied (and the loading toast/spinner actually
 // painting) without meaningfully slowing down the total work - the model was never
@@ -21,7 +29,7 @@ export async function runChunked<T>(
     const end = Math.min(i + chunkSize, items.length);
     for (let j = i; j < end; j++) work(items[j], j);
     if (end < items.length) {
-      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+      await yieldToBrowser();
     }
   }
 }
