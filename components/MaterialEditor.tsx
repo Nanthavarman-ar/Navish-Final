@@ -53,7 +53,16 @@ const MaterialEditor: React.FC<MaterialEditorProps> = ({ sceneManager, selectedM
   });
 
   const [materialTypePreset, setMaterialTypePreset] = useState<MaterialTypePreset>('default');
-  const [waterProps, setWaterProps] = useState({ waveHeight: 0.15, windForce: 5, waveSpeed: 25, colorBlendFactor: 0.3 });
+  // windForce/waveSpeed drive how fast WaterMaterial scrolls its bump texture across the
+  // surface (windDirection, left at Babylon's default, picks which way) - the previous
+  // 5/25 was closer to Babylon's own open-ocean example values than anything sized for
+  // what this app actually uses "Water" for, a residential pool/pond. On a small bounded
+  // surface that reads as the whole thing visibly flowing/scrolling in one direction
+  // ("munnadi pinnadi ooduthu" - flows forward-backward) rather than staying in place and
+  // just rippling, which is what a real still pool actually looks like. Lower values keep
+  // the same gentle up-down wave motion (waveHeight, unchanged) without the strong
+  // directional scroll.
+  const [waterProps, setWaterProps] = useState({ waveHeight: 0.15, windForce: 1.5, waveSpeed: 6, colorBlendFactor: 0.3 });
 
   // Enscape-style emissive lighting: "Luminance"/"Radius" are calibrated separately
   // from the bloom-facing Emissive Intensity above, so a surface can look bright on
