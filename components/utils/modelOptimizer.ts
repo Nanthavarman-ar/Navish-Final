@@ -7,27 +7,27 @@
 //   are genuinely browser-usable. Babylon's own glTF loader (@babylonjs/loaders) already
 //   has built-in EXT_meshopt_compression decode support, so compressed files just load
 //   normally with zero viewer-side changes.
-// - Texture compression targets KTX2 (Basis Universal, KHR_texture_basisu), not WebP -
-//   WebP still ends up fully decompressed to raw RGBA in GPU VRAM once uploaded as a
-//   texture (the compression only ever helped download size/network transfer); KTX2 stays
-//   compressed on the GPU itself, which is the difference that actually matters for a
-//   VRAM-constrained device (mobile, a standalone VR headset in WebXR) rather than a
-//   desktop with plenty of video memory to spare. Uses the `ktx2-encoder` package (MIT,
-//   maintained by the same author as ktx-parse/gltf-transform's own KTX2 tooling) rather
-//   than gltf-transform/cli's own toKTX2 transform - that one shells out to a native
-//   `toktx`/`basisu` binary via child_process, which only runs in Node, not a browser tab;
-//   ktx2-encoder ships a real browser-usable WASM build of the Basis encoder instead, the
-//   same "genuinely browser-usable" bar meshoptimizer's encoder/decoder already had to
-//   clear to be used here. Babylon's glTF loader already supports KHR_texture_basisu
-//   (@babylonjs/ktx2decoder is already a dependency for exactly this), so compressed files
-//   just load normally with zero further viewer-side changes, same as meshopt.
+// - Texture compression converts to WebP via @gltf-transform/functions' documented
+//   browser-only mode (no `sharp` encoder needed). Babylon's loader already supports
+//   EXT_texture_webp too.
+//
+//   Tried switching this to KTX2 (Basis Universal) this session, for the real VRAM
+//   advantage that has over WebP - reverted after real-world testing surfaced two
+//   dealbreakers: some textures came back missing/black after upload (something in the
+//   encode/decode round-trip wasn't reliable, not fully diagnosable without deeper
+//   in-browser tooling than was available), and UASTC encoding (chosen over the lossier
+//   ETC1S specifically to protect normal maps/quality) turned out to be dramatically
+//   slower in practice - a 32MB model took 4 minutes to optimize, an unacceptable cost
+//   for the VRAM benefit. Basis Universal's own documentation does note UASTC trades
+//   encode speed for quality, but not to a degree that was apparent before live testing.
+//   Left as a known "not worth the current risk/cost" rather than something to silently
+//   forget - see git history for the KTX2 attempt if revisiting this later.
 //
 // Every step here is wrapped so a failure just means "upload the original file
 // unoptimized" - optimization is a bonus, never a reason an otherwise-fine upload fails.
 import { Document, WebIO } from '@gltf-transform/core';
 import { ALL_EXTENSIONS, EXTMeshoptCompression } from '@gltf-transform/extensions';
 import { dedup, prune, textureCompress, weld, meshopt, simplify, getMeshVertexCount, VertexCountMethod } from '@gltf-transform/functions';
-import { ktx2 } from 'ktx2-encoder/gltf-transform';
 import { MeshoptDecoder } from 'meshoptimizer/decoder';
 import { MeshoptEncoder } from 'meshoptimizer/encoder';
 import { MeshoptSimplifier } from 'meshoptimizer/simplifier';
@@ -71,10 +71,10 @@ function totalVertexCount(document: Document): number {
 
 /**
  * Optimizes a .glb/.gltf File: welds duplicate vertices, prunes unused data, simplifies
- * dense geometry, converts textures to KTX2 (Basis Universal - correct settings for
- * normal maps vs everything else, see below), and meshopt-compresses geometry.
- * Returns null if optimization couldn't be applied (malformed file, unsupported feature,
- * etc) - the caller should fall back to uploading the original file in that case.
+ * dense geometry, converts textures to WebP (except normal maps - see below), and
+ * meshopt-compresses geometry. Returns null if optimization couldn't be applied
+ * (malformed file, unsupported feature, etc) - the caller should fall back to uploading
+ * the original file in that case.
  */
 export async function optimizeGlbFile(
   file: File,
@@ -89,7 +89,7 @@ export async function optimizeGlbFile(
     // A yieldToBrowser() after every onStage() below (not just once at the start) is what
     // actually matters here, not a cosmetic nicety - each document.transform() call is
     // itself a black-box library function (gltf-transform's own weld/dedup/simplify/
-    // meshopt, or ktx2-encoder's WASM encode) with no yield points of its own inside it,
+    // textureCompress/meshopt) with no yield points of its own inside it,
     // and awaiting a promise that never truly suspends (no real macrotask/animation-frame
     // boundary, just microtasks resolving back-to-back) does NOT hand control back to the
     // browser to paint or process input - the same class of bug already found and fixed
@@ -129,47 +129,17 @@ export async function optimizeGlbFile(
       optimizations.push(`Simplified geometry (${reducedPct}% fewer vertices)`);
     }
 
-    onStage?.('Resizing textures...');
+    onStage?.('Compressing textures...');
     await yieldToBrowser();
-    // Resize only here (no targetFormat - keeps each texture's current format), so this
-    // step's job is purely capping dimensions before the KTX2 passes below encode
-    // whatever's left. Same [2048, 2048] ceiling the old WebP step used.
-    await document.transform(textureCompress({ resize: [2048, 2048] }));
-
-    // Two passes, not one - a normal map is direction data, not color, and needs
-    // different encoder settings (isNormalMap tunes the codec for it; isPerceptual must
-    // be false since it isn't sRGB data) than every other texture (isPerceptual: true,
-    // since albedo/emissive/etc genuinely are sRGB). Applying the color pass's settings to
-    // a normal map would produce the same "distorts the data, subtly wrong lighting" class
-    // of bug the old WebP step's own comment warned about - the fix there was excluding
-    // normal maps from compression entirely; here they get compressed too, just correctly.
-    //
-    // ktx2()'s own per-texture try/catch means a single texture failing to encode (an
-    // unsupported source format, a decode error) doesn't throw - it's silently left as-is
-    // and the pipeline carries on. That's the right behavior for not blocking an entire
-    // upload over one bad texture, but it also means "the KTX2 step ran" and "the KTX2 step
-    // actually helped" aren't the same thing - counting before/after is what the geometry
-    // simplify step above already does for the same reason, so the optimizations list stays
-    // honest even in the all-textures-failed case rather than always claiming success.
-    const totalTextures = document.getRoot().listTextures().length;
-    onStage?.('Compressing color textures (KTX2)...');
-    await yieldToBrowser();
+    // Normal maps encode a surface direction, not color - lossy WebP recompression
+    // distorts that data and produces subtly wrong lighting (the same class of bug
+    // already fixed for normal maps elsewhere in this codebase - see
+    // components/ui/chart.tsx's ... no, see MaterialEditor.tsx's gammaSpace fix).
+    // Excluding the normalTexture slot avoids reintroducing it here.
     await document.transform(
-      ktx2({ slots: /^(?!normalTexture).*$/, isUASTC: true, isPerceptual: true, generateMipmap: true })
+      textureCompress({ targetFormat: 'webp', resize: [2048, 2048], slots: /^(?!normalTexture).*$/ })
     );
-    onStage?.('Compressing normal maps (KTX2)...');
-    await yieldToBrowser();
-    await document.transform(
-      ktx2({ slots: /^normalTexture$/, isUASTC: true, isPerceptual: false, isNormalMap: true, generateMipmap: true })
-    );
-    const convertedTextures = document.getRoot().listTextures().filter((t) => t.getMimeType() === 'image/ktx2').length;
-    if (convertedTextures > 0) {
-      optimizations.push(
-        convertedTextures === totalTextures
-          ? 'Compressed textures to KTX2 (Basis Universal)'
-          : `Compressed ${convertedTextures}/${totalTextures} textures to KTX2 (Basis Universal)`
-      );
-    }
+    optimizations.push('Compressed textures to WebP');
 
     onStage?.('Compressing geometry...');
     await yieldToBrowser();
