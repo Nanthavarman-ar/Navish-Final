@@ -473,10 +473,26 @@ const MaterialEditor: React.FC<MaterialEditorProps> = ({ sceneManager, selectedM
       water.waterColor = new BABYLON.Color3(0.05, 0.25, 0.35);
       water.waveLength = 0.15;
 
-      // Everything else in the scene needs to be in the water's own reflection/refraction
-      // render list, or it just shows the water color with no reflected surroundings.
-      scene.meshes.forEach(m => { if (m.material !== water) water.addToRenderList(m); });
-      scene.onNewMeshAddedObservable.add((m) => { if (m.material !== water) water.addToRenderList(m); });
+      // Everything else needs to be in the water's own reflection/refraction render list,
+      // or it just shows the water color with no reflected surroundings - but "everything"
+      // used to mean literally scene.meshes.forEach over the WHOLE scene. WaterMaterial's
+      // reflection and refraction render lists each trigger a full extra scene render every
+      // frame, so that was tripling the entire interior's draw-call cost (pillars, tiled
+      // walls, a shelf full of individual bottle meshes, everything) just for one pool -
+      // reported this session as an interior dropping to 1 FPS with the water visible. A
+      // pool only ever plausibly reflects what's actually near it, not a shelf on the far
+      // side of the building, so cap the render list to a generous radius around the mesh
+      // water is being applied to instead of the entire scene.
+      const waterBounds = selectedMesh ? selectedMesh.getBoundingInfo().boundingBox : null;
+      const waterCenter = waterBounds ? waterBounds.centerWorld : null;
+      const reflectionRadius = waterBounds ? Math.max(waterBounds.extendSizeWorld.length() * 8, 15) : 0;
+      const isNearWater = (m: BABYLON.AbstractMesh) => {
+        if (!waterCenter) return true; // no reference mesh yet - fall back to the old, safe behavior
+        if (m.getTotalVertices() === 0) return false;
+        return BABYLON.Vector3.Distance(m.getBoundingInfo().boundingBox.centerWorld, waterCenter) <= reflectionRadius;
+      };
+      scene.meshes.forEach(m => { if (m.material !== water && isNearWater(m)) water.addToRenderList(m); });
+      scene.onNewMeshAddedObservable.add((m) => { if (m.material !== water && isNearWater(m)) water.addToRenderList(m); });
 
       // See the comment in ensurePBRMaterial - the old material is kept alive (not
       // disposed) so Ctrl+Z can swap it back onto the mesh.
