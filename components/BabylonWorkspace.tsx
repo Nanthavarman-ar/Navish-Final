@@ -914,8 +914,26 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
           // would silently stop rendering/being pickable the moment one was added after
           // this ran, without touching every one of those tools to rebuild the octree on
           // every marker add/remove. Not worth that regression risk for this win.
+          // Frustum culling (cullingStrategy below) only helps once a mesh is actually
+          // inside the camera's view cone - it can't know a wall is hiding a whole room's
+          // furniture behind it. Occlusion culling is the complementary win for that: each
+          // mesh gets its own GPU visibility query, and any one that was fully hidden
+          // behind opaque geometry in the last rendered frame skips its own draw call on
+          // the next one. This has to be applied broadly (every real content mesh above a
+          // trivial size), not just to walls - Babylon's occlusion query is per-mesh (it
+          // answers "was THIS mesh visible", not "does this mesh hide others"), so a wall
+          // alone never culls the room behind it; the furniture itself needs the query.
+          // OPTIMISTIC (not STRICT) keeps rendering a mesh while its query result is still
+          // pending, so this can never cause pop-in/flicker - it only skips a frame once a
+          // query has actually confirmed a mesh is hidden. Gated on the engine actually
+          // supporting occlusion queries and skipped on mobile, where GPU/driver support
+          // for this is inconsistent enough not to trust blindly without live testing.
+          const engine = engineRef.current;
+          const supportsOcclusion = !!engine?.getCaps().supportOcclusionQuery && !deviceCapabilities?.mobile;
+          const OCCLUSION_MIN_VERTICES = 24; // skip trivial hardware (a screw, a handle) - query overhead isn't worth it for those
           await runChunked(loadedModelMeshesRef.current, (m) => {
-            if (m.getTotalVertices() === 0) return;
+            const vertexCount = m.getTotalVertices();
+            if (vertexCount === 0) return;
             m.freezeWorldMatrix();
             m.doNotSyncBoundingInfo = true;
             // Babylon's default culling strategy tests a mesh's full bounding BOX against
@@ -927,6 +945,11 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
             // way every single frame. Same meshes already getting frozen above, so no
             // additional risk beyond what freezeWorldMatrix already carries.
             m.cullingStrategy = AbstractMesh.CULLINGSTRATEGY_BOUNDINGSPHERE_ONLY;
+            if (supportsOcclusion && vertexCount >= OCCLUSION_MIN_VERTICES) {
+              m.occlusionType = AbstractMesh.OCCLUSION_TYPE_OPTIMISTIC;
+              m.occlusionQueryAlgorithmType = AbstractMesh.OCCLUSION_ALGORITHM_TYPE_CONSERVATIVE;
+              m.occlusionRetryCount = 2;
+            }
           });
         }, (event) => {
           if (cancelled) return;
