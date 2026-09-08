@@ -564,7 +564,32 @@ export class XRManager {
       return true;
     } catch (error) {
       console.error('Failed to enter VR mode:', error);
+      this.cleanupFailedXRAttempt();
       return false;
+    }
+  }
+
+  // CreateAsync can succeed - building its own camera, controllers, and feature meshes,
+  // already live in the scene - even when the very next call, enterXRAsync, then throws.
+  // That's a real, common first-attempt failure on some headsets/browsers while the
+  // permission/session handshake settles (shows "Failed to enter VR", then a retry
+  // works). Previously this left this.xrExperience pointing at that half-built, never-
+  // disposed experience: the retried enterVR()/enterAR() call created a SECOND complete
+  // XR camera/rig on top of it without ever cleaning up the first, leaving the orphaned
+  // first attempt's camera/feature meshes rendering independently in the headset -
+  // reported as part of the model detaching and standing on its own right after a
+  // failed-then-retried VR entry. Same lesson exitXR() already applies on ITS OWN
+  // failure path (see its comment there): never leave xrExperience non-null after a
+  // failed attempt.
+  private cleanupFailedXRAttempt(): void {
+    if (this.xrExperience) {
+      try { this.xrExperience.dispose(); } catch { /* best-effort - already failed once */ }
+    }
+    this.xrExperience = null;
+    this.xrCamera = null;
+    this.currentSessionMode = 'none';
+    if (this.originalCamera) {
+      this.scene.activeCamera = this.originalCamera;
     }
   }
 
@@ -657,6 +682,7 @@ export class XRManager {
       console.error('Failed to enter AR mode:', error);
       this.teardownAROverlayUI();
       this.restoreSkyboxAfterAR();
+      this.cleanupFailedXRAttempt();
       return false;
     }
   }
