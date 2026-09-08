@@ -307,6 +307,17 @@ const MeshMaterialSwatches: React.FC<MeshMaterialSwatchesProps> = ({ scene, mate
     // previous material at all - a stray extra backface rendered is a far smaller
     // problem than an invisible wall.
     const previousBackFaceCulling = mesh.material?.backFaceCulling ?? false;
+    // Reported: applying a swatch then pressing Ctrl+Z said "Nothing to undo" - this
+    // panel never told BabylonWorkspace.tsx's undo history about the change at all. All
+    // three branches below fully REPLACE mesh.material with a new object (never mutate
+    // the existing one in place), so this is exactly the same "materialSwap" undo kind
+    // MaterialEditor.tsx's own material-type switcher already dispatches for the same
+    // reason (see its naviz:materialSwapUndo event) - reusing it here, rather than
+    // inventing a second mechanism, is what makes Ctrl+Z actually swap the old material
+    // object back. Skipped if there's no previous material at all (nothing to restore).
+    if (mesh.material) {
+      window.dispatchEvent(new CustomEvent('naviz:materialSwapUndo', { detail: { mesh, previousMaterial: mesh.material } }));
+    }
     if (option.kind === 'texture') {
       applyTextureOption(mesh, option);
     } else if (option.kind === 'scene-material') {
