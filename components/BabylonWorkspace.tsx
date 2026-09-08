@@ -1671,6 +1671,22 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
   // handlers below were never updated to force it off too when it was added - it kept
   // running unthrottled through an entire XR session on a standalone headset's GPU.
   const desktopIBLShadowsPreferenceRef = useRef<boolean>(false);
+  // Same "force off for the XR session, restore on exit" reasoning as SSAO/SSR/IBL
+  // Shadows above - but these two were missed when that pattern was introduced, and
+  // both are known, specifically-VR-relevant flicker sources rather than just extra
+  // GPU cost: CascadedShadowGenerator's autoCalcDepthBounds recomputes the shadow
+  // frustum from the active camera every couple of frames, and a WebXR headset's
+  // camera moves with head tracking essentially every single frame (even standing
+  // still there's tracking jitter) - continuously nudging the shadow frustum from
+  // that never-settling input is exactly what reads as shadow flicker. TAA
+  // (temporal accumulation across successive frames, assuming the camera is roughly
+  // stable between them) has the same problem for the same reason, and this file
+  // already has a matching precedent for post-effect VR flicker: the SSR comment a
+  // few hundred lines up notes it was pulled out once before for "visible flicker
+  // under camera movement" on desktop, well before VR's much more constant motion.
+  // Reported this session as the model flickering in the headset.
+  const desktopCSMAutoDepthBoundsPreferenceRef = useRef<boolean>(false);
+  const desktopTAAPreferenceRef = useRef<boolean>(false);
   // Consecutive-low-FPS sample count while SSR is on (see the watchdog effect further
   // down) - separate from desktopSSRPreferenceRef above, which is only about remembering
   // the desktop choice across a VR/AR session, not about this device genuinely being too
@@ -3933,6 +3949,18 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
                 // at least as expensive as SSR, same headset-GPU-headroom reasoning.
                 desktopIBLShadowsPreferenceRef.current = enableIBLShadows;
                 setEnableIBLShadows(false);
+                // See desktopCSMAutoDepthBoundsPreferenceRef/desktopTAAPreferenceRef's
+                // declaration comment - both are real flicker sources under a headset's
+                // constant head-tracking motion, not just extra GPU cost.
+                const csmGen = shadowGeneratorRef.current;
+                if (csmGen instanceof CascadedShadowGenerator) {
+                  desktopCSMAutoDepthBoundsPreferenceRef.current = csmGen.autoCalcDepthBounds;
+                  csmGen.autoCalcDepthBounds = false;
+                }
+                if (taaPipelineRef.current) {
+                  desktopTAAPreferenceRef.current = taaPipelineRef.current.isEnabled;
+                  taaPipelineRef.current.isEnabled = false;
+                }
                 showToast.success('VR mode enabled');
               } else {
                 // Without this, featureStates.showVR stayed true (handleFeatureToggle
@@ -3961,6 +3989,16 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
                 setEnableSSR(false);
                 desktopIBLShadowsPreferenceRef.current = enableIBLShadows;
                 setEnableIBLShadows(false);
+                // See the matching comment on the VR entry branch above.
+                const csmGenAR = shadowGeneratorRef.current;
+                if (csmGenAR instanceof CascadedShadowGenerator) {
+                  desktopCSMAutoDepthBoundsPreferenceRef.current = csmGenAR.autoCalcDepthBounds;
+                  csmGenAR.autoCalcDepthBounds = false;
+                }
+                if (taaPipelineRef.current) {
+                  desktopTAAPreferenceRef.current = taaPipelineRef.current.isEnabled;
+                  taaPipelineRef.current.isEnabled = false;
+                }
                 showToast.success('AR mode enabled');
               } else {
                 // Same fix as the VR branch above - a false success here previously left
@@ -4314,6 +4352,16 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
           setEnableSSAO(desktopSSAOPreferenceRef.current);
           setEnableSSR(desktopSSRPreferenceRef.current);
           setEnableIBLShadows(desktopIBLShadowsPreferenceRef.current);
+          // See desktopCSMAutoDepthBoundsPreferenceRef/desktopTAAPreferenceRef's
+          // declaration comment - restores whatever these were on the desktop before
+          // the XR entry handlers force-disabled them for the session.
+          const csmGenExit = shadowGeneratorRef.current;
+          if (csmGenExit instanceof CascadedShadowGenerator) {
+            csmGenExit.autoCalcDepthBounds = desktopCSMAutoDepthBoundsPreferenceRef.current;
+          }
+          if (taaPipelineRef.current) {
+            taaPipelineRef.current.isEnabled = desktopTAAPreferenceRef.current;
+          }
         }
         if (id === 'showSpatialAudio' && audioManagerRef.current) {
           audioManagerRef.current.disableSpatialAudio();
