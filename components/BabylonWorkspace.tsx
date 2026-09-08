@@ -927,9 +927,21 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
           // pending, so this can never cause pop-in/flicker - it only skips a frame once a
           // query has actually confirmed a mesh is hidden. Gated on the engine actually
           // supporting occlusion queries and skipped on mobile, where GPU/driver support
-          // for this is inconsistent enough not to trust blindly without live testing.
+          // for this is inconsistent enough not to trust blindly without live testing -
+          // EXCEPT a standalone VR headset's browser, which reports itself as "mobile"
+          // (Quest OS is Android-based, so its UA contains "Android" the same as any
+          // phone - DeviceDetector.isMobileDevice() can't tell them apart) but doesn't
+          // carry that same driver-inconsistency risk: Meta Quest's browser is a single,
+          // consistent, modern Chromium build, not the heterogeneous "any Android
+          // vendor's GPU driver" landscape the mobile gate exists to guard against. A
+          // headset is also exactly the case this matters most for - VR renders the
+          // whole scene twice (once per eye) at a much higher target framerate than flat
+          // desktop, so an interior scene's draw-call cost hits hardest exactly here.
+          // Reported this session as the interior being very slow specifically on a
+          // Meta Quest headset.
+          const isStandaloneXRHeadsetBrowser = /OculusBrowser|Quest/i.test(navigator.userAgent);
           const engine = engineRef.current;
-          const supportsOcclusion = !!engine?.getCaps().supportOcclusionQuery && !deviceCapabilities?.mobile;
+          const supportsOcclusion = !!engine?.getCaps().supportOcclusionQuery && (!deviceCapabilities?.mobile || isStandaloneXRHeadsetBrowser);
           const OCCLUSION_MIN_VERTICES = 24; // skip trivial hardware (a screw, a handle) - query overhead isn't worth it for those
           await runChunked(loadedModelMeshesRef.current, (m) => {
             const vertexCount = m.getTotalVertices();

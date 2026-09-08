@@ -1603,7 +1603,17 @@ export class XRManager {
     if (!this.xrExperience) return;
     try {
       featuresManager.enableFeature(WebXRFeatureName.HAND_TRACKING, 'latest', {
-        xrInput: this.xrExperience.input
+        xrInput: this.xrExperience.input,
+        // Babylon's hand-tracking feature renders 25 small visible sphere meshes per
+        // hand by default (jointMeshes.invisible defaults to false) when no custom hand
+        // mesh is provided - this app never provided one, since nothing here actually
+        // uses hand-joint data for interaction (it's all controller/thumbstick-based,
+        // see setupCustomMovement etc.). Those default joint spheres are what showed up
+        // as small floating markers scattered across the exterior walls in this
+        // session's video - as the headset's hand/controller detection flickers in and
+        // out of view, so do they, reported as "exterior flicker". Tracking itself still
+        // works the same either way; this only stops drawing the debug spheres for it.
+        jointMeshes: { invisible: true }
       }, true, false);
       console.log('Hand tracking enabled');
     } catch (error) {
