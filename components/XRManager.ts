@@ -67,6 +67,14 @@ export class XRManager {
   private arHintTimeout: ReturnType<typeof setTimeout> | null = null;
   private arSelectListener: (() => void) | null = null;
   private placementScale: number = 1;
+  // Locked true right after the model's first placement - without this, EVERY tap on the
+  // screen for the rest of the AR session re-placed and re-oriented the model (see
+  // arSelectListener below), including a stray tap while trying to walk around, zoom, or
+  // just look at it from another angle. That read as the model "suddenly rotating" for no
+  // reason (reported this session) - it was working as designed (tap = reposition + face
+  // whoever's holding the phone), just triggered by taps nobody meant as a reposition
+  // request. requestReposition() below is the deliberate way back in for one more tap.
+  private placementLocked = false;
   // Independent of placementScale - applying scale via .setAll() would overwrite a
   // negative (mirrored) x back to positive, silently undoing the mirror. Kept separate so
   // scale and mirror compose instead of one clobbering the other - see applyPlacementScale().
@@ -971,6 +979,12 @@ export class XRManager {
     const session = this.xrExperience.baseExperience.sessionManager.session;
     this.arSelectListener = () => {
       if (!this.lastHitPose) return;
+      // Once placed, further taps are ignored unless requestReposition() was explicitly
+      // called - see the field comment on placementLocked for why: without this, ANY tap
+      // for the rest of the session (walking around, trying to zoom, anything) silently
+      // relocated and re-faced the model again.
+      const alreadyPlaced = this.placementRoot && !this.placementRoot.isDisposed();
+      if (alreadyPlaced && this.placementLocked) return;
       const root = this.getOrCreatePlacementRoot();
       root.position.copyFrom(this.lastHitPose.position);
       // The hit-test surface's own rotationQuaternion (previously applied directly) only
@@ -982,6 +996,7 @@ export class XRManager {
       // standing when they tapped is the one deterministic, sensible default - the
       // Rotate buttons already let them dial in the exact heading afterward.
       this.faceCameraAtPlacement(root);
+      this.placementLocked = true;
     };
     session?.addEventListener('select', this.arSelectListener);
 
@@ -1296,6 +1311,14 @@ export class XRManager {
   // ARScalePanel's own "!m.parent" filter excluded them all without any explanation.
   hasActivePlacement(): boolean {
     return this.placementRoot !== null && !this.placementRoot.isDisposed();
+  }
+
+  // The deliberate way back in past placementLocked (see its field comment) - lets
+  // external UI (a "Reposition" button, the same pattern hasActivePlacement above already
+  // established for ARScalePanel) allow exactly the next tap to move/re-face the model
+  // again, instead of every stray tap doing that for the rest of the session.
+  requestReposition(): void {
+    this.placementLocked = false;
   }
 
   getPlacementScale(): number {

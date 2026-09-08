@@ -1,9 +1,10 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Scene, AbstractMesh, Vector3 } from '@babylonjs/core';
-import { X, Maximize2, RotateCcw, RotateCw } from 'lucide-react';
+import { X, Maximize2, RotateCcw, RotateCw, Move } from 'lucide-react';
 import { Button } from './ui/button';
 import type { XRManager } from './XRManager';
 import { usePanelStack } from '../hooks/usePanelStack';
+import { showToast } from './utils/toast';
 
 interface ARScalePanelProps {
   scene: Scene;
@@ -54,6 +55,16 @@ const ARScalePanel: React.FC<ARScalePanelProps> = ({ scene, onClose, xrManagerRe
   const toggleAutoRotate = () => {
     if (!xrManagerRef?.current) return;
     setAutoRotating(xrManagerRef.current.toggleAutoRotate());
+  };
+
+  // Once placed, XRManager ignores further taps by default (see placementLocked's own
+  // comment there) - a stray tap while walking around/zooming used to silently relocate
+  // and re-face the model again, which read as it "suddenly rotating" for no reason. This
+  // is the deliberate way back in: allows exactly the next tap to move it.
+  const handleReposition = () => {
+    if (!xrManagerRef?.current) return;
+    xrManagerRef.current.requestReposition();
+    showToast.info('Tap the ground to move it', 'The next tap repositions and re-faces the model - after that, taps are ignored again until you press this.');
   };
 
   const getScalableMeshes = useCallback((): AbstractMesh[] => {
@@ -153,6 +164,18 @@ const ARScalePanel: React.FC<ARScalePanelProps> = ({ scene, onClose, xrManagerRe
         <Button size="sm" variant="ghost" className="w-full" onClick={handleReset}>
           <RotateCcw className="w-3.5 h-3.5 mr-1" /> Reset to 100%
         </Button>
+
+        {liveARActive && (
+          <Button
+            size="sm"
+            variant="outline"
+            className="w-full"
+            onClick={handleReposition}
+            title="Move the model to a new spot - the next tap on the ground repositions it, then taps stop moving it again"
+          >
+            <Move className="w-3.5 h-3.5 mr-1" /> Reposition
+          </Button>
+        )}
 
         {liveARActive && (
           <Button
