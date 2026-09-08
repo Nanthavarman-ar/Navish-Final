@@ -620,7 +620,15 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
         if (m.isDisposed()) return;
         shadowGeneratorRef.current?.removeShadowCaster(m);
         iblShadowsRef.current?.removeShadowCastingMesh(m as Mesh);
-        m.dispose();
+        // mesh.dispose() with no arguments defaults disposeMaterialAndTextures to false -
+        // it only frees the mesh's own geometry buffers, leaving the previous model's
+        // materials AND the (often much larger) textures they reference sitting in GPU
+        // VRAM indefinitely every time a different model gets loaded into this same
+        // workspace. Safe to pass true here even though materials/textures are commonly
+        // shared across many meshes of the same model: every mesh that could reference
+        // one is being disposed in this exact same loop, so nothing survives to hold a
+        // dangling reference to an already-disposed material once it finishes.
+        m.dispose(false, true);
       });
       loadedModelMeshesRef.current = [];
     }
@@ -910,6 +918,15 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
             if (m.getTotalVertices() === 0) return;
             m.freezeWorldMatrix();
             m.doNotSyncBoundingInfo = true;
+            // Babylon's default culling strategy tests a mesh's full bounding BOX against
+            // the camera frustum (several plane/corner checks); BOUNDINGSPHERE_ONLY tests
+            // one sphere instead - meaningfully cheaper per mesh, at the cost of very
+            // slightly less precise culling (a mesh right at the frustum edge might stay
+            // "visible" one or two extra frames before culling catches up) - a real, free
+            // trade for every one of potentially thousands of static meshes tested this
+            // way every single frame. Same meshes already getting frozen above, so no
+            // additional risk beyond what freezeWorldMatrix already carries.
+            m.cullingStrategy = AbstractMesh.CULLINGSTRATEGY_BOUNDINGSPHERE_ONLY;
           });
         }, (event) => {
           if (cancelled) return;
@@ -4491,6 +4508,65 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
       window.removeEventListener('blur', handleBlur);
     };
   }, []);
+
+  // Renders at a coarser resolution while the camera is actively moving (orbit drag,
+  // wheel zoom, WASD walking), restoring full resolution a few still frames after it
+  // stops - motion itself hides the softness (nobody's studying pixel-level sharpness
+  // mid-spin), and the saved GPU time is exactly what makes a heavy interior feel
+  // responsive to actually navigate rather than just look at once static. Doesn't touch
+  // any of the three existing setHardwareScalingLevel call sites (device-detection init,
+  // and the graphicsQuality tier effect) - reads whatever level is CURRENTLY set the
+  // instant motion is first detected and treats that as "the real level to restore to",
+  // rather than needing those to also remember a separate "base" value. Skipped entirely
+  // in VR/AR: WebXR head-tracking means camera.position is essentially always moving by
+  // tiny amounts every frame, which would keep this permanently downsampled for the
+  // whole session, and XRManager already applies its own headset-appropriate render
+  // scale independent of this.
+  React.useEffect(() => {
+    const scene = sceneRef.current;
+    const engine = engineRef.current;
+    if (!scene || !engine || featureStates.showVR || featureStates.showAR) return;
+
+    const STILL_FRAMES_TO_RESTORE = 12; // ~200ms at 60fps
+    const MOTION_SCALING_BOOST = 1.5; // on top of whatever level is currently active
+    const MOVE_EPSILON = 0.001;
+
+    let lastPos: Vector3 | null = null;
+    let stillFrames = 0;
+    let boosted = false;
+    let baseScalingLevel = 1;
+
+    const observer = scene.onBeforeRenderObservable.add(() => {
+      const camera = scene.activeCamera;
+      if (!camera) return;
+      const pos = camera.position;
+      const moved = !lastPos || !pos.equalsWithEpsilon(lastPos, MOVE_EPSILON);
+      lastPos = pos.clone();
+
+      if (moved) {
+        stillFrames = 0;
+        if (!boosted) {
+          baseScalingLevel = engine.getHardwareScalingLevel();
+          engine.setHardwareScalingLevel(baseScalingLevel * MOTION_SCALING_BOOST);
+          boosted = true;
+        }
+      } else if (boosted) {
+        stillFrames++;
+        if (stillFrames >= STILL_FRAMES_TO_RESTORE) {
+          engine.setHardwareScalingLevel(baseScalingLevel);
+          boosted = false;
+        }
+      }
+    });
+
+    return () => {
+      scene.onBeforeRenderObservable.remove(observer);
+      // Restore on cleanup (feature toggled off mid-boost, unmount, etc.) rather than
+      // potentially leaving the canvas permanently downsampled with nothing left running
+      // to ever un-boost it.
+      if (boosted) engine.setHardwareScalingLevel(baseScalingLevel);
+    };
+  }, [featureStates.showVR, featureStates.showAR]);
 
   // Voice command listener - toggle features from AI Voice Assistant
   React.useEffect(() => {
