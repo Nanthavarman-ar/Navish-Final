@@ -966,8 +966,15 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
           // Network/timeout failures are worth retrying (common on slow/unstable
           // connections with a large file); a bad/corrupt file or unsupported format
           // will fail the same way every time, so don't waste the user's bandwidth
-          // retrying those.
-          const isLikelyNetworkError = !exception || exception?.name === 'TypeError' || /network|fetch|timeout|ECONNRESET/i.test(msg || '');
+          // retrying those. "status: 0" (Babylon's LoadFileError message for this) is
+          // its own real, common case that this keyword list used to miss entirely -
+          // it's what the browser reports when an XHR got no HTTP response at all
+          // (a transient CORS preflight hiccup, a dropped connection, a network
+          // switch), as opposed to a real numeric status like 404/415 that means the
+          // file/format itself is the problem and retrying won't help. Without this,
+          // every one of those transient cases failed permanently on the very first
+          // attempt instead of getting the same retry a plain network error would.
+          const isLikelyNetworkError = !exception || exception?.name === 'TypeError' || /network|fetch|timeout|ECONNRESET|status:?\s*0\b/i.test(msg || '');
           if (isLikelyNetworkError && attempt < MAX_RETRIES) {
             const delayMs = Math.min(1000 * 2 ** attempt, 8000); // exponential backoff, capped
             showToast.update(toastId, `Connection issue, retrying...`, `Attempt ${attempt + 1} of ${MAX_RETRIES} in ${Math.round(delayMs / 1000)}s`);
