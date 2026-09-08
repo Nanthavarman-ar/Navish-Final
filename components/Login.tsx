@@ -47,13 +47,11 @@ export function Login() {
   const { login, loading } = useAuth();
   const navigate = useNavigate();
 
-  const hasIdentifier = Boolean(email.trim() || username.trim());
-
   // Accepts either an email or a plain username. A plain username is looked
   // up server-side (against Supabase user metadata) to find its email, since
   // Supabase Auth itself only signs in by email.
-  const resolveLoginEmail = async (): Promise<string | null> => {
-    const identifier = (email.trim() || username.trim());
+  const resolveLoginEmail = async (identifierOverride?: string): Promise<string | null> => {
+    const identifier = identifierOverride ?? (email.trim() || username.trim());
     if (!identifier) return null;
     if (identifier.includes('@')) return identifier;
 
@@ -71,10 +69,27 @@ export function Login() {
     }
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setError(null);
-    const loginEmail = await resolveLoginEmail();
+    // Read the identifier/password straight from the submitted form rather than
+    // trusting the email/username/password React state - some browsers' autofill
+    // or password-manager extensions set an input's value directly without firing
+    // the native "input" event React's onChange listens for, which silently
+    // leaves that state empty even though the field visibly shows a filled-in
+    // value. That desync is what made Login do nothing at all on some devices:
+    // hasIdentifier (derived from the same stale state) stayed false, the submit
+    // button stayed disabled, and clicking a disabled button fires no event at
+    // all - reported as "click pannalum edhuvum aagala" (only reproduced on a
+    // different device/browser, exactly where autofill behavior would differ).
+    const formData = new FormData(e.currentTarget);
+    const identifier = String(formData.get('email') || '').trim() || String(formData.get('username') || '').trim();
+    const submittedPassword = String(formData.get('password') || '');
+    if (!identifier) {
+      setError('Please enter your email or username.');
+      return;
+    }
+    const loginEmail = await resolveLoginEmail(identifier);
     if (!loginEmail) {
       setError('Unable to sign in. Please check your credentials.');
       return;
@@ -82,7 +97,7 @@ export function Login() {
     // No role picker here: the account's real role (from Supabase user
     // metadata, verified server-side) decides where to go, never the user's
     // choice on this form.
-    const role = await login(loginEmail, password);
+    const role = await login(loginEmail, submittedPassword);
     if (role === 'admin') {
       navigate('/admin/clients');
     } else if (role === 'client') {
@@ -219,6 +234,7 @@ export function Login() {
               <Label htmlFor="username" className="text-white">Username</Label>
               <Input
                 id="username"
+                name="username"
                 type="text"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
@@ -230,6 +246,7 @@ export function Login() {
               <Label htmlFor="email" className="text-white">Email</Label>
               <Input
                 id="email"
+                name="email"
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
@@ -259,6 +276,7 @@ export function Login() {
               </div>
               <PasswordInput
                 id="password"
+                name="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
@@ -268,7 +286,7 @@ export function Login() {
             <Button
               type="submit"
               className="w-full bg-cyan-600 hover:bg-cyan-700"
-              disabled={loading || !hasIdentifier}
+              disabled={loading}
             >
               {loading ? 'Logging in...' : 'Login'}
             </Button>
