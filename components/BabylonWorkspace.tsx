@@ -16,7 +16,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 import { Separator } from './ui/separator';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from './ui/dropdown-menu';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
-import { Maximize, MapPin, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Move, RotateCw, Maximize2, X, FlipHorizontal, Trash2, Home } from 'lucide-react';
+import { Maximize, MapPin, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Move, RotateCw, Maximize2, X, FlipHorizontal, Trash2, Home, SwitchCamera } from 'lucide-react';
 
 // Import proper hooks from hooks directory
 import { useFeatureStates, UseFeatureStatesReturn } from '../hooks/useFeatureStates';
@@ -1289,6 +1289,21 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
     arcCam.lowerRadiusLimit = prevLower;
     arcCam.upperRadiusLimit = prevUpper;
     showToast.success('Zoomed to fit model');
+  }, []);
+
+  // Spins the camera 180 around whatever it's currently looking at, keeping the same
+  // target/height/distance - the model has no stored idea of which side is architecturally
+  // "front", so this is the general-purpose fix for "I'm looking at the wrong side, get me
+  // to the opposite one" without needing that metadata: reported this session as the sun
+  // looking wrong only because the camera happened to be facing the back of the building.
+  const flipView = React.useCallback(() => {
+    const camera = cameraRef.current;
+    if (!camera || !(camera as any).setTarget) {
+      showToast.info('Switch to Orbit mode to flip the view');
+      return;
+    }
+    const arcCam = camera as ArcRotateCamera;
+    arcCam.alpha += Math.PI;
   }, []);
 
   // Central entry point for every undoable edit (gizmo drag, Mirror, Delete, Material
@@ -4527,7 +4542,15 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
     const engine = engineRef.current;
     if (!scene || !engine || featureStates.showVR || featureStates.showAR) return;
 
-    const STILL_FRAMES_TO_RESTORE = 12; // ~200ms at 60fps
+    // Kept short deliberately - this used to be 12 (~200ms), which held the coarse,
+    // motion-boosted resolution for a visible beat after the camera had already stopped.
+    // Reported this session as "fragmented/jagged edges right after rotating, even with
+    // nothing selected, even at Ultra" - that's exactly this window (a real resolution
+    // drop, not a selection-highlight artifact): at 1.5x scaling, edges are visibly
+    // aliased, and holding it for 200ms after motion already ended made it read as its own
+    // glitch rather than part of the drag. 2 frames is enough to debounce float jitter
+    // without being long enough to actually see.
+    const STILL_FRAMES_TO_RESTORE = 2;
     const MOTION_SCALING_BOOST = 1.5; // on top of whatever level is currently active
     const MOVE_EPSILON = 0.001;
 
@@ -4950,6 +4973,16 @@ const getCategoryDescription = (categoryName: string): string => {
               >
                 <Home className="w-4 h-4" />
                 Set
+              </Button>
+              <Button
+                variant="secondary"
+                size="sm"
+                className="h-8 px-2 gap-1 bg-gray-800/90 hover:bg-gray-700 border border-gray-600 text-white text-xs"
+                title="Flip to the opposite side - spins the camera 180° around what it's currently looking at"
+                onClick={flipView}
+              >
+                <SwitchCamera className="w-4 h-4" />
+                Flip
               </Button>
             </div>
             {workspaceState.selectedMesh && (
