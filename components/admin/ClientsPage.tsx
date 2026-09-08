@@ -350,12 +350,25 @@ export function ClientsPage() {
     setAssignModelsDialog({ open: false, clientUsername: '', clientName: '', searchTerm: '', selectedModelIds: [] });
   };
 
-  const handleChangePassword = (clientId: string) => {
+  const handleChangePassword = async (clientId: string) => {
     const newPassword = prompt('Enter new password (min 6 characters):');
-    if (newPassword && newPassword.length >= 6) {
-      showToast.success('Password updated successfully');
-    } else if (newPassword) {
+    if (!newPassword) return;
+    if (newPassword.length < 6) {
       showToast.error('Password must be at least 6 characters');
+      return;
+    }
+    try {
+      // See /clients/:id/password on the server - this used to just show a success
+      // toast with no backend call at all, leaving the client's real password
+      // unchanged.
+      await apiCall(`/clients/${clientId}/password`, {
+        method: 'PATCH',
+        body: JSON.stringify({ password: newPassword }),
+      });
+      showToast.success('Password updated successfully');
+    } catch (error) {
+      console.error('Failed to update password:', error);
+      showToast.error('Failed to update password', error instanceof Error ? error.message : undefined);
     }
   };
 

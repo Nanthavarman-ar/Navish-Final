@@ -1542,9 +1542,54 @@ app.delete('/make-server-cf230d31/models/:id', async (c) => {
     );
     
     return c.json({ message: 'Model deleted successfully' });
-    
+
   } catch (error) {
     console.error('Delete error:', error);
+    return c.json({ error: 'Internal server error' }, 500);
+  }
+});
+
+// Rename a model (Admin only) - ModelsPage's "Edit" action used to only update local
+// React state with no backend call, so the rename silently reverted on the next
+// refetch with nothing to explain why.
+app.patch('/make-server-cf230d31/models/:id', async (c) => {
+  const { error, user } = await verifyAdmin(c.req.raw);
+
+  if (error) {
+    return c.json({ error }, 401);
+  }
+
+  try {
+    const modelId = c.req.param('id');
+    const model = await kv.get(`model:${modelId}`);
+    if (!model) {
+      return c.json({ error: 'Model not found' }, 404);
+    }
+
+    const body = await c.req.json();
+    const newName = typeof body?.name === 'string' ? body.name.trim() : '';
+    if (!newName) {
+      return c.json({ error: 'Name is required' }, 400);
+    }
+
+    const previousName = model.name;
+    model.name = newName;
+    await kv.set(`model:${modelId}`, model);
+
+    await logAuditEvent(
+      user.id,
+      user.user_metadata?.username || 'admin',
+      'MODEL_RENAMED',
+      newName,
+      `Renamed model "${previousName}" to "${newName}"`,
+      c.req.header('cf-connecting-ip') || 'unknown',
+      c.req.header('user-agent') || 'unknown'
+    );
+
+    return c.json({ message: 'Model renamed', model });
+
+  } catch (error) {
+    console.error('Rename model error:', error);
     return c.json({ error: 'Internal server error' }, 500);
   }
 });
@@ -1665,6 +1710,56 @@ app.patch('/make-server-cf230d31/clients/:id/status', async (c) => {
 
   } catch (error) {
     console.error('Update client status error:', error);
+    return c.json({ error: 'Internal server error' }, 500);
+  }
+});
+
+// Reset a client's password (Admin only) - the "Password" button on the Clients page
+// used to just prompt() for a value and show a success toast with no backend call at
+// all, silently leaving the client's real password unchanged. Uses the same
+// service-role admin client already relied on above for ban/unban.
+app.patch('/make-server-cf230d31/clients/:id/password', async (c) => {
+  const { error, user } = await verifyAdmin(c.req.raw);
+
+  if (error) {
+    return c.json({ error }, 401);
+  }
+
+  try {
+    const clientId = c.req.param('id');
+    const body = await c.req.json();
+    const newPassword = typeof body?.password === 'string' ? body.password : '';
+    if (newPassword.length < 6) {
+      return c.json({ error: 'Password must be at least 6 characters' }, 400);
+    }
+
+    const client = await kv.get(`user:${clientId}`);
+    if (!client || client.role !== 'client') {
+      return c.json({ error: 'Client not found' }, 404);
+    }
+
+    const { error: updateError } = await supabase.auth.admin.updateUserById(clientId, {
+      password: newPassword
+    });
+    if (updateError) {
+      console.error('Password reset auth error:', updateError);
+      return c.json({ error: 'Failed to update password' }, 500);
+    }
+
+    await logAuditEvent(
+      user.id,
+      user.user_metadata?.username || 'admin',
+      'USER_PASSWORD_RESET',
+      client.username || client.name || clientId,
+      `Reset password for client account: ${client.username || client.email}`,
+      c.req.header('cf-connecting-ip') || 'unknown',
+      c.req.header('user-agent') || 'unknown'
+    );
+
+    return c.json({ message: 'Password updated' });
+
+  } catch (error) {
+    console.error('Reset client password error:', error);
     return c.json({ error: 'Internal server error' }, 500);
   }
 });

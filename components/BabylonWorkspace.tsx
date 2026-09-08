@@ -4,7 +4,7 @@ import { useSearchParams } from 'react-router-dom';
 import './BabylonWorkspace.css';
 
 // Core Babylon.js imports only (minimal for initial load)
-import { Engine, Scene, ArcRotateCamera, FreeCamera, UniversalCamera, HemisphericLight, DirectionalLight, Vector3, Vector2, Quaternion, Color3, Color4, Mesh, AbstractMesh, StandardMaterial, DefaultRenderingPipeline, SSAO2RenderingPipeline, SSRRenderingPipeline, TAARenderingPipeline, IblShadowsRenderPipeline, HighlightLayer, PBRMaterial, Material, ImageProcessingConfiguration, ColorCurves, PointerInfo, PickingInfo, Camera, PointerEventTypes, ParticleSystem, MeshBuilder, Texture, GizmoManager, GizmoAnchorPoint, ShadowGenerator, CascadedShadowGenerator, Ray, SimplificationType } from '@babylonjs/core';
+import { Engine, Scene, ArcRotateCamera, FreeCamera, UniversalCamera, HemisphericLight, DirectionalLight, Vector3, Vector2, Quaternion, Color3, Color4, Mesh, AbstractMesh, StandardMaterial, DefaultRenderingPipeline, SSAO2RenderingPipeline, SSRRenderingPipeline, TAARenderingPipeline, IblShadowsRenderPipeline, HighlightLayer, PBRMaterial, Material, ImageProcessingConfiguration, ColorCurves, PointerInfo, PickingInfo, Camera, PointerEventTypes, ParticleSystem, MeshBuilder, Texture, GizmoManager, GizmoAnchorPoint, ShadowGenerator, CascadedShadowGenerator, Ray, Axis } from '@babylonjs/core';
 import { WaterMaterial } from '@babylonjs/materials/water';
 import { PerlinNoiseProceduralTexture } from '@babylonjs/procedural-textures';
 
@@ -452,8 +452,12 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
     // the UI (see the site audit) - now reachable via the Tools & Features catalog's
     // "Open in Workspace" button (toolPageDefinitions.ts's workspaceFeature mapping),
     // same as every other feature flag.
-    showSunStudy: false,
     showErgonomicTesting: false,
+    // Was missing from this object entirely - toolPageDefinitions.ts's presenter-mode
+    // entry pointed "Open in Workspace" at 'showPresenterMode', but with no matching key
+    // here the bootstrap effect's hasOwnProperty guard rejected it, so the button
+    // silently did nothing. See PresenterMode's render site in uiSegments.tsx.
+    showPresenterMode: false,
     showAIStructuralAdvisor: false,
     showTopographyGenerator: false,
     showConstructionOverlay: false,
@@ -503,11 +507,21 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
   // /workspace?feature=showXxx - this is what actually turns that flag on. Only enables
   // a flag that's a real key in initialFeatureStates, so an arbitrary/malformed query
   // string can't toggle on something unexpected.
+  //
+  // Routed through handleFeatureToggle (not the raw enableFeature setter) - nearly every
+  // flag's actual visible effect (opening a panel via a CustomEvent dispatch, running a
+  // one-shot action like Export, initializing a manager) lives in handleFeatureToggle's
+  // per-id branches below, not just in the featureStates boolean itself. Landing here via
+  // "Open in Workspace" used to call enableFeature directly, which only flips the
+  // boolean - for any feature whose flag already defaulted to true (e.g. showExport) that
+  // was a true->true no-op, and for any feature whose real panel only opens via a
+  // CustomEvent (e.g. showVoiceAssistant) nothing ever became visible. Both looked like
+  // the button silently doing nothing.
   const [searchParams] = useSearchParams();
   useEffect(() => {
     const requestedFeature = searchParams.get('feature');
     if (requestedFeature && Object.prototype.hasOwnProperty.call(initialFeatureStates, requestedFeature)) {
-      enableFeature(requestedFeature);
+      handleFeatureToggle(requestedFeature, true);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
@@ -787,24 +801,31 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
           // touched) so left synchronous rather than chunked like the passes above.
           if (cancelled) return;
           enhanceImportedMaterials(newMeshes);
-          // Two more cheap, safe wins for decorative background clutter specifically
-          // (bush/rail/lamp-shaped meshes - see isDecorativeClutterMesh, the exact same
-          // check mergeDecorativeMeshes above already uses) - NOT applied to the rest of
-          // the model. Furniture, walls, and anything fixture/BIM-relevant are
-          // deliberately left untouched: isPickable=false would make a sofa/table
-          // unselectable in the Property Inspector/Material Editor, and Babylon's LOD
-          // swap mechanism (mesh.simplify() below) was never verified against how this
-          // app's Interactive Fixtures/Material Editor/BIM registration resolve a mesh by
-          // saved id - not something to risk on structural/interactive geometry without
-          // the kind of live-browser verification that isn't available here (the same
-          // judgment call already made this session about not blindly re-attempting KTX2).
-          // Decorative clutter has no such identity dependency anywhere in this app, so
-          // it's the one category safe to apply both to automatically:
-          // - isPickable=false removes it from every future raycast (Movement Check,
-          //   click-to-select, teleport-to-floor) for the rest of the session, for free.
-          // - A single LOD level swaps it for a cheaper ~40%-vertex version past a modest
-          //   distance - background bushes/fences/lamps don't need full detail once
-          //   they're not what the camera is looking at.
+          // A cheap, safe win for decorative background clutter specifically (bush/rail/
+          // lamp-shaped meshes - see isDecorativeClutterMesh, the exact same check
+          // mergeDecorativeMeshes above already uses) - NOT applied to the rest of the
+          // model. Furniture, walls, and anything fixture/BIM-relevant are deliberately
+          // left untouched: isPickable=false would make a sofa/table unselectable in the
+          // Property Inspector/Material Editor. Decorative clutter has no such identity
+          // dependency anywhere in this app, so it's the one category safe to apply this
+          // to automatically - removes it from every future raycast (Movement Check,
+          // click-to-select, teleport-to-floor) for the rest of the session, for free.
+          //
+          // This used to also queue each qualifying mesh onto Babylon's mesh.simplify()
+          // (a runtime LOD swap at distance 25). Removed: modelOptimizer.ts already runs
+          // real geometry simplification once, offline, at upload time (see its
+          // gltf-transform simplify() call) - queuing a SECOND, runtime decimation pass on
+          // top of that was pure duplicated cost, and Babylon's simplification queue
+          // processes one mesh at a time, so on an exterior model with hundreds of bushes/
+          // rails/lamps it kept the main thread busy for a long stretch AFTER the "Model
+          // loaded" toast (reported this session as ongoing lag right after load). Worse,
+          // each generated LOD mesh is a brand-new Mesh object Babylon creates and swaps in
+          // asynchronously and unpredictably relative to camera distance - it never got
+          // freezeWorldMatrix/doNotSyncBoundingInfo/culling-strategy/shadow-caster
+          // registration (all applied further below, before that swap had resolved) or
+          // isPickable=false, so it could pop to a visibly lower-detail mesh mid-session
+          // with no fade and silently become pickable/un-shadowed again right as it did -
+          // exactly the exterior "glitch" reported this session.
           if (cancelled) return;
           {
             let minV = newMeshes[0]?.getBoundingInfo().boundingBox.minimumWorld.clone() ?? Vector3.Zero();
@@ -816,13 +837,9 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
               maxV = Vector3.Maximize(maxV, bb.maximumWorld);
             }
             const modelDiagonal = maxV.subtract(minV).length();
-            const LOD_MIN_VERTICES = 300;
             await runChunked(newMeshes, (m) => {
               if (!isDecorativeClutterMesh(m, modelDiagonal)) return;
               m.isPickable = false;
-              if (m instanceof Mesh && m.getTotalVertices() > LOD_MIN_VERTICES) {
-                m.simplify([{ quality: 0.4, distance: 25 }], false, SimplificationType.QUADRATIC);
-              }
             });
           }
           // Register the real loaded meshes as a BIM model so Cost Estimator,
@@ -943,6 +960,7 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
           const engine = engineRef.current;
           const supportsOcclusion = !!engine?.getCaps().supportOcclusionQuery && (!deviceCapabilities?.mobile || isStandaloneXRHeadsetBrowser);
           const OCCLUSION_MIN_VERTICES = 24; // skip trivial hardware (a screw, a handle) - query overhead isn't worth it for those
+          occlusionMeshesRef.current = [];
           await runChunked(loadedModelMeshesRef.current, (m) => {
             const vertexCount = m.getTotalVertices();
             if (vertexCount === 0) return;
@@ -961,6 +979,7 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
               m.occlusionType = AbstractMesh.OCCLUSION_TYPE_OPTIMISTIC;
               m.occlusionQueryAlgorithmType = AbstractMesh.OCCLUSION_ALGORITHM_TYPE_CONSERVATIVE;
               m.occlusionRetryCount = 2;
+              occlusionMeshesRef.current.push(m);
             }
           });
         }, (event) => {
@@ -1533,6 +1552,10 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
   // and disposing these first, loading a new/different model just piled its
   // meshes on top of whatever was loaded before).
   const loadedModelMeshesRef = useRef<AbstractMesh[]>([]);
+  // Subset of loadedModelMeshesRef.current that occlusion queries were actually enabled on
+  // (see the occlusion-culling loop below) - tracked separately so the fast-rotation guard
+  // effect further down doesn't need to re-filter the whole mesh list every time it runs.
+  const occlusionMeshesRef = useRef<AbstractMesh[]>([]);
   // The full per-model record last loaded from (or about to be saved to) the backend -
   // holds every field of SceneEditsData (mesh edits, homeView, ...), not just whichever one
   // the caller currently cares about. Saves must always write this whole merged object back,
@@ -2537,11 +2560,18 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
           }
         });
 
-        // Handle window resize
+        // Handle window resize - batched onto the next animation frame so a browser firing
+        // many resize events in quick succession during a window drag-resize only ever
+        // costs one engine.resize() per painted frame, not one per event.
+        let resizeRaf: number | null = null;
         const handleResize = () => {
-          if (engine) {
-            engine.resize();
-          }
+          if (resizeRaf !== null) return;
+          resizeRaf = requestAnimationFrame(() => {
+            resizeRaf = null;
+            if (engine) {
+              engine.resize();
+            }
+          });
         };
         if (shouldAbort()) {
           console.warn("Babylon workspace initialization aborted during window setup");
@@ -2557,6 +2587,7 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
         // Store cleanup function references
         return () => {
           window.removeEventListener('resize', handleResize);
+          if (resizeRaf !== null) cancelAnimationFrame(resizeRaf);
         };
 
       } catch (error) {
@@ -4520,7 +4551,16 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
             }
             showToast.success(`Undone material changes to "${mat.name}"`);
           } else if (last.kind === 'materialSwap') {
+            // The material being replaced here (e.g. a WaterMaterial - see MaterialEditor.tsx's
+            // applyMaterialType) may itself own scene-level listeners (its render-list's
+            // onNewMeshAddedObservable hook) that only MaterialEditor knows how to tear down -
+            // it isn't mounted/listening for this undo any other way, so tell it which material
+            // just got abandoned rather than leaving that listener running forever.
+            const abandonedMaterial = last.mesh.material;
             last.mesh.material = last.previousMaterial;
+            if (abandonedMaterial) {
+              window.dispatchEvent(new CustomEvent('naviz:materialAbandoned', { detail: { material: abandonedMaterial } }));
+            }
             showToast.success('Undone material type change');
           } else if (last.kind === 'delete') {
             last.mesh.setEnabled(true);
@@ -4680,6 +4720,71 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
       if (boosted) engine.setHardwareScalingLevel(baseScalingLevel);
     };
   }, [featureStates.showVR, featureStates.showAR]);
+
+  // Guards the occlusion culling enabled on load (see OCCLUSION_TYPE_OPTIMISTIC above) against
+  // its one real failure mode: a mesh that goes out of the camera's frustum stops being tested
+  // altogether, so it keeps whatever isOccluded value its last query returned. Babylon's own
+  // _checkOcclusionQuery only falls back to "assume visible" while a query it already started is
+  // still pending - the moment a mesh re-enters the frustum with NO query in flight (exactly what
+  // happens after it was out of frustum for a while), it hands back that stale flag as-is for
+  // this frame. A mesh that was legitimately occluded once, then rotated out of view, then swung
+  // back into view by a fast turn, is therefore invisible for a frame or more even though nothing
+  // is actually hiding it anymore - reported this session as the screen going black on a quick VR
+  // head-turn and gradually popping back in. Bridges that gap with Babylon's own escape hatch
+  // (forceRenderingWhenOccluded, which makes render() ignore the occlusion result entirely) for
+  // the duration of a fast rotation and briefly after, so every tracked mesh keeps drawing until
+  // fresh queries have had a chance to catch up with where the camera actually ended up. Measures
+  // rotation off the camera's forward vector rather than position so this covers VR head-turns
+  // (no translation involved) the same as desktop orbit-drag, and runs regardless of
+  // showVR/showAR - the VR case is the one this exists for.
+  React.useEffect(() => {
+    const scene = sceneRef.current;
+    if (!scene) return;
+    if (occlusionMeshesRef.current.length === 0 && !engineRef.current?.getCaps().supportOcclusionQuery) return;
+
+    const FAST_TURN_THRESHOLD_RAD = 0.09; // ~5 degrees of forward-vector swing in a single frame
+    const SETTLE_GRACE_MS = 350; // keep forcing renders briefly after rotation drops back below threshold
+    const FORWARD_AXIS = new Vector3(0, 0, 1);
+
+    let lastForward: Vector3 | null = null;
+    let fastTurnActive = false;
+    let lastFastTurnAt = 0;
+
+    const setForced = (forced: boolean) => {
+      for (const m of occlusionMeshesRef.current) {
+        m.forceRenderingWhenOccluded = forced;
+        if (forced) m.isOccluded = false;
+      }
+    };
+
+    const observer = scene.onBeforeRenderObservable.add(() => {
+      if (occlusionMeshesRef.current.length === 0) return;
+      const camera = scene.activeCamera;
+      if (!camera) return;
+      const forward = camera.getDirection(FORWARD_AXIS);
+      if (lastForward) {
+        const cosAngle = Vector3.Dot(forward, lastForward);
+        const angle = Math.acos(Math.min(1, Math.max(-1, cosAngle)));
+        const now = performance.now();
+        if (angle >= FAST_TURN_THRESHOLD_RAD) {
+          lastFastTurnAt = now;
+          if (!fastTurnActive) {
+            fastTurnActive = true;
+            setForced(true);
+          }
+        } else if (fastTurnActive && now - lastFastTurnAt >= SETTLE_GRACE_MS) {
+          fastTurnActive = false;
+          setForced(false);
+        }
+      }
+      lastForward = forward;
+    });
+
+    return () => {
+      scene.onBeforeRenderObservable.remove(observer);
+      if (fastTurnActive) setForced(false);
+    };
+  }, []);
 
   // Voice command listener - toggle features from AI Voice Assistant
   React.useEffect(() => {
