@@ -55,6 +55,22 @@ function isMergeCandidate(mesh: AbstractMesh, modelDiagonal: number): mesh is Me
   return true;
 }
 
+// Exported for BabylonWorkspace.tsx's post-load LOD/isPickable pass - "is this mesh
+// decorative background clutter" is the SAME question this file already answers
+// carefully for merging (bush/rail/lamp-shaped, not structural, not something a fixture/
+// Material Editor/BIM tool would ever reference by identity), and reusing it there is
+// what makes LOD/isPickable safe to apply automatically: a NEGATIVE-only filter ("isn't
+// a wall") would also match furniture (a sofa, a table) that legitimately needs to stay
+// selectable in the Property Inspector/Material Editor - this POSITIVE match (must
+// actually look like bush/rail/lamp/etc clutter) is what a merged_decorative_* result
+// already passed to exist, and what this checks for anything that didn't get merged
+// (no material-sharing neighbor, or excluded by the size-ratio guard) but is still the
+// same kind of thing.
+export function isDecorativeClutterMesh(mesh: AbstractMesh, modelDiagonal: number): boolean {
+  if (/^merged_decorative_/i.test(mesh.name || '')) return true;
+  return isMergeCandidate(mesh, modelDiagonal);
+}
+
 /**
  * Merges small, repeated decorative meshes (bushes, hedges, railings, fences, rocks,
  * lamps - see DECORATIVE_NAME_PATTERN) sharing the same material into one mesh per

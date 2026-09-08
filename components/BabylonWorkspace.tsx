@@ -4,7 +4,7 @@ import { useSearchParams } from 'react-router-dom';
 import './BabylonWorkspace.css';
 
 // Core Babylon.js imports only (minimal for initial load)
-import { Engine, Scene, ArcRotateCamera, FreeCamera, UniversalCamera, HemisphericLight, DirectionalLight, Vector3, Vector2, Quaternion, Color3, Color4, Mesh, AbstractMesh, StandardMaterial, DefaultRenderingPipeline, SSAO2RenderingPipeline, SSRRenderingPipeline, TAARenderingPipeline, IblShadowsRenderPipeline, HighlightLayer, PBRMaterial, Material, ImageProcessingConfiguration, ColorCurves, PointerInfo, PickingInfo, Camera, PointerEventTypes, ParticleSystem, MeshBuilder, Texture, GizmoManager, GizmoAnchorPoint, ShadowGenerator, CascadedShadowGenerator, Ray } from '@babylonjs/core';
+import { Engine, Scene, ArcRotateCamera, FreeCamera, UniversalCamera, HemisphericLight, DirectionalLight, Vector3, Vector2, Quaternion, Color3, Color4, Mesh, AbstractMesh, StandardMaterial, DefaultRenderingPipeline, SSAO2RenderingPipeline, SSRRenderingPipeline, TAARenderingPipeline, IblShadowsRenderPipeline, HighlightLayer, PBRMaterial, Material, ImageProcessingConfiguration, ColorCurves, PointerInfo, PickingInfo, Camera, PointerEventTypes, ParticleSystem, MeshBuilder, Texture, GizmoManager, GizmoAnchorPoint, ShadowGenerator, CascadedShadowGenerator, Ray, SimplificationType } from '@babylonjs/core';
 import { WaterMaterial } from '@babylonjs/materials/water';
 import { PerlinNoiseProceduralTexture } from '@babylonjs/procedural-textures';
 
@@ -64,7 +64,7 @@ import { SustainabilityManager, SustainabilityReport } from './SustainabilityMan
 import { PresentationManager } from './PresentationManager';
 import { IoTManager } from './IoTManager';
 import { captureSceneEdits, applySceneEdits, mergeAndSaveSceneEdits, loadSceneEdits, type SceneEditsData } from './utils/sceneEditsPersistence';
-import { mergeDecorativeMeshes } from './utils/meshMerging';
+import { mergeDecorativeMeshes, isDecorativeClutterMesh } from './utils/meshMerging';
 import { runChunked } from './utils/runChunked';
 import { enhanceImportedMaterials } from './utils/materialEnhancement';
 
@@ -779,6 +779,44 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
           // touched) so left synchronous rather than chunked like the passes above.
           if (cancelled) return;
           enhanceImportedMaterials(newMeshes);
+          // Two more cheap, safe wins for decorative background clutter specifically
+          // (bush/rail/lamp-shaped meshes - see isDecorativeClutterMesh, the exact same
+          // check mergeDecorativeMeshes above already uses) - NOT applied to the rest of
+          // the model. Furniture, walls, and anything fixture/BIM-relevant are
+          // deliberately left untouched: isPickable=false would make a sofa/table
+          // unselectable in the Property Inspector/Material Editor, and Babylon's LOD
+          // swap mechanism (mesh.simplify() below) was never verified against how this
+          // app's Interactive Fixtures/Material Editor/BIM registration resolve a mesh by
+          // saved id - not something to risk on structural/interactive geometry without
+          // the kind of live-browser verification that isn't available here (the same
+          // judgment call already made this session about not blindly re-attempting KTX2).
+          // Decorative clutter has no such identity dependency anywhere in this app, so
+          // it's the one category safe to apply both to automatically:
+          // - isPickable=false removes it from every future raycast (Movement Check,
+          //   click-to-select, teleport-to-floor) for the rest of the session, for free.
+          // - A single LOD level swaps it for a cheaper ~40%-vertex version past a modest
+          //   distance - background bushes/fences/lamps don't need full detail once
+          //   they're not what the camera is looking at.
+          if (cancelled) return;
+          {
+            let minV = newMeshes[0]?.getBoundingInfo().boundingBox.minimumWorld.clone() ?? Vector3.Zero();
+            let maxV = newMeshes[0]?.getBoundingInfo().boundingBox.maximumWorld.clone() ?? Vector3.Zero();
+            for (const m of newMeshes) {
+              if (m.getTotalVertices() === 0) continue;
+              const bb = m.getBoundingInfo().boundingBox;
+              minV = Vector3.Minimize(minV, bb.minimumWorld);
+              maxV = Vector3.Maximize(maxV, bb.maximumWorld);
+            }
+            const modelDiagonal = maxV.subtract(minV).length();
+            const LOD_MIN_VERTICES = 300;
+            await runChunked(newMeshes, (m) => {
+              if (!isDecorativeClutterMesh(m, modelDiagonal)) return;
+              m.isPickable = false;
+              if (m instanceof Mesh && m.getTotalVertices() > LOD_MIN_VERTICES) {
+                m.simplify([{ quality: 0.4, distance: 25 }], false, SimplificationType.QUADRATIC);
+              }
+            });
+          }
           // Register the real loaded meshes as a BIM model so Cost Estimator,
           // ROI Calculator, Budget Tier Comparison, and Ergonomic/Energy/
           // Shadow Analysis (all of which look up bimManager.getModelById())
