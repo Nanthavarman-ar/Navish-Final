@@ -3792,7 +3792,30 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
         }
 
         // XR Features
+        // Snaps the desktop camera to the saved Home view (if one was ever Set) right
+        // before entering VR/AR - XRManager positions the XR session's starting X/Z from
+        // wherever this camera happens to be at that moment (see the comment in
+        // setupTeleportation there: "wherever the desktop camera... was already looking
+        // from - which is itself wherever Fit/the saved Home view left it"), but that's
+        // only true if nobody navigated since setting it. In practice the desktop camera
+        // usually HAS moved by the time someone clicks Enter VR (that's the point of
+        // looking around first) - reported as "set பண்ணின view mobile/VR-ல காமிக்கல"
+        // (the view I Set doesn't show on mobile/VR). Explicitly re-applying it here,
+        // rather than relying on "wherever it happens to be", is what actually delivers
+        // "VR starts at the same place I configured" regardless of what was looked at in
+        // between.
+        const applyHomeViewBeforeXR = () => {
+          const home = homeViewRef.current;
+          const arcCam = cameraRef.current;
+          if (home && arcCam && 'setTarget' in arcCam) {
+            (arcCam as ArcRotateCamera).setTarget(home.target);
+            (arcCam as ArcRotateCamera).alpha = home.alpha;
+            (arcCam as ArcRotateCamera).beta = home.beta;
+            (arcCam as ArcRotateCamera).radius = home.radius;
+          }
+        };
         if (id === 'showVR' && xrManagerRef.current) {
+          applyHomeViewBeforeXR();
           xrManagerRef.current.enterVR()
             .then((success) => {
               if (success) {
@@ -3827,6 +3850,7 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
             });
         }
         if (id === 'showAR' && xrManagerRef.current) {
+          applyHomeViewBeforeXR();
           xrManagerRef.current.enterAR()
             .then((success) => {
               if (success) {
