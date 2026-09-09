@@ -655,6 +655,22 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
     // loadedModelMeshesRef the same as a real model's meshes, so the existing
     // dispose-on-next-load cleanup above and every AR placement/scale/rotate control
     // already built for 3D models work on it completely unchanged.
+    // A genuine, final load failure (not a retry) for whichever model/floor-plan
+    // AppLayout's restore-last-model effect just handed off left it stuck in localStorage
+    // forever: every future refresh reads the same remembered id, refetches the same
+    // broken URL, and fails again, with no way out short of manually opening a different
+    // model or clearing browser storage by hand. AppLayout already clears this same key
+    // for the two failure cases it can detect itself (no modelUrl on record, or the id not
+    // found in /models at all) - this covers the remaining case, where the record and URL
+    // both look fine but the actual file fetch fails once a load is actually attempted.
+    const clearStaleRestoredModelId = () => {
+      try {
+        if (selectedModel?.id && localStorage.getItem(LAST_MODEL_ID_KEY) === String(selectedModel.id)) {
+          localStorage.removeItem(LAST_MODEL_ID_KEY);
+        }
+      } catch { /* localStorage unavailable - nothing to clean up */ }
+    };
+
     const loadPdfFloorPlan = async () => {
       try {
         const [pdfjsLib, workerUrlModule] = await Promise.all([
@@ -722,6 +738,7 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
         showToast.dismiss(toastId);
         showToast.error('Failed to load floor plan PDF', error instanceof Error ? error.message : undefined);
         setSelectedModel(null);
+        clearStaleRestoredModelId();
       }
     };
 
@@ -1016,6 +1033,7 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
             showToast.dismiss(toastId);
             showToast.error(`Failed to load model: ${msg}`, attempt > 0 ? `Gave up after ${attempt} retries` : undefined);
             setSelectedModel(null);
+            clearStaleRestoredModelId();
           }
         }, pluginExtension);
       });
