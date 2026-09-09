@@ -20,10 +20,6 @@ import { ArrowLeft, User } from 'lucide-react';
 const functionsBaseUrl = `https://${projectId}.supabase.co/functions/v1/make-server-cf230d31`;
 
 export function ClientLogin() {
-  const [name, setName] = useState('');
-  const [username, setUsername] = useState('');
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [forgotOpen, setForgotOpen] = useState(false);
   const [changeOpen, setChangeOpen] = useState(false);
@@ -39,13 +35,10 @@ export function ClientLogin() {
   const { login, loading } = useAuth();
   const navigate = useNavigate();
 
-  const hasIdentifier = Boolean(email.trim() || username.trim());
-
   // Accepts either an email or a plain username. A plain username is looked
   // up server-side (against Supabase user metadata) to find its email, since
   // Supabase Auth itself only signs in by email.
-  const resolveLoginEmail = async (): Promise<string | null> => {
-    const identifier = (email.trim() || username.trim());
+  const resolveLoginEmail = async (identifier: string): Promise<string | null> => {
     if (!identifier) return null;
     if (identifier.includes('@')) return identifier;
 
@@ -63,15 +56,28 @@ export function ClientLogin() {
     }
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setError(null);
-    const loginEmail = await resolveLoginEmail();
+    // Read straight from the submitted form rather than trusting React state - see
+    // Login.tsx's handleSubmit for why (browser autofill/password managers can set an
+    // input's value without firing the "input" event React's onChange listens for,
+    // leaving state empty while the field visibly shows a value - this was the exact
+    // "Access Workspace" button doing nothing on some devices/browsers, since the old
+    // hasIdentifier check derived from that same stale state kept it disabled).
+    const formData = new FormData(e.currentTarget);
+    const identifier = String(formData.get('email') || '').trim() || String(formData.get('username') || '').trim();
+    const submittedPassword = String(formData.get('password') || '');
+    if (!identifier) {
+      setError('Please enter your email or username.');
+      return;
+    }
+    const loginEmail = await resolveLoginEmail(identifier);
     if (!loginEmail) {
       setError('Unable to sign in. Verify your credentials.');
       return;
     }
-    const role = await login(loginEmail, password, 'client');
+    const role = await login(loginEmail, submittedPassword, 'client');
     if (role === 'client') {
       navigate('/client/models');
     } else {
@@ -148,23 +154,11 @@ export function ClientLogin() {
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <Label htmlFor="name" className="text-white">Name</Label>
-              <Input
-                id="name"
-                type="text"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                className="bg-slate-700 border-slate-600 text-white"
-                placeholder="Your display name (optional)"
-              />
-            </div>
-            <div>
               <Label htmlFor="username" className="text-white">Username</Label>
               <Input
                 id="username"
+                name="username"
                 type="text"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
                 className="bg-slate-700 border-slate-600 text-white"
                 placeholder="client1, client2, etc."
               />
@@ -173,9 +167,8 @@ export function ClientLogin() {
               <Label htmlFor="email" className="text-white">Email</Label>
               <Input
                 id="email"
+                name="email"
                 type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
                 className="bg-slate-700 border-slate-600 text-white"
                 placeholder="user@example.com"
               />
@@ -202,8 +195,7 @@ export function ClientLogin() {
               </div>
               <PasswordInput
                 id="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
+                name="password"
                 required
                 className="bg-slate-700 border-slate-600 text-white"
                 placeholder="Enter password"
@@ -212,7 +204,7 @@ export function ClientLogin() {
             <Button
               type="submit"
               className="w-full bg-purple-600 hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200"
-              disabled={loading || !hasIdentifier}
+              disabled={loading}
             >
               {loading ? (
                 <div className="flex items-center gap-2">

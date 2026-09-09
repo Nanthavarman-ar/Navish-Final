@@ -476,7 +476,7 @@ const FloodSimulation = React.lazy(() => import('../FloodSimulation'));
 const WindTunnelSimulation = React.lazy(() => import('../WindTunnelSimulation'));
 const LightingPresets = React.lazy(() => import('../LightingPresets'));
 const GraphicsQualityPanel = React.lazy(() => import('../GraphicsQualityPanel'));
-const SunStudyPanel = React.lazy(() => import('../SunStudyPanel'));
+const PresenterMode = React.lazy(() => import('../PresenterMode'));
 const ErgonomicTesting = React.lazy(() => import('../ErgonomicTesting'));
 const AIStructuralAdvisor = React.lazy(() => import('../AIStructuralAdvisor'));
 const TopographyGenerator = React.lazy(() => import('../TopographyGenerator'));
@@ -718,14 +718,19 @@ const CoreFeaturesSegment: React.FC<Pick<CustomPanelsSegmentProps, 'featureState
     {/* Previously-orphaned tools revived from the site audit - each already existed as a
         real component but had no featureStates flag or UI path to reach it. Reachable now
         via Tools & Features' "Open in Workspace" button (toolPageDefinitions.ts's
-        workspaceFeature mapping) same as every other feature. SunStudyPanel,
-        AIStructuralAdvisor, and AICoDesigner already render their own fixed-position
-        panel chrome (header + close button) - wrapping them again here would double them
-        up, so they're rendered directly. The rest render bare content meant to sit inside
-        a container, so they get the same floating-panel shell used elsewhere in this file. */}
-    {featureStates.showSunStudy && sceneRef.current && (
+        workspaceFeature mapping) same as every other feature. AIStructuralAdvisor and
+        AICoDesigner already render their own fixed-position panel chrome (header + close
+        button) - wrapping them again here would double them up, so they're rendered
+        directly. The rest render bare content meant to sit inside a container, so they get
+        the same floating-panel shell used elsewhere in this file.
+        (SunStudyPanel used to be mounted here on its own showSunStudy flag - removed: its
+        hour/month sun-position controls were merged into LightingPresets' Time Simulation
+        section, and the two, run side by side, independently overwrote the same scene
+        DirectionalLight's intensity/direction/color every render - see toolPageDefinitions.ts's
+        sunlight-analysis entry, now routed to showLighting instead.) */}
+    {featureStates.showPresenterMode && sceneRef.current && (
       <Suspense fallback={null}>
-        <SunStudyPanel scene={sceneRef.current} onClose={() => disableFeature('showSunStudy')} />
+        <PresenterMode scene={sceneRef.current} isActive />
       </Suspense>
     )}
     {featureStates.showAIStructuralAdvisor && sceneRef.current && (

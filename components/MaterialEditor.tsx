@@ -63,6 +63,16 @@ const MaterialEditor: React.FC<MaterialEditorProps> = ({ sceneManager, selectedM
   // the same gentle up-down wave motion (waveHeight, unchanged) without the strong
   // directional scroll.
   const [waterProps, setWaterProps] = useState({ waveHeight: 0.15, windForce: 1.5, waveSpeed: 6, colorBlendFactor: 0.3 });
+  // Each applyMaterialType('water') call registers a scene.onNewMeshAddedObservable
+  // listener (see below) to keep newly-placed meshes near the water in its reflection/
+  // refraction render list - tracked here, keyed by the WaterMaterial instance it belongs
+  // to, purely so it can be torn down again instead of running forever. Without this,
+  // applying Water more than once (or applying it and then undoing with Ctrl+Z) left the
+  // previous listener permanently attached, each one doing a bounding-box/distance check
+  // on every single future mesh added to the scene for an orphaned material nothing
+  // renders any more - the same class of "interior lag" this render-list-radius fix was
+  // originally written to solve, just moved from per-frame to per-new-mesh-event.
+  const waterObserversRef = useRef<Map<BABYLON.Material, BABYLON.Observer<BABYLON.AbstractMesh>>>(new Map());
 
   // Enscape-style emissive lighting: "Luminance"/"Radius" are calibrated separately
   // from the bloom-facing Emissive Intensity above, so a surface can look bright on
@@ -183,6 +193,32 @@ const MaterialEditor: React.FC<MaterialEditorProps> = ({ sceneManager, selectedM
     // fighting any edit in progress the instant the workspace re-rendered for any
     // unrelated reason. Keying on the actual stable Scene fixes that.
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sceneManager?.scene]);
+
+  // Cleans up water render-list listeners (see waterObserversRef above) for two cases
+  // this component's own applyMaterialType can't catch on its own: Ctrl+Z undoing a
+  // Water type-switch (BabylonWorkspace.tsx's undo handler owns that swap and dispatches
+  // this once it knows which material was just abandoned) and this editor unmounting
+  // entirely while one or more water listeners are still active.
+  useEffect(() => {
+    const scene = sceneManager?.scene as BABYLON.Scene | undefined;
+    if (!scene) return;
+    const handler = (e: Event) => {
+      const ev = e as CustomEvent<{ material?: BABYLON.Material }>;
+      const abandoned = ev.detail?.material;
+      if (!abandoned) return;
+      const observer = waterObserversRef.current.get(abandoned);
+      if (observer) {
+        scene.onNewMeshAddedObservable.remove(observer);
+        waterObserversRef.current.delete(abandoned);
+      }
+    };
+    window.addEventListener('naviz:materialAbandoned', handler);
+    return () => {
+      window.removeEventListener('naviz:materialAbandoned', handler);
+      waterObserversRef.current.forEach(observer => scene.onNewMeshAddedObservable.remove(observer));
+      waterObserversRef.current.clear();
+    };
   }, [sceneManager?.scene]);
 
   // Keep the editor in sync with whatever mesh is currently picked in the
@@ -483,16 +519,36 @@ const MaterialEditor: React.FC<MaterialEditorProps> = ({ sceneManager, selectedM
       // pool only ever plausibly reflects what's actually near it, not a shelf on the far
       // side of the building, so cap the render list to a generous radius around the mesh
       // water is being applied to instead of the entire scene.
-      const waterBounds = selectedMesh ? selectedMesh.getBoundingInfo().boundingBox : null;
-      const waterCenter = waterBounds ? waterBounds.centerWorld : null;
-      const reflectionRadius = waterBounds ? Math.max(waterBounds.extendSizeWorld.length() * 8, 15) : 0;
+      //
+      // Anchored on every mesh about to become water (everything currently sharing oldMat -
+      // see the applyMaterialToMesh loop below), not just selectedMesh alone - if two
+      // separate ponds in the model happen to share one imported material, each gets its
+      // own center/radius instead of both being centered on whichever one the user actually
+      // clicked (which could leave the other pond reflecting nothing, or the wrong area, if
+      // the two are far apart).
+      const waterTargetMeshes = scene.meshes.filter(m => resolveEditableMaterial(m) === oldMat && m.getTotalVertices() > 0);
+      const waterAnchors = (waterTargetMeshes.length > 0 ? waterTargetMeshes : (selectedMesh ? [selectedMesh] : [])).map(m => {
+        const bb = m.getBoundingInfo().boundingBox;
+        return { center: bb.centerWorld, radius: Math.max(bb.extendSizeWorld.length() * 8, 15) };
+      });
       const isNearWater = (m: BABYLON.AbstractMesh) => {
-        if (!waterCenter) return true; // no reference mesh yet - fall back to the old, safe behavior
+        if (waterAnchors.length === 0) return true; // no reference mesh yet - fall back to the old, safe behavior
         if (m.getTotalVertices() === 0) return false;
-        return BABYLON.Vector3.Distance(m.getBoundingInfo().boundingBox.centerWorld, waterCenter) <= reflectionRadius;
+        const center = m.getBoundingInfo().boundingBox.centerWorld;
+        return waterAnchors.some(a => BABYLON.Vector3.Distance(center, a.center) <= a.radius);
       };
       scene.meshes.forEach(m => { if (m.material !== water && isNearWater(m)) water.addToRenderList(m); });
-      scene.onNewMeshAddedObservable.add((m) => { if (m.material !== water && isNearWater(m)) water.addToRenderList(m); });
+      // Re-applying Water to a mesh/material that's already tracked here (clicking the
+      // preset again, or re-converting a material that was itself a previously-applied,
+      // undo-retained WaterMaterial) replaces its listener rather than adding a second one
+      // on top of it.
+      const previousObserver = waterObserversRef.current.get(oldMat);
+      if (previousObserver) {
+        scene.onNewMeshAddedObservable.remove(previousObserver);
+        waterObserversRef.current.delete(oldMat);
+      }
+      const newMeshObserver = scene.onNewMeshAddedObservable.add((m) => { if (m.material !== water && isNearWater(m)) water.addToRenderList(m); });
+      waterObserversRef.current.set(water, newMeshObserver);
 
       // See the comment in ensurePBRMaterial - the old material is kept alive (not
       // disposed) so Ctrl+Z can swap it back onto the mesh.

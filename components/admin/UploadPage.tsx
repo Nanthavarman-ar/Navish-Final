@@ -34,6 +34,11 @@ import {
 } from 'lucide-react';
 
 const functionsBaseUrl = `https://${projectId}.supabase.co/functions/v1/make-server-cf230d31`;
+// optimizeGlbFile (modelOptimizer.ts) always reports exactly 5 onStage calls, in a fixed
+// order (dedup, simplify, texture compress, geometry compress, finalize) - used to derive
+// a coarse progress percentage during the "processing" phase below, which otherwise sat
+// frozen at 0% for however long compression takes on a large/dense model.
+const OPTIMIZE_STAGE_COUNT = 5;
 
 interface UploadFile {
   file: File;
@@ -212,9 +217,12 @@ export function UploadPage() {
             f.id === uploadFile.id ? { ...f, status: 'processing', progress: 0, optimizations: [] } : f
           ));
           const optimized = await optimizeGlbFile(uploadFile.file, (stage) => {
-            setUploadFiles(prev => prev.map(f =>
-              f.id === uploadFile.id ? { ...f, optimizations: [...(f.optimizations || []), stage] } : f
-            ));
+            setUploadFiles(prev => prev.map(f => {
+              if (f.id !== uploadFile.id) return f;
+              const optimizations = [...(f.optimizations || []), stage];
+              const progress = Math.min(99, Math.round((optimizations.length / OPTIMIZE_STAGE_COUNT) * 100));
+              return { ...f, optimizations, progress };
+            }));
           });
           if (optimized) {
             fileToUpload = optimized.file;

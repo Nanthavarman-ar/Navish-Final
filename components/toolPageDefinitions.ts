@@ -103,7 +103,12 @@ export const toolPageDefinitions: Record<string, ToolPageDefinition> = {
     description: 'Study daylight penetration, solar heat gain, and shadow-sm casting.',
     focus: 'Slide time-of-day and date to observe seasonal sun paths.',
     status: 'Daylight toolset',
-    workspaceFeature: 'showSunStudy',
+    // Sun Study's own standalone panel was merged into the Lighting panel's Time
+    // Simulation section (see LightingPresets.tsx) - both used to independently drive the
+    // same scene DirectionalLight whenever both happened to be open at once, fighting
+    // over its intensity/direction/color every render. Routing here to the Lighting panel
+    // keeps this Tools entry working without that conflict.
+    workspaceFeature: 'showLighting',
     highlights: [
       'Animate sun path for any latitude',
       'Highlight critical shading zones',

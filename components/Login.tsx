@@ -20,7 +20,6 @@ import { ChevronLeft } from 'lucide-react';
 const functionsBaseUrl = `https://${projectId}.supabase.co/functions/v1/make-server-cf230d31`;
 
 export function Login() {
-  const [name, setName] = useState('');
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -219,17 +218,6 @@ export function Login() {
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <Label htmlFor="name" className="text-white">Name</Label>
-              <Input
-                id="name"
-                type="text"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                className="bg-slate-700 border-slate-600 text-white"
-                placeholder="Your display name (optional)"
-              />
-            </div>
             <div>
               <Label htmlFor="username" className="text-white">Username</Label>
               <Input

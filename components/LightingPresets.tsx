@@ -169,6 +169,15 @@ const LightingPresets: React.FC<LightingPresetsProps> = ({ scene, onPresetChange
     light: BABYLON.Light;
   }
   const [interiorLights, setInteriorLights] = useState<InteriorLight[]>([]);
+  // Mirrors interiorLights for the unmount-cleanup effect below, which has an empty dep
+  // array (runs its cleanup exactly once, on unmount) and would otherwise only ever see
+  // the interiorLights value from the render it was first created on - i.e. always empty,
+  // since no lights exist yet at mount. Without this, any PointLight/SpotLight added via
+  // "Add Lights" leaked (stayed in the scene, still rendering/costing shadow map or
+  // lighting work) if this panel's own component ever unmounted while some were still
+  // present - the only cleanup path was the per-item ✕ button.
+  const interiorLightsRef = useRef<InteriorLight[]>([]);
+  useEffect(() => { interiorLightsRef.current = interiorLights; }, [interiorLights]);
   const [materialAnalysis, setMaterialAnalysis] = useState<MaterialAnalysis[]>([]);
   const [aiOptimizing, setAiOptimizing] = useState(false);
 
@@ -250,7 +259,7 @@ const LightingPresets: React.FC<LightingPresetsProps> = ({ scene, onPresetChange
   // scene.environmentTexture at all - see BIMManager.ts) may need more light than that
   // default gives them, so these sliders stay the manual override for that.
   const applyCustomExterior = useCallback(() => {
-    if (realWorldTimeMode) return;
+    if (realWorldTimeMode || timeSimEnabled) return;
     const dir = getDirLight();
     const hemi = getHemiLight();
     if (dir) {
@@ -259,9 +268,14 @@ const LightingPresets: React.FC<LightingPresetsProps> = ({ scene, onPresetChange
       dir.direction = new BABYLON.Vector3(Math.sin(rad), -Math.cos(rad), 0);
     }
     if (hemi) hemi.intensity = ambientIntensity;
-  }, [customIntensity, customAngle, ambientIntensity, realWorldTimeMode, scene]);
+  }, [customIntensity, customAngle, ambientIntensity, realWorldTimeMode, timeSimEnabled, scene]);
 
-  useEffect(() => { applyCustomExterior(); }, [customIntensity, customAngle, ambientIntensity]);
+  // Also re-fires (via applyCustomExterior's own identity above, which now depends on
+  // realWorldTimeMode/timeSimEnabled too) whenever either mode is switched OFF - previously
+  // this only ran off customIntensity/customAngle/ambientIntensity, so turning Real World
+  // Time or Time Simulation back off left the sun wherever that mode had last placed it
+  // until a slider was dragged by hand, reading as "lighting doesn't behave correctly".
+  useEffect(() => { applyCustomExterior(); }, [applyCustomExterior]);
   useEffect(() => { if (scene) scene.imageProcessingConfiguration.exposure = exposure; }, [scene, exposure]);
 
   // Every lighting choice here persists to localStorage (see the effect below) and gets
@@ -614,6 +628,7 @@ const LightingPresets: React.FC<LightingPresetsProps> = ({ scene, onPresetChange
       skyMaterialRef.current?.dispose();
       hdriTextureRef.current?.dispose();
       if (hdriBlobUrlRef.current) URL.revokeObjectURL(hdriBlobUrlRef.current);
+      interiorLightsRef.current.forEach(item => item.light.dispose());
     };
   }, []);
 

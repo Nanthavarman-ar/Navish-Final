@@ -110,26 +110,42 @@ export function ModelsPage() {
     }
   };
 
-  const handleEditModel = (modelId: string | number) => {
+  const handleEditModel = async (modelId: string | number) => {
     const model = models.find(m => m.id.toString() === modelId.toString());
     const newName = prompt('Enter new model name:', model?.name);
-    if (newName && newName.trim()) {
-      setModels(prev => prev.map(m => 
-        m.id.toString() === modelId.toString() 
-          ? { ...m, name: newName.trim() }
+    if (!newName || !newName.trim()) return;
+    const trimmed = newName.trim();
+    try {
+      // This used to only update local React state with no backend call - the rename
+      // "took" visually but silently reverted on the next refetch (e.g. right after
+      // deleting a different model on the same page), with nothing to explain why.
+      await apiCall(`/models/${modelId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ name: trimmed }),
+      });
+      setModels(prev => prev.map(m =>
+        m.id.toString() === modelId.toString()
+          ? { ...m, name: trimmed }
           : m
       ));
-      console.log('Model renamed successfully');
+      showToast.success('Model renamed');
+    } catch (error) {
+      console.error('Failed to rename model:', error);
+      showToast.error('Failed to rename model', 'The name on the server is unchanged - please try again');
     }
   };
 
-  const [assignDialog, setAssignDialog] = useState<{ open: boolean; modelId: string | number | null; searchTerm: string; selectedClients: string[] }>({ open: false, modelId: null, searchTerm: '', selectedClients: [] });
+  const [assignDialog, setAssignDialog] = useState<{ open: boolean; modelIds: (string | number)[]; searchTerm: string; selectedClients: string[] }>({ open: false, modelIds: [], searchTerm: '', selectedClients: [] });
 
   const [availableClients, setAvailableClients] = useState<Array<{ id: string; name: string; email: string; company: string }>>([]);
   const [isLoadingClients, setIsLoadingClients] = useState(false);
 
-  const handleAssignModel = (modelId: string | number) => {
-    setAssignDialog({ open: true, modelId, searchTerm: '', selectedClients: [] });
+  // Accepts one or more model ids so the bulk "Assign to Users" action can open a
+  // single dialog covering every selected model, instead of firing handleAssignModel
+  // once per model - which used to open (and silently replace, via React batching)
+  // one dialog per call, so only the LAST selected model actually ended up assigned.
+  const handleAssignModel = (modelIds: string | number | (string | number)[]) => {
+    setAssignDialog({ open: true, modelIds: Array.isArray(modelIds) ? modelIds : [modelIds], searchTerm: '', selectedClients: [] });
     setIsLoadingClients(true);
     apiCall('/clients')
       .then((data) => {
@@ -148,27 +164,39 @@ export function ModelsPage() {
   };
 
   const confirmAssignment = async () => {
-    const { modelId, selectedClients } = assignDialog;
-    if (!modelId) return;
-    const model = models.find(m => m.id.toString() === modelId.toString());
-    // Assignment is a full replace of the client list for this model (matching what
-    // the backend does), so merge with whoever was already assigned rather than
-    // only ever adding - otherwise there'd be no way to remove access via this dialog.
-    const newClients = [...new Set([...(model?.assignedClients || []), ...selectedClients])];
-    try {
+    const { modelIds, selectedClients } = assignDialog;
+    if (modelIds.length === 0) return;
+    // Assignment is a full replace of the client list for each model (matching what
+    // the backend does), so merge with whoever was already assigned per-model rather
+    // than only ever adding - otherwise there'd be no way to remove access via this
+    // dialog. Each model keeps its own existing list; only the newly selected clients
+    // are added to all of them.
+    const results = await Promise.allSettled(modelIds.map(async (modelId) => {
+      const model = models.find(m => m.id.toString() === modelId.toString());
+      const newClients = [...new Set([...(model?.assignedClients || []), ...selectedClients])];
       await apiCall('/assign-model', {
         method: 'POST',
         body: JSON.stringify({ modelId, clientUsernames: newClients }),
       });
+      return { modelId, newClients };
+    }));
+
+    const succeeded = results.filter((r): r is PromiseFulfilledResult<{ modelId: string | number; newClients: string[] }> => r.status === 'fulfilled');
+    if (succeeded.length > 0) {
+      const byModelId = new Map(succeeded.map(r => [r.value.modelId.toString(), r.value.newClients]));
       setModels(prev => prev.map(m =>
-        m.id.toString() === modelId.toString() ? { ...m, assignedClients: newClients } : m
+        byModelId.has(m.id.toString()) ? { ...m, assignedClients: byModelId.get(m.id.toString()) } : m
       ));
-      showToast.success(`Model assigned to ${selectedClients.length} user${selectedClients.length !== 1 ? 's' : ''}`);
-    } catch (error) {
-      console.error('Failed to save model assignment:', error);
-      showToast.error('Failed to update client access');
     }
-    setAssignDialog({ open: false, modelId: null, searchTerm: '', selectedClients: [] });
+
+    const failed = results.length - succeeded.length;
+    if (failed === 0) {
+      showToast.success(`${modelIds.length} model${modelIds.length !== 1 ? 's' : ''} assigned to ${selectedClients.length} user${selectedClients.length !== 1 ? 's' : ''}`);
+    } else {
+      console.error('Failed to save model assignment for some models:', results.filter(r => r.status === 'rejected'));
+      showToast.error(`Assigned ${succeeded.length} of ${modelIds.length} models`, `${failed} failed to update on the server`);
+    }
+    setAssignDialog({ open: false, modelIds: [], searchTerm: '', selectedClients: [] });
   };
 
   const filteredClients = availableClients.filter(client =>
@@ -194,10 +222,8 @@ export function ModelsPage() {
   };
 
   const handleBulkAssign = () => {
-    const clientCount = selectedModels.length;
-    selectedModels.forEach(modelId => handleAssignModel(modelId));
+    handleAssignModel(selectedModels);
     setSelectedModels([]);
-    console.log(`${clientCount} models assigned to users`);
   };
 
   const handleBulkDelete = async () => {
@@ -554,9 +580,9 @@ export function ModelsPage() {
       <Dialog open={assignDialog.open} onOpenChange={(open) => setAssignDialog(prev => ({ ...prev, open }))}>
         <DialogContent className="bg-slate-800 border-slate-700/80 text-white max-w-md">
           <DialogHeader>
-            <DialogTitle>Assign Model to Users</DialogTitle>
+            <DialogTitle>Assign {assignDialog.modelIds.length > 1 ? `${assignDialog.modelIds.length} Models` : 'Model'} to Users</DialogTitle>
             <DialogDescription>
-              Search and select users to assign this model to.
+              Search and select users to assign {assignDialog.modelIds.length > 1 ? 'these models' : 'this model'} to.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
@@ -584,8 +610,14 @@ export function ModelsPage() {
                 </div>
               )}
               {!isLoadingClients && filteredClients.map((client) => {
-                const currentModel = models.find(m => m.id.toString() === assignDialog.modelId?.toString());
-                const isAlreadyAssigned = currentModel?.assignedClients.includes(client.id);
+                // "Already assigned" only has a single unambiguous meaning when assigning
+                // exactly one model - for a bulk multi-model assign it's ambiguous (a
+                // client could already have access to some of the selected models but not
+                // others), so the checkbox is only pre-locked in the single-model case.
+                const currentModel = assignDialog.modelIds.length === 1
+                  ? models.find(m => m.id.toString() === assignDialog.modelIds[0]?.toString())
+                  : undefined;
+                const isAlreadyAssigned = currentModel?.assignedClients.includes(client.id) ?? false;
                 const isSelected = assignDialog.selectedClients.includes(client.id);
                 
                 return (
@@ -635,9 +667,9 @@ export function ModelsPage() {
               >
                 Assign to {assignDialog.selectedClients.length} User{assignDialog.selectedClients.length !== 1 ? 's' : ''}
               </Button>
-              <Button 
-                variant="outline" 
-                onClick={() => setAssignDialog({ open: false, modelId: null, searchTerm: '', selectedClients: [] })}
+              <Button
+                variant="outline"
+                onClick={() => setAssignDialog({ open: false, modelIds: [], searchTerm: '', selectedClients: [] })}
                 className="border-slate-600"
               >
                 Cancel
