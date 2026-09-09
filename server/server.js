@@ -3,6 +3,7 @@
 // Usage: node server.js
 const express = require('express');
 const http = require('http');
+const crypto = require('crypto');
 const { Server } = require('socket.io');
 const { helmet, csrfProtection, sanitizeInput } = require('./middleware/security');
 const app = express();
@@ -12,6 +13,91 @@ const server = http.createServer(app);
 app.use(helmet);
 app.use(express.json({ limit: '10mb' }));
 app.use(sanitizeInput);
+
+// /optimize-ktx2 (registered below) is deliberately mounted BEFORE csrfProtection, not
+// after: csrfProtection (middleware/security.js) requires req.session.csrfToken to match a
+// submitted token, but this Express app never wires up express-session at all (no
+// app.use(session(...)) anywhere in this file) - req.session is always undefined, so
+// csrfProtection would reject every POST/PUT/PATCH/DELETE unconditionally, including this
+// one, before it ever reaches a route handler. CSRF protection itself is also the wrong
+// concept for this route regardless: CSRF exploits rely on a browser automatically
+// attaching cookies/session state to a cross-site request - a server-to-server call
+// authenticated by an explicit shared-secret header (see requireInternalSecret below) has
+// no such attack surface. Every other route in this file (currently none - Socket.io
+// handles all existing traffic, not Express HTTP routes) still goes through
+// csrfProtection as before.
+const KTX2_OPTIMIZE_PATH = '/optimize-ktx2';
+
+// Constant-time comparison so a mistyped/attacker-guessed secret can't be brute-forced via
+// response-time differences on a byte-by-byte match.
+function requireInternalSecret(req, res, next) {
+  const expected = process.env.INTERNAL_WORKER_SECRET;
+  const provided = req.headers['x-internal-secret'];
+  if (!expected || typeof provided !== 'string') {
+    return res.status(401).json({ error: 'Missing internal secret' });
+  }
+  const expectedBuf = Buffer.from(expected);
+  const providedBuf = Buffer.from(provided);
+  const valid = expectedBuf.length === providedBuf.length && crypto.timingSafeEqual(expectedBuf, providedBuf);
+  if (!valid) {
+    return res.status(401).json({ error: 'Invalid internal secret' });
+  }
+  next();
+}
+
+app.post(KTX2_OPTIMIZE_PATH, requireInternalSecret, (req, res) => {
+  const { modelId, r2Key } = req.body || {};
+  if (!modelId || !r2Key) {
+    return res.status(400).json({ error: 'Missing modelId or r2Key' });
+  }
+
+  // Respond immediately - Railway runs this as a long-lived container (not a
+  // FaaS/serverless function), so continuing async work after the response is sent is
+  // normal and safe here, unlike Vercel/Lambda where the runtime freezes post-response.
+  // The actual encode (native `ktx` binary, real CPU work - see ktx2Optimize.mjs) can take
+  // well past what the Edge Function's own request (server/index.tsx's
+  // queue-ktx2-optimize) or Railway's HTTP proxy would tolerate as a synchronous response.
+  res.status(202).json({ message: 'Queued' });
+
+  runKtx2OptimizeJobAndReportBack(modelId, r2Key).catch((error) => {
+    console.error(`[ktx2] Unhandled error for model ${modelId}:`, error);
+  });
+});
+
+async function runKtx2OptimizeJobAndReportBack(modelId, r2Key) {
+  try {
+    // Dynamic import: @gltf-transform/* and sharp are ESM-only, this file is CommonJS -
+    // see ktx2Optimize.mjs's own top comment.
+    const { runKtx2OptimizeJob } = await import('./utils/ktx2Optimize.mjs');
+    const { ktx2Key, totalTextures, convertedTextures } = await runKtx2OptimizeJob({ r2Key });
+    console.log(`[ktx2] Model ${modelId}: converted ${convertedTextures}/${totalTextures} textures -> ${ktx2Key}`);
+    await reportKtx2Status(modelId, { status: 'ready', ktx2Key });
+  } catch (error) {
+    console.error(`[ktx2] Failed for model ${modelId}:`, error);
+    await reportKtx2Status(modelId, { status: 'failed' }).catch(() => {});
+  }
+}
+
+async function reportKtx2Status(modelId, body) {
+  const functionsBaseUrl = process.env.SUPABASE_FUNCTIONS_BASE_URL;
+  const internalSecret = process.env.INTERNAL_WORKER_SECRET;
+  if (!functionsBaseUrl || !internalSecret) {
+    throw new Error('SUPABASE_FUNCTIONS_BASE_URL or INTERNAL_WORKER_SECRET is not set - cannot report KTX2 status back');
+  }
+  const response = await fetch(`${functionsBaseUrl}/models/${modelId}/ktx2-ready`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-internal-secret': internalSecret,
+    },
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) {
+    const text = await response.text().catch(() => '');
+    throw new Error(`ktx2-ready callback failed (${response.status}): ${text}`);
+  }
+}
+
 app.use(csrfProtection);
 
 // socket.io for signalling

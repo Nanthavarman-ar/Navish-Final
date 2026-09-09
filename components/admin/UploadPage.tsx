@@ -14,7 +14,7 @@ import { Checkbox } from '../ui/checkbox';
 import { useApi, apiCall } from '../../hooks/useApi';
 import { projectId } from '../../supabase/client';
 import { showToast } from '../utils/toast';
-import { finalizeModelUpload } from '../utils/directModelUpload';
+import { finalizeModelUpload, queueKtx2Optimize } from '../utils/directModelUpload';
 import { uploadFileToR2 } from '../utils/r2ModelUpload';
 import { optimizeGlbFile } from '../utils/modelOptimizer';
 import { useApp } from '../../contexts/AppContext';
@@ -270,6 +270,16 @@ export function UploadPage() {
             tags: modelTags,
             assignedClients: selectedClients
           });
+
+          // Best-effort, fire-and-forget: upgrades the just-uploaded WebP textures to
+          // KTX2 (real GPU-VRAM savings, not just download size) via the server-side
+          // native encoder - see queueKtx2Optimize's own comment. Deliberately not
+          // awaited: the upload is already complete and correct on WebP at this point,
+          // this queues a later quality upgrade rather than gating "upload finished" on
+          // it. Only glb/gltf models have real textures worth re-encoding.
+          if (canOptimize && result?.model?.id) {
+            void queueKtx2Optimize(functionsBaseUrl, result.model.id, r2Key);
+          }
 
           const savedPct = fileToUpload !== uploadFile.file && uploadFile.file.size > 0
             ? Math.round((1 - fileToUpload.size / uploadFile.file.size) * 100)

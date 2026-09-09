@@ -77,7 +77,10 @@ export function ModelsPage() {
     // applied in AppLayout.tsx/ClientDashboard.tsx for their own model-open paths.
     setSelectedModel({
       ...model,
-      modelUrl: model?.modelUrl || model?.signedUrl || model?.url || model?.fileUrl || null,
+      // Prefers ktx2Url once the server-side re-encode is ready - see the matching
+      // comment on AppLayout.tsx's withModelUrl.
+      modelUrl: (model?.ktx2Status === 'ready' && model?.ktx2Url)
+        || model?.modelUrl || model?.signedUrl || model?.url || model?.fileUrl || null,
     });
     navigate('/workspace');
   };

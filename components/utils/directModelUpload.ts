@@ -46,3 +46,32 @@ export async function finalizeModelUpload(functionsBaseUrl: string, params: Fina
   }
   return data;
 }
+
+/**
+ * Fires the (best-effort, async) server-side KTX2 re-encode for a just-finalized model.
+ * The Edge Function queues it and returns immediately - the actual encode happens later,
+ * out of band, on the Node/Railway worker (see server/server.js's /optimize-ktx2 and
+ * modelOptimizer.ts's own comment on why KTX2 needs a native encoder, not a browser one).
+ * Deliberately never thrown to the caller: this is a quality upgrade on top of the WebP
+ * version that already uploaded successfully, never a reason the upload itself should read
+ * as failed. Callers should fire this without awaiting it inline with the rest of the
+ * upload flow.
+ */
+export async function queueKtx2Optimize(functionsBaseUrl: string, modelId: string, r2Key: string): Promise<void> {
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    const accessToken = session?.access_token;
+    if (!accessToken) return;
+
+    await fetch(`${functionsBaseUrl}/queue-ktx2-optimize`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${accessToken}`
+      },
+      body: JSON.stringify({ modelId, r2Key })
+    });
+  } catch (error) {
+    console.warn('Failed to queue KTX2 optimization (non-fatal - model still works on WebP):', error);
+  }
+}

@@ -46,9 +46,15 @@ const RouteLoadingFallback = () => (
 // The workspace viewer (BabylonWorkspace) reads selectedModel.modelUrl, but the /models
 // API returns the file location as signedUrl - passing the raw record through without this
 // mapping leaves modelUrl undefined and the workspace has nothing to load.
+//
+// Prefers ktx2Url once the server-side KTX2 re-encode (queued after upload - see
+// queueKtx2Optimize in components/utils/directModelUpload.ts) has actually finished
+// (ktx2Status === 'ready') - the original signedUrl (WebP) keeps serving unconditionally
+// until then, so a pending/failed re-encode never blocks or breaks loading the model.
 const withModelUrl = (model: any) => ({
   ...model,
-  modelUrl: model?.modelUrl || model?.signedUrl || model?.url || model?.fileUrl || null,
+  modelUrl: (model?.ktx2Status === 'ready' && model?.ktx2Url)
+    || model?.modelUrl || model?.signedUrl || model?.url || model?.fileUrl || null,
 });
 
 const toolPageSlugs = Object.keys(toolPageDefinitions) as ToolPageId[];

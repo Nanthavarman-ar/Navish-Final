@@ -19,11 +19,18 @@ app.use('*', async (c, next) => {
   const hasBearerToken = Boolean(c.req.header('authorization'));
   const isSignupPath = c.req.path === '/make-server-cf230d31/signup';
   const isResolveLoginPath = c.req.path === '/make-server-cf230d31/resolve-login';
+  // Called by the Node/Railway KTX2 worker (server/server.js), not a browser - it has no
+  // Supabase session/bearer token to carry, so it needs the same CSRF exemption
+  // billing/webhook already gets for the same reason (a real server-to-server call, not a
+  // cross-site browser request CSRF protection is meant to guard against). Auth for this
+  // path is the x-internal-secret check inside the handler itself, not CSRF/session state.
+  const isKtx2ReadyCallback = /^\/make-server-cf230d31\/models\/[^/]+\/ktx2-ready$/.test(c.req.path);
   if (
     method === 'OPTIONS' ||
     hasBearerToken ||
     isSignupPath ||
     isResolveLoginPath ||
+    isKtx2ReadyCallback ||
     c.req.path === '/make-server-cf230d31/billing/webhook'
   ) {
     await next()
@@ -72,6 +79,25 @@ async function verifyUser(request: Request) {
   }
   
   return { error: null, user };
+}
+
+// Verifies a request came from the Node/Railway KTX2 worker (server/server.js), not a
+// browser - a shared secret (never exposed to any client), not a Supabase user token, since
+// there's no logged-in user on that side of the call. Deno's crypto.subtle doesn't have a
+// direct timingSafeEqual equivalent, so this does the constant-time comparison itself
+// (XOR every byte, OR the results together, compare once at the end) rather than an early-
+// return loop, for the same reason server.js's own Node-side check uses
+// crypto.timingSafeEqual - a byte-by-byte early exit leaks how many leading bytes matched
+// via response timing.
+function verifyInternalSecret(request: Request): boolean {
+  const expected = Deno.env.get('INTERNAL_WORKER_SECRET');
+  const provided = request.headers.get('x-internal-secret');
+  if (!expected || !provided || expected.length !== provided.length) return false;
+  let diff = 0;
+  for (let i = 0; i < expected.length; i++) {
+    diff |= expected.charCodeAt(i) ^ provided.charCodeAt(i);
+  }
+  return diff === 0;
 }
 
 // Helper function to sanitize input
@@ -1590,6 +1616,99 @@ app.patch('/make-server-cf230d31/models/:id', async (c) => {
 
   } catch (error) {
     console.error('Rename model error:', error);
+    return c.json({ error: 'Internal server error' }, 500);
+  }
+});
+
+// Queues the (best-effort, async) server-side KTX2 re-encode for an already-uploaded
+// model - see components/utils/directModelUpload.ts's queueKtx2Optimize (the caller,
+// right after finalize-model-upload succeeds) and server.js's /optimize-ktx2 (the actual
+// worker) for the rest of this flow. This endpoint only ever kicks the job off and returns
+// immediately - it does not wait for the encode itself, which can take real time (a native
+// encoder, but still genuine CPU work) and would otherwise risk this Edge Function's own
+// execution limit.
+app.post('/make-server-cf230d31/queue-ktx2-optimize', async (c) => {
+  const { error } = await verifyAdmin(c.req.raw);
+  if (error) {
+    return c.json({ error }, 401);
+  }
+
+  try {
+    const { modelId, r2Key } = await c.req.json();
+    if (!modelId || !r2Key) {
+      return c.json({ error: 'Missing modelId or r2Key' }, 400);
+    }
+
+    const model = await kv.get(`model:${modelId}`);
+    if (!model) {
+      return c.json({ error: 'Model not found' }, 404);
+    }
+
+    model.ktx2Status = 'pending';
+    await kv.set(`model:${modelId}`, model);
+
+    // Fire-and-forget from this endpoint's own perspective (the caller/browser doesn't
+    // wait on this either - see queueKtx2Optimize's own comment), but DOES await the
+    // worker's initial 202 ack here, since that's fast (server.js responds before doing
+    // any real work) and confirms the job was actually accepted rather than silently
+    // lost to a network error this Edge Function would otherwise never learn about.
+    const workerUrl = getEnvOrThrow('KTX2_WORKER_URL').replace(/\/+$/, '');
+    const internalSecret = getEnvOrThrow('INTERNAL_WORKER_SECRET');
+    try {
+      const workerResponse = await fetch(`${workerUrl}/optimize-ktx2`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-internal-secret': internalSecret,
+        },
+        body: JSON.stringify({ modelId, r2Key }),
+      });
+      if (!workerResponse.ok) {
+        throw new Error(`Worker responded ${workerResponse.status}`);
+      }
+    } catch (workerError) {
+      console.error('Failed to reach KTX2 worker:', workerError);
+      model.ktx2Status = 'failed';
+      await kv.set(`model:${modelId}`, model);
+      return c.json({ error: 'Could not reach optimization worker' }, 502);
+    }
+
+    return c.json({ message: 'KTX2 optimization queued' });
+  } catch (error) {
+    console.error('Queue KTX2 optimize error:', error);
+    return c.json({ error: 'Internal server error' }, 500);
+  }
+});
+
+// Callback from the Node/Railway KTX2 worker once a re-encode finishes (or fails) - see
+// queue-ktx2-optimize above for the trigger side. Internal-secret-gated, not a user
+// session (see verifyInternalSecret's own comment) - this is a server-to-server call with
+// no logged-in user behind it. Never touches the model's existing signedUrl/filePath, so
+// the original WebP version keeps serving unconditionally regardless of this outcome.
+app.post('/make-server-cf230d31/models/:id/ktx2-ready', async (c) => {
+  if (!verifyInternalSecret(c.req.raw)) {
+    return c.json({ error: 'Unauthorized' }, 401);
+  }
+
+  try {
+    const modelId = c.req.param('id');
+    const model = await kv.get(`model:${modelId}`);
+    if (!model) {
+      return c.json({ error: 'Model not found' }, 404);
+    }
+
+    const { status, ktx2Key } = await c.req.json();
+    if (status === 'ready' && ktx2Key) {
+      model.ktx2Status = 'ready';
+      model.ktx2Url = `${getR2PublicUrlBase()}/${ktx2Key}`;
+    } else {
+      model.ktx2Status = 'failed';
+    }
+    await kv.set(`model:${modelId}`, model);
+
+    return c.json({ message: 'KTX2 status updated' });
+  } catch (error) {
+    console.error('KTX2 ready callback error:', error);
     return c.json({ error: 'Internal server error' }, 500);
   }
 });
