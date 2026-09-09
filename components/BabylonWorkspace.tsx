@@ -1609,6 +1609,20 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
       (newCamera as ArcRotateCamera).wheelDeltaPercentage = CAMERA_WHEEL_DELTA_NORMAL;
     }
 
+    // Babylon's default minZ (near clip plane) is 1 world unit - for an architectural
+    // walkthrough in meters, that's most of a step away, so Walk/Orbit/Dollhouse could all
+    // get close enough to a wall/door/window for it to clip straight through (visibly
+    // disappearing) well before actually touching it. 0.05 keeps geometry solid right up to
+    // the lens. Z-fighting precision is handled separately by engine.useReverseDepthBuffer
+    // (see the scene-init comment where the engine is created) rather than by squeezing
+    // maxZ down toward minZ - that was tried first and made flicker WORSE for anything but
+    // a small model, since cutting minZ 20x while only cutting maxZ a few x actually widens
+    // the maxZ/minZ ratio that governs precision. So maxZ just needs to comfortably fit the
+    // model at the camera's farthest zoomed-out position (Orbit's upperRadiusLimit below is
+    // modelSpan*4) with real headroom, not to be minimized.
+    newCamera.minZ = 0.05;
+    newCamera.maxZ = Math.max(modelSpan * 50, 1000);
+
     applyMovementKeys(newCamera);
     newCamera.attachControl(canvas, true);
     scene.activeCamera = newCamera;
@@ -1775,6 +1789,21 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
 
         // Create engine with error handling
         engine = new Engine(canvasRef.current!, true, { preserveDrawingBuffer: true });
+        // Reverse-Z depth buffer (far=0, near=1 instead of the usual near=0, far=1) -
+        // redistributes depth precision far more evenly across the whole near/far range,
+        // instead of the standard buffer's precision being almost entirely wasted right
+        // near the camera. This is what actually fixes Z-fighting/flicker on walls and
+        // floors, especially when rotating to view more distant geometry - not shrinking
+        // maxZ down toward minZ, which was tried first (see the minZ/maxZ comment in
+        // switchCamera below) and made it WORSE for anything but a small model: cutting
+        // minZ from Babylon's default 1 down to 0.05 (needed - see that comment) is a 20x
+        // reduction, while maxZ only shrank a few x for a typical building, so the ratio
+        // that actually governs precision went UP, not down. This is a single engine-wide
+        // flag (not per-material/per-camera), transparently handled by Babylon's shadow
+        // generators too, so CSM/shadow mapping doesn't need any matching change. WebGL2-
+        // only, but this app already requires WebGL2 for CSM (see the CascadedShadowGenerator
+        // try/catch further down) so that's not a new constraint.
+        engine.useReverseDepthBuffer = true;
         engineRef.current = engine;
 
         // A lost WebGL context (the GPU driver reclaiming memory under pressure - common
@@ -1874,6 +1903,12 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
         // Create camera with safe fallback
         const cameraTarget = Vector3.Zero();
         camera = new ArcRotateCamera("camera", -Math.PI / 2, Math.PI / 2.5, 10, cameraTarget, scene);
+        // See the matching minZ/maxZ comment in switchCamera - this mount-time camera exists
+        // before any model (and its real footprint) has loaded, so it can't scale maxZ the
+        // same way, but still needs the same tight near clip plane so an early close-up
+        // (or a session that never calls switchCamera) doesn't clip through geometry.
+        camera.minZ = 0.05;
+        camera.maxZ = 2000;
         camera.attachControl(canvasRef.current!, true);
         // Babylon's default mouse-wheel zoom moves the camera by a FIXED distance per
         // scroll tick (wheelPrecision), regardless of how far away the camera currently
@@ -4632,20 +4667,30 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
     const engine = engineRef.current;
     if (!scene || !engine || featureStates.showVR || featureStates.showAR) return;
 
-    // Kept short deliberately - this used to be 12 (~200ms), which held the coarse,
-    // motion-boosted resolution for a visible beat after the camera had already stopped.
-    // Reported this session as "fragmented/jagged edges right after rotating, even with
-    // nothing selected, even at Ultra" - that's exactly this window (a real resolution
-    // drop, not a selection-highlight artifact): at 1.5x scaling, edges are visibly
-    // aliased, and holding it for 200ms after motion already ended made it read as its own
-    // glitch rather than part of the drag. 2 frames is enough to debounce float jitter
-    // without being long enough to actually see.
-    const STILL_FRAMES_TO_RESTORE = 2;
+    // Was "2 still FRAMES" before - a frame count instead of real time, which is wrong in
+    // both directions depending on the scene's actual framerate:
+    // - At a smooth ~60fps (typical exterior view), 2 frames is only ~33ms - too short to
+    //   bridge the gap between individual mouse-wheel notches during a normal scroll
+    //   gesture (each notch's inertial motion can genuinely bottom out below MOVE_EPSILON
+    //   for a couple of frames before the next notch arrives), so a scroll burst rapidly
+    //   toggled boost -> restore -> boost -> restore, each one snapping the resolution back
+    //   and forth - reported this session as heavy flicker specifically while scrolling.
+    // - At the severe interior framerate this app already has a separate open issue about
+    //   (5-10fps), 2 frames is 200-400ms of real time - longer than the exact ~200ms delay
+    //   a previous session already identified and fixed here as its own visible glitch
+    //   ("fragmented/jagged edges right after rotating" - see git history). A frame-count
+    //   threshold silently reintroduces that same glitch the moment the scene is already
+    //   running slow, which is exactly when this mechanism matters most.
+    // A fixed real-time debounce fixes both: long enough (100ms comfortably covers typical
+    // wheel-notch spacing) to stop the scroll oscillation, yet still well under the ~200ms
+    // that was previously flagged as perceptible, and - unlike a frame count - it means the
+    // same thing regardless of whether the scene is currently running at 5fps or 60fps.
+    const STILL_MS_TO_RESTORE = 100;
     const MOTION_SCALING_BOOST = 1.5; // on top of whatever level is currently active
     const MOVE_EPSILON = 0.001;
 
     let lastPos: Vector3 | null = null;
-    let stillFrames = 0;
+    let lastMovedAt = 0;
     let boosted = false;
     let baseScalingLevel = 1;
 
@@ -4655,20 +4700,18 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
       const pos = camera.position;
       const moved = !lastPos || !pos.equalsWithEpsilon(lastPos, MOVE_EPSILON);
       lastPos = pos.clone();
+      const now = performance.now();
 
       if (moved) {
-        stillFrames = 0;
+        lastMovedAt = now;
         if (!boosted) {
           baseScalingLevel = engine.getHardwareScalingLevel();
           engine.setHardwareScalingLevel(baseScalingLevel * MOTION_SCALING_BOOST);
           boosted = true;
         }
-      } else if (boosted) {
-        stillFrames++;
-        if (stillFrames >= STILL_FRAMES_TO_RESTORE) {
-          engine.setHardwareScalingLevel(baseScalingLevel);
-          boosted = false;
-        }
+      } else if (boosted && now - lastMovedAt >= STILL_MS_TO_RESTORE) {
+        engine.setHardwareScalingLevel(baseScalingLevel);
+        boosted = false;
       }
     });
 
