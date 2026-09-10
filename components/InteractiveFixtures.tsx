@@ -8,6 +8,7 @@ import { loadSceneEdits, savePartialFeatureState, SavedFixture } from './utils/s
 import { resolveMeshRef, isSelectableMesh } from './BabylonWorkspace/meshSceneHandlers';
 import { uploadFileToR2 } from './utils/r2ModelUpload';
 import { projectId } from '../supabase/client';
+import type { XRManager, VRMenuItem } from './XRManager';
 
 const functionsBaseUrl = `https://${projectId}.supabase.co/functions/v1/make-server-cf230d31`;
 // A TV screen is only ever seen from across a room, so there's no reason to accept a huge
@@ -25,6 +26,12 @@ interface InteractiveFixturesProps {
   // glowing TV, a swinging door, a flickering fireplace, a running tap) must keep working
   // for any viewer regardless of whether the admin's own panel is open.
   visible?: boolean;
+  // Optional - lets every placed fixture offer itself to the in-headset VR menu (see
+  // XRManager's registerVRMenuProvider) so someone wearing the headset alone can switch
+  // a fan/light/curtain/etc on or off without needing a second person at the desktop UI.
+  // Fixtures still work with no VR menu entry at all if this isn't passed - not required
+  // for the rest of the component's own behavior.
+  xrManagerRef?: React.RefObject<XRManager | null>;
 }
 
 type FixtureType = SavedFixture['type'];
@@ -378,7 +385,7 @@ function createRainTexture(scene: Scene, id: string): DynamicTexture {
 // is the fan/bulb/screen/panel (there's no reliable fixed mesh name like "Fan_Blades" to
 // assume across arbitrary uploaded Revit/SketchUp/Blender exports), then saved so every
 // viewer sees the same fixtures in the same place and state, not just whoever placed them.
-const InteractiveFixtures: React.FC<InteractiveFixturesProps> = ({ scene, roomId, onClose, visible = true }) => {
+const InteractiveFixtures: React.FC<InteractiveFixturesProps> = ({ scene, roomId, onClose, visible = true, xrManagerRef }) => {
   const { ref: panelRef, style: panelStyle } = usePanelStack('top-right');
   const [fixtures, setFixtures] = useState<SavedFixture[]>([]);
   const [placingType, setPlacingType] = useState<FixtureType | null>(null);
@@ -1135,6 +1142,49 @@ const InteractiveFixtures: React.FC<InteractiveFixturesProps> = ({ scene, roomId
       return next;
     });
   }, [persist]);
+
+  // Offers every currently-placed fixture to the in-headset VR menu (see XRManager's
+  // registerVRMenuProvider) - reported this session as a real gap: someone wearing the
+  // headset alone had no way to switch a fan/light/curtain/etc on or off, only exit and
+  // reset-position. Registered once (empty deps - `xrManagerRef` is a ref, not state, so
+  // it wouldn't usefully trigger a re-run anyway); reads fixturesRef/toggleFixture at call
+  // time, not at registration time, so it always reflects whatever's currently placed -
+  // fixtures get added/removed/toggled constantly and this must never go stale.
+  useEffect(() => {
+    if (!xrManagerRef) return;
+    let registeredOn: XRManager | null = null;
+    let poll: ReturnType<typeof setInterval> | null = null;
+    const tryRegister = () => {
+      const manager = xrManagerRef.current;
+      if (!manager || registeredOn) return;
+      registeredOn = manager;
+      if (poll) { clearInterval(poll); poll = null; }
+      manager.registerVRMenuProvider('fixtures', () =>
+        fixturesRef.current.map((fixture): VRMenuItem => ({
+          id: fixture.id,
+          label: fixture.label,
+          isOn: fixture.isOn,
+          toggle: () => toggleFixture(fixture.id),
+        }))
+      );
+    };
+    tryRegister();
+    // xrManagerRef.current is assigned imperatively elsewhere (deep inside
+    // BabylonWorkspace's async scene-init flow), which doesn't trigger a re-render here
+    // to re-run this effect the instant it becomes non-null - if this component happens
+    // to mount before that assignment (a real possibility, not a rare race), the
+    // immediate tryRegister() above finds it still null and, with no way to be notified
+    // later, would otherwise never register at all. Short poll until it appears (or this
+    // unmounts) closes that gap without needing XRManager to expose a "ready" observable
+    // just for this - self-clears the moment it succeeds, not left running for the rest
+    // of this component's lifetime.
+    if (!registeredOn) poll = setInterval(tryRegister, 500);
+    return () => {
+      if (poll) clearInterval(poll);
+      registeredOn?.unregisterVRMenuProvider('fixtures');
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Click-to-place: arm "Add Fan/Light/TV/..." then click a spot on the model. Fan/TV/Door/
   // Curtain/Wind/Rain/Elevator/Shutter need an actual mesh hit - there's nothing to spin/

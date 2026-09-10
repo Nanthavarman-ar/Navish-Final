@@ -960,6 +960,10 @@ const CoreFeaturesSegment: React.FC<Pick<CustomPanelsSegmentProps, 'featureState
           roomId={currentModelId}
           onClose={() => disableFeature('showInteractiveFixtures')}
           visible={!!featureStates.showInteractiveFixtures}
+          // Lets every placed fixture offer itself to the in-headset VR menu - see
+          // XRManager's registerVRMenuProvider and this component's own registration
+          // effect for why.
+          xrManagerRef={xrManagerRef}
         />
       </Suspense>
     )}

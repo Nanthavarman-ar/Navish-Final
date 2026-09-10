@@ -1271,6 +1271,18 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
   const [snowOn, setSnowOn] = React.useState(false);
   const [particleSize, setParticleSize] = React.useState(1); // shared size multiplier for rain + snow, 0.3 (fine) - 3 (large)
   const [floodOn, setFloodOn] = React.useState(false);
+  // Mirrors rainOn/snowOn/floodOn for the VR menu's provider function (see the
+  // registerVRMenuProvider effect below) - that provider is registered with XRManager
+  // ONCE and then called fresh on every in-headset menu refresh, potentially long after
+  // this render; reading raw `rainOn` etc there would close over whatever they were AT
+  // REGISTRATION TIME, not their current value, the same staleness InteractiveFixtures'
+  // own fixturesRef already exists to avoid.
+  const rainOnRef = useRef(rainOn);
+  useEffect(() => { rainOnRef.current = rainOn; }, [rainOn]);
+  const snowOnRef = useRef(snowOn);
+  useEffect(() => { snowOnRef.current = snowOn; }, [snowOn]);
+  const floodOnRef = useRef(floodOn);
+  useEffect(() => { floodOnRef.current = floodOn; }, [floodOn]);
   const [currentModelId, setCurrentModelId] = React.useState<string>('default-model');
   const [fps, setFps] = React.useState(60);
   const [workspaces, setWorkspaces] = React.useState<GeoWorkspaceArea[]>([]);
@@ -2722,6 +2734,17 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
         try {
           xrManager = new XRManager(scene);
           xrManagerRef.current = xrManager;
+          // Offers rain/snow/flood to the in-headset VR menu (see XRManager's own
+          // registerVRMenuProvider comment) - registered once here rather than in a
+          // rainOn/snowOn/floodOn-dependent effect specifically so it doesn't depend on
+          // the user ever having touched a weather toggle before entering VR to exist;
+          // reads current values via the refs above (not the raw state) so this one
+          // long-lived provider function never goes stale.
+          xrManager.registerVRMenuProvider('weather', () => [
+            { id: 'rain', label: 'Rain', isOn: rainOnRef.current, toggle: () => onRainToggleRef.current(!rainOnRef.current) },
+            { id: 'snow', label: 'Snow', isOn: snowOnRef.current, toggle: () => onSnowToggleRef.current(!snowOnRef.current) },
+            { id: 'flood', label: 'Flood', isOn: floodOnRef.current, toggle: () => onFloodToggle(!floodOnRef.current) },
+          ]);
           console.log("XRManager initialized");
         } catch (error) {
           console.error("Failed to initialize XRManager:", error);
@@ -3722,6 +3745,14 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
       showToast.success('Rain off');
     }
   }, [rainIntensity, particleSize]);
+  // Mirrors onRainToggle's own identity for the VR menu provider (see its registration
+  // comment near xrManagerRef.current = xrManager) - useCallback above re-creates this
+  // function whenever rainIntensity/particleSize change, so a closure that captured it
+  // once at registration time would silently keep calling a stale version (still
+  // correct on/off-wise, but baking in outdated intensity/size for any rain started
+  // afterward) - reading it via a ref instead always calls the CURRENT one.
+  const onRainToggleRef = useRef(onRainToggle);
+  useEffect(() => { onRainToggleRef.current = onRainToggle; }, [onRainToggle]);
 
   const onSnowToggle = useCallback((on: boolean) => {
     const scene = sceneRef.current;
@@ -3798,6 +3829,9 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
       showToast.success('Snow off');
     }
   }, [rainIntensity, particleSize]);
+  // Same staleness fix as onRainToggleRef above, for the VR menu provider.
+  const onSnowToggleRef = useRef(onSnowToggle);
+  useEffect(() => { onSnowToggleRef.current = onSnowToggle; }, [onSnowToggle]);
 
   // Live-update rain/snow speed & quantity while already running, so the intensity
   // slider has an immediate visible effect instead of only applying on next toggle.

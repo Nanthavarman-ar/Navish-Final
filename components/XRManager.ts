@@ -1,4 +1,16 @@
 import { Scene, Camera, ArcRotateCamera, FreeCamera, WebXRDefaultExperience, WebXRState, WebXRCamera, WebXRFeaturesManager, WebXRFeatureName, WebXRControllerComponent, WebXRInputSource, Vector3, Quaternion, AbstractMesh, TransformNode, Mesh, LinesMesh, MeshBuilder, StandardMaterial, Color3, Color4, Ray } from '@babylonjs/core';
+import { AdvancedDynamicTexture, StackPanel, TextBlock, Button, Rectangle } from '@babylonjs/gui';
+
+// One toggleable thing this app knows how to show in the in-headset menu (a placed
+// Interactive Fixture, a weather/flood simulation) - deliberately minimal (just enough
+// to render a label and a button) so any feature can offer itself to the VR menu without
+// XRManager needing to know anything about fixtures/simulations/etc specifically.
+export interface VRMenuItem {
+  id: string;
+  label: string;
+  isOn: boolean;
+  toggle: () => void;
+}
 
 // Minimal shape of what we actually use from Babylon's WebXRHitTest feature - typed
 // locally instead of importing the class directly, since it isn't re-exported from the
@@ -125,6 +137,21 @@ export class XRManager {
   private teleportArcLine: LinesMesh | null = null;
   private teleportFloorMeshes: AbstractMesh[] = [];
   private teleportFrameCallback: (() => void) | null = null;
+
+  // In-headset menu - reported this session as a real gap: desktop-enabled Interactive
+  // Fixtures/Simulations already render in VR fine (nothing in this file excludes scene
+  // content from the XR camera), but there was no way to switch anything ON/OFF from
+  // inside the headset itself, only exit and reset-position (see setupControllerEvents).
+  // Other features register what they want toggleable here (see registerVRMenuProvider)
+  // rather than XRManager needing to import/know about InteractiveFixtures, weather, etc.
+  // directly - each caller owns its own on/off state and toggle function, this just
+  // aggregates and renders whatever's currently registered.
+  private vrMenuProviders: Map<string, () => VRMenuItem[]> = new Map();
+  private vrMenuMesh: Mesh | null = null;
+  private vrMenuAdt: AdvancedDynamicTexture | null = null;
+  private vrMenuPanel: StackPanel | null = null;
+  private vrMenuRefreshTimer: ReturnType<typeof setInterval> | null = null;
+  private vrMenuControllerObserver: ((controller: WebXRInputSource) => void) | null = null;
   private teleportAiming: boolean = false;
   private teleportTargetPoint: Vector3 | null = null;
   private teleportRotationArmed: boolean = true;
@@ -235,6 +262,186 @@ export class XRManager {
   // Set audio manager for spatial audio integration
   setAudioManager(audioManager: any): void {
     this.audioManager = audioManager;
+  }
+
+  // Lets other features (InteractiveFixtures, the weather/flood toggles in
+  // BabylonWorkspace) offer themselves to the in-headset VR menu without this file
+  // needing to import or know anything about them - each caller supplies its OWN
+  // provider function (called fresh on every refresh, so it always reflects that
+  // feature's current live state) under its own key, and this aggregates whatever's
+  // currently registered when building/refreshing the menu. Safe to call whether or not
+  // a VR session is currently active - the menu itself only exists while one is.
+  registerVRMenuProvider(key: string, provider: () => VRMenuItem[]): void {
+    this.vrMenuProviders.set(key, provider);
+    // A provider registering WHILE already in VR (e.g. InteractiveFixtures mounting
+    // after the headset session started) should show up without waiting for the next
+    // periodic refresh.
+    if (this.vrMenuAdt) this.refreshVRMenu();
+  }
+
+  unregisterVRMenuProvider(key: string): void {
+    this.vrMenuProviders.delete(key);
+    if (this.vrMenuAdt) this.refreshVRMenu();
+  }
+
+  private getAllVRMenuItems(): VRMenuItem[] {
+    const items: VRMenuItem[] = [];
+    this.vrMenuProviders.forEach((provider, key) => {
+      try {
+        items.push(...provider());
+      } catch (error) {
+        console.warn(`[XRManager] VR menu provider "${key}" threw, skipping it this refresh:`, error);
+      }
+    });
+    return items;
+  }
+
+  // Builds the in-headset 3D panel once a VR session is active. Attached to the LEFT
+  // controller's grip as a "wrist menu" (the standard VR UI placement - always in reach,
+  // never blocking the view) once that controller actually attaches; a controller can
+  // take a moment to report in after the session starts (or never, on a gaze-only/hand-
+  // tracking-only setup), so this starts floating in front of the camera immediately and
+  // re-parents to the left controller the moment one becomes available, rather than the
+  // menu simply not existing until then.
+  private createVRMenu(): void {
+    if (!this.xrExperience || !this.scene) return;
+    this.disposeVRMenu();
+
+    const plane = MeshBuilder.CreatePlane('vrFeatureMenu', { width: 0.5, height: 0.7 }, this.scene);
+    plane.isPickable = true;
+    plane.renderingGroupId = 1; // draw on top of scene geometry it might be floating inside of
+    this.positionVRMenu(plane);
+
+    const adt = AdvancedDynamicTexture.CreateForMesh(plane, 512, 700);
+    adt.background = 'rgba(15, 23, 42, 0.92)'; // matches this app's own slate-900 panel chrome
+
+    const panel = new StackPanel();
+    panel.width = '100%';
+    panel.paddingTop = '16px';
+    panel.paddingBottom = '16px';
+    adt.addControl(panel);
+
+    const title = new TextBlock('vrMenuTitle', 'Fixtures & Simulations');
+    title.color = 'white';
+    title.fontSize = 28;
+    title.height = '60px';
+    title.textWrapping = true;
+    panel.addControl(title);
+
+    this.vrMenuMesh = plane;
+    this.vrMenuAdt = adt;
+    this.vrMenuPanel = panel;
+    this.refreshVRMenu();
+    // Periodic rather than reactive - the registered providers are plain closures over
+    // React/app state with no observable of their own to subscribe to, and a handful of
+    // toggleable items is cheap enough to fully rebuild every second rather than diffing.
+    this.vrMenuRefreshTimer = setInterval(() => this.refreshVRMenu(), 1000);
+
+    const attachToLeftController = (controller: WebXRInputSource) => {
+      if (controller.inputSource.handedness !== 'left' || !this.vrMenuMesh) return;
+      this.positionVRMenu(this.vrMenuMesh, controller);
+    };
+    // Covers a left controller that's already attached by the time the menu is created...
+    this.xrExperience.input.controllers.forEach(attachToLeftController);
+    // ...and one that attaches later (common - controllers report in asynchronously after
+    // the session starts, not necessarily before configureXRFeatures runs).
+    this.vrMenuControllerObserver = attachToLeftController;
+    this.xrExperience.input.onControllerAddedObservable.add(this.vrMenuControllerObserver);
+  }
+
+  // Parents the menu to the given controller's grip (a real "worn on the wrist" menu), or
+  // floats it a comfortable reading distance in front of the current XR camera if no
+  // controller is available yet/at all.
+  private positionVRMenu(plane: Mesh, controller?: WebXRInputSource): void {
+    if (controller?.grip) {
+      plane.parent = controller.grip;
+      // Offset up and slightly forward from the grip, tilted to face the wearer the way
+      // a real wrist-worn display would - not flat on top of the hand (unreadable) or
+      // facing straight out (faces away from the user, not at them).
+      plane.position = new Vector3(0, 0.12, 0.03);
+      plane.rotation = new Vector3(Math.PI / 2.4, 0, 0);
+      return;
+    }
+    plane.parent = null;
+    const camera = this.xrCamera ?? (this.scene.activeCamera as any);
+    if (camera?.position && camera?.getForwardRay) {
+      const forward = camera.getForwardRay().direction;
+      plane.position = camera.position.add(forward.scale(0.6)).add(new Vector3(0, -0.05, 0));
+      plane.lookAt(camera.position);
+    }
+  }
+
+  private refreshVRMenu(): void {
+    if (!this.vrMenuPanel) return;
+    const items = this.getAllVRMenuItems();
+
+    // Rebuilt from scratch each refresh rather than diffed - see createVRMenu's own
+    // comment on why a periodic full rebuild is an acceptable trade for a handful of
+    // items, and it keeps toggle() closures always bound to the CURRENT item (a diffed
+    // update would need to carefully re-bind stale closures on every state change).
+    const toRemove = this.vrMenuPanel.children.filter((c) => c.name !== 'vrMenuTitle');
+    toRemove.forEach((c) => this.vrMenuPanel!.removeControl(c));
+
+    if (items.length === 0) {
+      const empty = new TextBlock('vrMenuEmpty', 'No fixtures or simulations placed yet');
+      empty.color = '#94a3b8';
+      empty.fontSize = 18;
+      empty.height = '50px';
+      empty.textWrapping = true;
+      this.vrMenuPanel.addControl(empty);
+      return;
+    }
+
+    for (const item of items) {
+      const row = new Rectangle(`vrMenuRow_${item.id}`);
+      row.height = '64px';
+      row.width = '92%';
+      row.thickness = 0;
+      row.paddingBottom = '8px';
+
+      const button = Button.CreateSimpleButton(`vrMenuBtn_${item.id}`, `${item.isOn ? '●' : '○'}  ${item.label}`);
+      button.width = '100%';
+      button.height = '100%';
+      button.color = 'white';
+      button.fontSize = 22;
+      button.cornerRadius = 10;
+      button.background = item.isOn ? '#16a34a' : '#334155';
+      button.thickness = 0;
+      // onPointerUpObservable (not onPointerClickObservable) - fires on the same
+      // trigger-release gesture Babylon's default WebXR controller pointer selection
+      // feature already generates for any pickable mesh's GUI, no custom controller
+      // wiring needed here (see WebXRControllerPointerSelection, enabled by default and
+      // never disabled in this file's enterVR() options).
+      button.onPointerUpObservable.add(() => {
+        try {
+          item.toggle();
+        } catch (error) {
+          console.warn(`[XRManager] VR menu toggle for "${item.id}" threw:`, error);
+        }
+        // Reflect the click immediately rather than waiting up to 1s for the next
+        // periodic refresh - toggle() is expected to be synchronous (a setState call).
+        this.refreshVRMenu();
+      });
+
+      row.addControl(button);
+      this.vrMenuPanel.addControl(row);
+    }
+  }
+
+  private disposeVRMenu(): void {
+    if (this.vrMenuRefreshTimer) {
+      clearInterval(this.vrMenuRefreshTimer);
+      this.vrMenuRefreshTimer = null;
+    }
+    if (this.vrMenuControllerObserver && this.xrExperience) {
+      this.xrExperience.input.onControllerAddedObservable.removeCallback(this.vrMenuControllerObserver);
+    }
+    this.vrMenuControllerObserver = null;
+    this.vrMenuPanel = null;
+    this.vrMenuAdt?.dispose();
+    this.vrMenuAdt = null;
+    this.vrMenuMesh?.dispose();
+    this.vrMenuMesh = null;
   }
 
   // Invisible fallback ground created lazily if the loaded model has nothing
@@ -1437,6 +1644,7 @@ export class XRManager {
 
     // Remove the AR reticle/overlay/select-listener while the session is still live -
     // a no-op if AR placement was never set up (e.g. exiting a VR session).
+    this.disposeVRMenu();
     this.teardownARPlacement();
     this.teardownCustomTeleportation();
     this.teardownCustomMovement();
@@ -1512,6 +1720,21 @@ export class XRManager {
 
     // Set up controller events
     this.setupControllerEvents();
+
+    // In-headset toggle menu - VR only (see createVRMenu's own comment). AR already has
+    // its own on-screen placement/scale controls via the phone's flat overlay
+    // (arOverlayElement/DOM_OVERLAY), which a floating 3D wrist menu would be redundant
+    // with and would get in the way of a handheld-phone AR session anyway.
+    if (this.currentSessionMode === 'immersive-vr') {
+      // The VR menu is a nice-to-have on top of everything else this method sets up
+      // (locomotion, hand tracking, grounding) - a GUI/mesh-creation failure on some
+      // constrained device must never take down the rest of VR functionality with it.
+      try {
+        this.createVRMenu();
+      } catch (error) {
+        console.warn('[XRManager] Could not create the in-headset feature menu:', error);
+      }
+    }
 
     // The WebXR session's 'local-floor' reference space places the headset at its own
     // runtime-chosen origin (typically near world (0,0,0)) with no awareness of where the
