@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Scene, Mesh, AbstractMesh, TransformNode, MeshBuilder, StandardMaterial, VideoTexture, DynamicTexture, Texture, ParticleSystem, Color3, Color4, Vector3, Quaternion, Scalar, VertexBuffer, PointerEventTypes, PointLight, ArcRotateCamera } from '@babylonjs/core';
+import { Scene, Mesh, AbstractMesh, TransformNode, MeshBuilder, StandardMaterial, VideoTexture, DynamicTexture, Texture, ParticleSystem, Color3, Color4, Vector3, Quaternion, Scalar, VertexBuffer, PointerEventTypes, PointLight, ArcRotateCamera, Space } from '@babylonjs/core';
 import { X, Fan, Lightbulb, Tv, Trash2, Upload, DoorOpen, Flame, Droplets, FlipHorizontal, Wind, CloudRain, User, PawPrint, ArrowUpDown, Warehouse } from 'lucide-react';
 import { Button } from './ui/button';
 import { showToast } from './utils/toast';
@@ -748,9 +748,26 @@ const InteractiveFixtures: React.FC<InteractiveFixturesProps> = ({ scene, roomId
     fixtures.forEach((fixture) => {
       if ((fixture.type !== 'curtain' && fixture.type !== 'wind') || vertexWavesRef.current.has(fixture.id)) return;
       const mesh = resolveFixtureMesh(fixture);
-      if (!mesh) return;
+      // Both silent no-op points for "curtain isOn but never visibly sways" - reported
+      // this session and not reliably reproducible from static review alone, so surfaced
+      // as a console warning instead of guessed at blind: either of these leaves the
+      // fixture placed and toggleable, with isOn genuinely true, but with no entry ever
+      // added to vertexWavesRef - the render loop's `if (!state) return` (see the
+      // curtain/wind branch below) then makes every frame a silent no-op forever, with
+      // nothing about the click, the toggle, or the fixture list itself looking wrong.
+      if (!mesh) {
+        console.warn(`[InteractiveFixtures] Curtain/wind fixture "${fixture.id}" could not resolve its mesh (meshId=${fixture.meshId}, meshName=${fixture.meshName}) - the original mesh may have been removed, renamed, or merged away on reload. It will not animate.`);
+        return;
+      }
       const state = setupVertexWave(mesh, fixture.type === 'curtain');
-      if (state) vertexWavesRef.current.set(fixture.id, state);
+      if (!state) {
+        // mesh.getVerticesData returned null - most commonly an InstancedMesh/thin
+        // instance sharing another mesh's geometry with no position data of its own
+        // exposed this way, or a mesh whose vertex data was never kept on the CPU side.
+        console.warn(`[InteractiveFixtures] Curtain/wind fixture "${fixture.id}" resolved to mesh "${mesh.name}" (${mesh.getClassName()}), but it has no readable position vertex data - it will not animate. If this is an instanced/thin-instance mesh, place the fixture on the actual source mesh instead.`);
+        return;
+      }
+      vertexWavesRef.current.set(fixture.id, state);
     });
   }, [fixtures, resolveFixtureMesh]);
 
@@ -926,13 +943,23 @@ const InteractiveFixtures: React.FC<InteractiveFixturesProps> = ({ scene, roomId
           // placement root in XRManager.ts) works whether or not the mesh has
           // one, and preserves whatever tilt/orientation the blades were
           // authored with instead of resetting it to flat.
+          //
+          // Reported as "mela keela pathu suthuthu, horizontal aah suthala" (pitches
+          // up/down like a propeller instead of sweeping flat like a ceiling fan) - the
+          // previous `mesh.rotationQuaternion.multiply(deltaSpin)` post-multiplies the
+          // spin onto the RIGHT of the mesh's existing orientation, which (per Babylon's
+          // own TransformNode.rotate() source - see its Space.LOCAL branch, the same
+          // multiply order) composes the spin in the mesh's own tilted LOCAL frame, not
+          // around a fixed world axis. Any base tilt baked into the blade hub's
+          // rotationQuaternion by the glTF exporter (very common, not usually visible
+          // when the mesh is standing still) then carries the spin axis along with it -
+          // e.g. a ~90 degree tilt turns a flat horizontal sweep into an up/down
+          // propeller pitch. mesh.rotate(axis, amount, Space.WORLD) is Babylon's own
+          // built-in for exactly this - always spins around the fixed WORLD axis
+          // regardless of the mesh's own orientation (and correctly accounts for a
+          // rotated parent node too, which a hand-rolled pre-multiply would not).
           if (mesh) {
-            const deltaSpin = Quaternion.RotationAxis(Vector3.Up(), 6 * dt); // ~one full turn/sec at "on" speed
-            if (mesh.rotationQuaternion) {
-              mesh.rotationQuaternion = mesh.rotationQuaternion.multiply(deltaSpin);
-            } else {
-              mesh.rotation.y += 6 * dt;
-            }
+            mesh.rotate(Vector3.Up(), 6 * dt, Space.WORLD); // ~one full turn/sec at "on" speed
           }
         } else if (fixture.type === 'tv' && !fixture.videoUrl) {
           // A TV with a real uploaded video is driven by its own video frames instead
