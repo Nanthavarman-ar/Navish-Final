@@ -601,19 +601,47 @@ const LightingPresets: React.FC<LightingPresetsProps> = ({ scene, onPresetChange
     hdriTextureRef.current = hdrTexture;
     scene.environmentTexture = hdrTexture;
 
-    const skybox = scene.createDefaultSkybox(hdrTexture, true, 1000, 0.3);
-    if (skybox) {
-      skyboxRef.current = skybox as BABYLON.Mesh;
-      // createDefaultSkybox clones the texture for the skybox material rather than
-      // reusing hdrTexture directly - that clone is what the visible sky dome
-      // actually samples, so it needs its own brightness/rotation kept in sync.
-      const skyboxTex = (skybox.material as BABYLON.PBRMaterial)?.reflectionTexture as BABYLON.EnvCubeTexture | null;
-      if (skyboxTex) {
-        skyboxTex.level = intensity;
-        skyboxTex.rotationY = rotationRad;
-        skyboxReflectionTextureRef.current = skyboxTex;
-      }
-    }
+    // Reported this session: the visible sky background stayed flat/wrong (washed-out white
+    // at high brightness, plain black/dark at normal brightness) no matter which .hdr file
+    // was uploaded, EVEN THOUGH environment lighting/reflections on the model's own PBR
+    // materials worked correctly (proving hdrTexture itself decoded fine) - the visible sky
+    // dome specifically was the only thing broken, and stayed broken across completely
+    // different HDRI files. Root cause: this used to call scene.createDefaultSkybox(
+    // hdrTexture, ...), which builds the skybox's own material from
+    // `hdrTexture.clone()` internally (see @babylonjs/core's sceneHelpers.pure.js). But
+    // HDRCubeTexture's own clone() (via its _instantiateClone()) only forwards
+    // (url, scene, size, noMipmap, generateHarmonics, gammaSpace) - it silently DROPS
+    // prefilterOnLoad (true on the real hdrTexture above, defaults back to false on the
+    // clone), which is enough to leave the clone's own texture data essentially unusable as
+    // a skybox background. Sidestepped entirely by not cloning at all: build a second,
+    // fully independent HDRCubeTexture here with the exact same load parameters as the main
+    // one, replicating createDefaultSkybox's own material setup by hand. Costs a second
+    // decode of the same file (the trade-off for two independently-controllable texture
+    // instances - see "Sky Brightness" vs "Environment Lighting" above) but actually shows
+    // the real image, which cloning was silently failing to do.
+    const skyboxTexture = new BABYLON.HDRCubeTexture(
+      url, scene, 512, false, true, false, true,
+      null,
+      () => console.warn('[LightingPresets] HDRI skybox texture failed to load (environment lighting may still be fine):', fileName)
+    );
+    skyboxTexture.level = intensity;
+    skyboxTexture.rotationY = rotationRad;
+    skyboxTexture.coordinatesMode = BABYLON.Texture.SKYBOX_MODE;
+
+    const skyboxMesh = BABYLON.MeshBuilder.CreateBox('hdriSkybox', { size: 1000 }, scene);
+    skyboxMesh.infiniteDistance = true;
+    skyboxMesh.isPickable = false;
+    skyboxMesh.ignoreCameraMaxZ = true;
+    const skyboxMaterial = new BABYLON.PBRMaterial('hdriSkyboxMaterial', scene);
+    skyboxMaterial.backFaceCulling = false;
+    skyboxMaterial.reflectionTexture = skyboxTexture;
+    skyboxMaterial.microSurface = 0.7; // matches createDefaultSkybox's own blur=0.3 -> 1-blur formula
+    skyboxMaterial.disableLighting = true;
+    skyboxMaterial.twoSidedLighting = true;
+    skyboxMesh.material = skyboxMaterial;
+
+    skyboxRef.current = skyboxMesh;
+    skyboxReflectionTextureRef.current = skyboxTexture;
 
     setHdriFileName(fileName);
     setSkyMode('hdri');
