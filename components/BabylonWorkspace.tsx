@@ -848,6 +848,44 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
           const fillResult = addAmbientFillLights(scene, newMeshes);
           ambientFillLightsRef.current = fillResult.lights;
           console.log(`[ambient-fill-lights] added ${fillResult.lights.length} (windows detected: ${fillResult.windowsDetected})`);
+
+          // Fixes a real, pre-existing bug reported this session (visible banding/stripe
+          // lines across roofs/walls, appearing specifically right after the "Reduced
+          // shadow quality" toast - i.e. exactly when the CSM watchdog further below trips
+          // and disables autoCalcDepthBounds under sustained low FPS). CascadedShadowGenerator's
+          // own shadowMaxZ defaults to camera.maxZ (confirmed in Babylon's own source) -
+          // fine while autoCalcDepthBounds is on (it recomputes tight bounds from the
+          // actual rendered scene every couple of frames, ignoring shadowMaxZ), but once
+          // that's disabled, cascades fall back to splitting the FULL camera near/far
+          // range - exactly the "far larger than the actual scene" mismatch this file's own
+          // CSM setup comment already documents as the cause of banded seam lines. camera.maxZ
+          // was deliberately widened earlier this session (for a separate Z-fighting fix,
+          // to comfortably fit a model at max zoom-out) to something much larger than a
+          // typical building actually needs for shadows specifically - shadowMaxZ is
+          // independently settable, so this keeps the shadow cascade range tight to the
+          // real model regardless of how far the camera's own far plane reaches.
+          if (shadowGeneratorRef.current instanceof CascadedShadowGenerator) {
+            let shadowMinY = Infinity, shadowMaxY = -Infinity;
+            let shadowMinX = Infinity, shadowMaxX = -Infinity, shadowMinZv = Infinity, shadowMaxZv = -Infinity;
+            for (const m of newMeshes) {
+              if (m.getTotalVertices() === 0) continue;
+              const bb = m.getBoundingInfo().boundingBox;
+              shadowMinX = Math.min(shadowMinX, bb.minimumWorld.x); shadowMaxX = Math.max(shadowMaxX, bb.maximumWorld.x);
+              shadowMinY = Math.min(shadowMinY, bb.minimumWorld.y); shadowMaxY = Math.max(shadowMaxY, bb.maximumWorld.y);
+              shadowMinZv = Math.min(shadowMinZv, bb.minimumWorld.z); shadowMaxZv = Math.max(shadowMaxZv, bb.maximumWorld.z);
+            }
+            if (Number.isFinite(shadowMinX)) {
+              const modelDiagonal = Vector3.Distance(
+                new Vector3(shadowMinX, shadowMinY, shadowMinZv),
+                new Vector3(shadowMaxX, shadowMaxY, shadowMaxZv)
+              );
+              // Generous multiple of the model's own size (not a fixed constant) so a
+              // large site still gets a far plane that comfortably covers it, while a
+              // small room doesn't inherit a needlessly huge one - floor keeps very tiny
+              // models from getting an unreasonably tight shadowMaxZ.
+              (shadowGeneratorRef.current as CascadedShadowGenerator).shadowMaxZ = Math.max(modelDiagonal * 3, 50);
+            }
+          }
           // A cheap, safe win for decorative background clutter specifically (bush/rail/
           // lamp-shaped meshes - see isDecorativeClutterMesh, the exact same check
           // mergeDecorativeMeshes above already uses) - NOT applied to the rest of the
