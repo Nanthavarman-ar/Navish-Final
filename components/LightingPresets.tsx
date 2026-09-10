@@ -632,12 +632,23 @@ const LightingPresets: React.FC<LightingPresetsProps> = ({ scene, onPresetChange
     skyboxMesh.infiniteDistance = true;
     skyboxMesh.isPickable = false;
     skyboxMesh.ignoreCameraMaxZ = true;
-    const skyboxMaterial = new BABYLON.PBRMaterial('hdriSkyboxMaterial', scene);
+    // StandardMaterial, not PBRMaterial, for the skybox specifically - even with the clone
+    // bug above fixed, a PBRMaterial's reflectionTexture goes through roughness-based IBL
+    // specular sampling (picking a blurred mip from the prefiltered chain according to
+    // `microSurface`/roughness, the same mechanism real material reflections use), which is
+    // exactly what was still smearing every uploaded HDRI into a smooth, detail-free
+    // gradient with no visible horizon/clouds/features even after the clone fix - the real
+    // image data was there, just always sampled through a heavy roughness blur no matter
+    // what microSurface was set to, since Babylon's own prefiltered mip chain for a 512-face
+    // cubemap blurs out fast past the first couple of roughness buckets. StandardMaterial
+    // has no roughness concept at all - REFLECTIONMAP_SKYBOX mode samples the cubemap
+    // directly at full sharpness, which is what an actually-crisp background needs. This is
+    // exactly createDefaultSkybox's own `pbr=false` branch, done by hand for the
+    // clone-avoidance reason above.
+    const skyboxMaterial = new BABYLON.StandardMaterial('hdriSkyboxMaterial', scene);
     skyboxMaterial.backFaceCulling = false;
     skyboxMaterial.reflectionTexture = skyboxTexture;
-    skyboxMaterial.microSurface = 0.7; // matches createDefaultSkybox's own blur=0.3 -> 1-blur formula
     skyboxMaterial.disableLighting = true;
-    skyboxMaterial.twoSidedLighting = true;
     skyboxMesh.material = skyboxMaterial;
 
     skyboxRef.current = skyboxMesh;
