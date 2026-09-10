@@ -458,12 +458,20 @@ const LightingPresets: React.FC<LightingPresetsProps> = ({ scene, onPresetChange
         skyboxRef.current = null;
       }
     }
-    if (skyMode !== 'procedural' && skyMaterialRef.current) {
-      skyboxRef.current?.dispose();
-      skyMaterialRef.current.dispose();
-      skyboxRef.current = null;
-      skyMaterialRef.current = null;
-    }
+    // Reported this session: uploading an HDRI only ever showed a plain/flat sky, HDRI
+    // content never appearing. Root cause was a second block that used to live here -
+    // `if (skyMode !== 'procedural' && skyMaterialRef.current) { skyboxRef.current?.dispose(); ... }`.
+    // It ran on EVERY skyMode change away from 'procedural', including procedural->hdri -
+    // and applyHdriFile() below already assigns the brand-new HDRI skybox to skyboxRef.current
+    // synchronously, BEFORE React gets a chance to run this effect. If this effect's body ran
+    // before the procedural sky dome effect's own cleanup had cleared skyMaterialRef.current
+    // (both are plain last-writer-wins refs, not something React orders relative to each
+    // other the way this code assumed), that block disposed skyboxRef.current - by then the
+    // brand-new HDRI skybox, not the old procedural one it meant to clean up - immediately
+    // after creation. The procedural sky dome effect's own cleanup (below) already disposes
+    // its own mesh/material correctly via its own closure variables, not this ref, so this
+    // second block was both redundant and the actual source of the bug - removed rather than
+    // guarded, since it had no case left to handle.
   }, [skyMode, scene]);
 
   // A real HDRI encodes real-world sun + sky lighting for PBRMaterial (which reads
@@ -518,8 +526,17 @@ const LightingPresets: React.FC<LightingPresetsProps> = ({ scene, onPresetChange
       scene.onBeforeRenderObservable.remove(observer);
       skyboxMesh.dispose();
       skyMaterial.dispose();
-      skyboxRef.current = null;
-      skyMaterialRef.current = null;
+      // Identity-checked rather than an unconditional null-out (see the removed-block
+      // comment in the sky mode management effect above for the bug this class of mistake
+      // caused there) - only clear these shared refs if they still point at THIS effect's
+      // own mesh/material. skyboxRef in particular is shared with applyHdriFile(), which
+      // points it at the brand-new HDRI skybox synchronously, before React runs this
+      // cleanup - an unconditional null-out here would silently orphan that reference to a
+      // mesh that's still alive and rendering, breaking every future toggle/dispose that
+      // relies on it. skyMaterialRef is never touched outside this effect, so this check is
+      // just cheap, consistent insurance for it.
+      if (skyboxRef.current === skyboxMesh) skyboxRef.current = null;
+      if (skyMaterialRef.current === skyMaterial) skyMaterialRef.current = null;
     };
   }, [skyMode, scene]);
 
@@ -544,7 +561,41 @@ const LightingPresets: React.FC<LightingPresetsProps> = ({ scene, onPresetChange
 
     // Drives lighting/reflections on every other PBR material in the scene, via
     // scene.environmentTexture - independent of how bright the visible sky looks.
-    const hdrTexture = new BABYLON.HDRCubeTexture(url, scene, 512, false, true, false, true);
+    //
+    // onError was never wired up before (both this and onLoad default to null in
+    // HDRCubeTexture's own constructor) - reported this session as "uploading an HDRI only
+    // shows a plain/flat sky, no error, nothing". A file that fails to decode (not
+    // actually a Radiance .hdr, corrupted, or a format variant this loader can't parse)
+    // failed completely silently: the skybox mesh still gets created against a texture
+    // that never populates, which is exactly a flat/placeholder-colored sky with no clue
+    // why. Falls back to the procedural sky dome (rather than leaving skyMode stuck on
+    // 'hdri' with nothing usable behind it) and actually tells the user why.
+    const hdrTexture = new BABYLON.HDRCubeTexture(
+      url, scene, 512, false, true, false, true,
+      null,
+      () => {
+        console.warn('[LightingPresets] HDRI failed to load/decode:', fileName);
+        showToast.error(
+          'Could not load this HDRI',
+          `"${fileName}" couldn't be decoded as a valid .hdr (Radiance) image - it may be corrupted, in an unsupported format, or not actually an HDR file. Falling back to the sky dome.`
+        );
+        hdriTextureRef.current?.dispose();
+        hdriTextureRef.current = null;
+        skyboxReflectionTextureRef.current?.dispose();
+        skyboxReflectionTextureRef.current = null;
+        skyboxRef.current?.dispose();
+        skyboxRef.current = null;
+        if (hdriBlobUrlRef.current) { URL.revokeObjectURL(hdriBlobUrlRef.current); hdriBlobUrlRef.current = null; }
+        scene.environmentTexture = null;
+        setHdriFileName(null);
+        setSkyMode('procedural');
+        // Also forget it from IndexedDB - otherwise a broken file saved via the upload
+        // path (see handleHdriUpload's saveHdriToDb call, which runs regardless of whether
+        // the texture actually decoded) keeps getting restored and failing again on every
+        // future reload, showing this same error every time the model opens.
+        deleteHdriFromDb().catch(err => console.warn('[LightingPresets] Could not remove broken saved HDRI:', err));
+      }
+    );
     hdrTexture.level = envIntensity;
     hdrTexture.rotationY = rotationRad;
     hdriTextureRef.current = hdrTexture;
