@@ -121,9 +121,27 @@ export const useMeshSceneHandlers = ({
       mesh.name.toLowerCase().includes('floor') ||
       mesh.name.toLowerCase().includes('floorplan')
     )) || mesh.getTotalVertices() > HIGHLIGHT_MAX_VERTICES;
+    // Reported this session as a "Cannot read properties of undefined (reading 'add')"
+    // error firing on every single pointer down/up, console-spamming and (per Babylon's
+    // own Observable.notifyObservers source - a plain loop with no per-observer try/catch)
+    // silently aborting every OTHER observer still registered on the same
+    // scene.onPointerObservable notification once one throws - meaning an unrelated
+    // fixture (a curtain toggle, a marker click) sharing that same pointer event could
+    // simply never run its own handler for that click, with nothing about the click
+    // itself looking wrong. Root cause: HighlightLayer.addMesh() internally calls
+    // mesh.onBeforeBindObservable.add(...)/mesh.onAfterRenderObservable.add(...) - if the
+    // picked mesh is already disposed or otherwise doesn't have those (a stale pick result,
+    // a special renderable), that throws exactly this error. Guarded here rather than
+    // fixed upstream (there's no reliable, cheap way to detect "safe to highlight" ahead of
+    // calling into Babylon's own internals) so one bad pick can never again take down every
+    // other click handler in the scene for that frame.
     if (highlightLayerRef.current) {
-      if (selectedMesh) highlightLayerRef.current.removeMesh(selectedMesh);
-      if (!skipHighlight) highlightLayerRef.current.addMesh(mesh, Color3.FromHexString("#4488ff"));
+      try {
+        if (selectedMesh) highlightLayerRef.current.removeMesh(selectedMesh);
+        if (!skipHighlight) highlightLayerRef.current.addMesh(mesh, Color3.FromHexString("#4488ff"));
+      } catch (error) {
+        console.warn('[meshSceneHandlers] Could not highlight selected mesh (it may already be disposed):', mesh.name, error);
+      }
     }
 
     // Integration: Share selection with CollabManager if enabled
@@ -177,7 +195,14 @@ export const useMeshSceneHandlers = ({
   const internalHandleMeshDeselect = useCallback(() => {
     if (!selectedMesh) return;
     if (highlightLayerRef.current) {
-      highlightLayerRef.current.removeMesh(selectedMesh);
+      // Same guard as internalHandleMeshSelect above - removeMesh can throw for the same
+      // reason (a disposed/stale mesh reference) and must never take the rest of this
+      // click's other pointer observers down with it.
+      try {
+        highlightLayerRef.current.removeMesh(selectedMesh);
+      } catch (error) {
+        console.warn('[meshSceneHandlers] Could not remove highlight (mesh may already be disposed):', selectedMesh.name, error);
+      }
     }
     updateState({ selectedMesh: null });
   }, [selectedMesh, highlightLayerRef, updateState]);
