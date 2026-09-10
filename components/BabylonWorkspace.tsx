@@ -975,7 +975,25 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
           // Meta Quest headset.
           const isStandaloneXRHeadsetBrowser = /OculusBrowser|Quest/i.test(navigator.userAgent);
           const engine = engineRef.current;
-          const supportsOcclusion = !!engine?.getCaps().supportOcclusionQuery && (!deviceCapabilities?.mobile || isStandaloneXRHeadsetBrowser);
+          // TEMPORARILY DISABLED (hardcoded false) - reported this session as whole models
+          // rendering fine for the first frame or two, then vanishing entirely, with no user
+          // interaction required and independent of graphics quality tier (which rules out
+          // the tier-gated SSR/IBL Shadows conflict documented elsewhere in this file). That
+          // symptom shape - visible while OPTIMISTIC has no query result yet, gone once the
+          // first result comes back - points straight at occlusion queries returning wrong
+          // results, and this session also switched the engine to a reverse depth buffer
+          // (engine.useReverseDepthBuffer = true, see initializeScene) to fix a separate
+          // Z-fighting issue, which changes which depth comparison direction counts as
+          // "passed" for every depth test in the scene, occlusion queries included. This
+          // mechanism has also already caused a similar wrongly-hides-real-geometry bug once
+          // before, in VR specifically (see the "guard occlusion culling against fast
+          // head-turns" fix elsewhere in this file) - a second, broader instance of the same
+          // class of bug is more likely than two unrelated causes. Disabling outright rather
+          // than trying to patch the interaction blind, with no way to verify a fix live in
+          // this environment: frustum culling (cullingStrategy right below) still applies on
+          // its own, so this only gives up the additional behind-a-wall win, not correctness.
+          // Re-enable once confirmed fixed (or confirmed unrelated) via live testing.
+          const supportsOcclusion = false && !!engine?.getCaps().supportOcclusionQuery && (!deviceCapabilities?.mobile || isStandaloneXRHeadsetBrowser);
           const OCCLUSION_MIN_VERTICES = 24; // skip trivial hardware (a screw, a handle) - query overhead isn't worth it for those
           occlusionMeshesRef.current = [];
           await runChunked(loadedModelMeshesRef.current, (m) => {
