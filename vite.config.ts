@@ -58,7 +58,11 @@ export default defineConfig(({ mode }) => {
     },
     optimizeDeps: {
       include: ['@babylonjs/core'],
-      exclude: ['@babylonjs/havok']
+      // @huggingface/transformers dynamically loads onnxruntime-web's own WASM/worker
+      // bundles at runtime (via import.meta.url-relative fetches) - letting Vite's
+      // pre-bundler process it can rewrite those paths and break the WASM fetch. Excluding
+      // it is the officially recommended Vite setup for this package.
+      exclude: ['@babylonjs/havok', '@huggingface/transformers']
     },
     define: {
       global: 'globalThis'

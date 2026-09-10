@@ -67,6 +67,7 @@ import { captureSceneEdits, applySceneEdits, mergeAndSaveSceneEdits, loadSceneEd
 import { mergeDecorativeMeshes, isDecorativeClutterMesh } from './utils/meshMerging';
 import { runChunked } from './utils/runChunked';
 import { enhanceImportedMaterials } from './utils/materialEnhancement';
+import { classifyMaterialsByTexture } from './utils/textureMaterialClassifier';
 import { addAmbientFillLights } from './utils/ambientFillLights';
 
 // UI Component imports
@@ -858,6 +859,22 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
               `${names.length} object${names.length > 1 ? 's have' : ' has'} no material assigned`,
               `${preview} - the source file didn't include material data for ${names.length > 1 ? 'these' : 'this'}. Open Material Editor and assign a material to fix ${names.length > 1 ? 'them' : 'it'}.`
             );
+          }
+          // Real image-based material recognition (Enscape-style "look at the actual
+          // texture", not just the mesh/material name) - see textureMaterialClassifier.ts.
+          // Deliberately fire-and-forget, not awaited: downloading the CLIP model (first use
+          // only, then cached by the browser) and classifying every real texture in the
+          // model can take anywhere from a couple seconds to tens of seconds, and none of
+          // that should hold up the model finishing its load / becoming interactive - this
+          // only ever IMPROVES materials that already have real texture data as results
+          // arrive, same as a progressive enhancement. Guarded on `cancelled` at the only
+          // point that matters (before it does anything) - if the user has already
+          // navigated to a different model by the time this would run, its result would
+          // only ever touch this now-unused mesh list, harmless but pointless.
+          if (!cancelled) {
+            classifyMaterialsByTexture(newMeshes).catch((error) => {
+              console.warn('[textureMaterialClassifier] Material recognition pass failed:', error);
+            });
           }
           // Cheap real-time approximation of indirect/bounce light (see
           // ambientFillLights.ts's own top comment for why this exists and how it stays
