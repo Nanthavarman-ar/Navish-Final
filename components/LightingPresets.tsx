@@ -136,6 +136,14 @@ interface LightingPreset {
   ambientIntensity: number;
   skyboxColor: BABYLON.Color3;
   groundColor: BABYLON.Color3;
+  // The sun LIGHT's own color, not just the skybox's visual tint - without this, "Sunset"/
+  // "Golden Hour" only ever changed how bright the sun was and what color the sky dome
+  // LOOKED like, while every surface it actually lit stayed lit by plain white light (the
+  // DirectionalLight's default diffuse never gets touched by applyPreset otherwise). Time
+  // Simulation elsewhere in this file already computes this correctly per time-of-day via
+  // temperatureToRGB - these are the same kind of warm/cool light color, just fixed per
+  // preset instead of computed from a real sun angle.
+  sunColor: BABYLON.Color3;
 }
 
 interface MaterialAnalysis {
@@ -232,10 +240,14 @@ const LightingPresets: React.FC<LightingPresetsProps> = ({ scene, onPresetChange
   const [simMonth, setSimMonth] = useState(new Date().getMonth());
 
   const presets: LightingPreset[] = [
-    { id: 'day', name: 'Day', icon: '☀️', description: 'Bright daylight', sunIntensity: 1.2, sunAngle: 45, ambientIntensity: 0.3, skyboxColor: new BABYLON.Color3(0.5, 0.7, 1.0), groundColor: new BABYLON.Color3(0.2, 0.3, 0.1) },
-    { id: 'sunset', name: 'Sunset', icon: '🌅', description: 'Warm evening', sunIntensity: 0.8, sunAngle: 15, ambientIntensity: 0.2, skyboxColor: new BABYLON.Color3(1.0, 0.6, 0.3), groundColor: new BABYLON.Color3(0.3, 0.2, 0.1) },
-    { id: 'night', name: 'Night', icon: '🌙', description: 'Dark night', sunIntensity: 0.1, sunAngle: -30, ambientIntensity: 0.05, skyboxColor: new BABYLON.Color3(0.1, 0.1, 0.2), groundColor: new BABYLON.Color3(0.05, 0.05, 0.05) },
-    { id: 'studio', name: 'Studio', icon: '💡', description: 'Even studio', sunIntensity: 0.6, sunAngle: 90, ambientIntensity: 0.4, skyboxColor: new BABYLON.Color3(0.8, 0.8, 0.9), groundColor: new BABYLON.Color3(0.4, 0.4, 0.4) },
+    { id: 'day', name: 'Day', icon: '☀️', description: 'Bright daylight', sunIntensity: 1.2, sunAngle: 45, ambientIntensity: 0.3, skyboxColor: new BABYLON.Color3(0.5, 0.7, 1.0), groundColor: new BABYLON.Color3(0.2, 0.3, 0.1), sunColor: new BABYLON.Color3(1, 1, 0.98) },
+    // Low sun angle + a warm sun COLOR (see sunColor's own comment) is what actually
+    // produces the long-shadow, golden-rim-light look of a real golden-hour render -
+    // "Sunset" alone (angle 15) was already close on angle but stayed white-lit.
+    { id: 'goldenHour', name: 'Golden Hour', icon: '🌇', description: 'Warm low sun, long shadows', sunIntensity: 1.0, sunAngle: 8, ambientIntensity: 0.22, skyboxColor: new BABYLON.Color3(1.0, 0.55, 0.22), groundColor: new BABYLON.Color3(0.28, 0.16, 0.08), sunColor: new BABYLON.Color3(1.0, 0.72, 0.42) },
+    { id: 'sunset', name: 'Sunset', icon: '🌅', description: 'Warm evening', sunIntensity: 0.8, sunAngle: 15, ambientIntensity: 0.2, skyboxColor: new BABYLON.Color3(1.0, 0.6, 0.3), groundColor: new BABYLON.Color3(0.3, 0.2, 0.1), sunColor: new BABYLON.Color3(1.0, 0.78, 0.55) },
+    { id: 'night', name: 'Night', icon: '🌙', description: 'Dark night', sunIntensity: 0.1, sunAngle: -30, ambientIntensity: 0.05, skyboxColor: new BABYLON.Color3(0.1, 0.1, 0.2), groundColor: new BABYLON.Color3(0.05, 0.05, 0.05), sunColor: new BABYLON.Color3(0.6, 0.7, 1.0) },
+    { id: 'studio', name: 'Studio', icon: '💡', description: 'Even studio', sunIntensity: 0.6, sunAngle: 90, ambientIntensity: 0.4, skyboxColor: new BABYLON.Color3(0.8, 0.8, 0.9), groundColor: new BABYLON.Color3(0.4, 0.4, 0.4), sunColor: new BABYLON.Color3(1, 1, 1) },
   ];
 
   const getDirLight = () => scene.lights.find(l => l instanceof BABYLON.DirectionalLight) as BABYLON.DirectionalLight | undefined;
@@ -254,6 +266,7 @@ const LightingPresets: React.FC<LightingPresetsProps> = ({ scene, onPresetChange
     // superseded work using the wrong formula.
     if (dir) {
       dir.intensity = preset.sunIntensity;
+      dir.diffuse = preset.sunColor;
     }
     if (hemi) {
       hemi.intensity = preset.ambientIntensity;
@@ -329,6 +342,7 @@ const LightingPresets: React.FC<LightingPresetsProps> = ({ scene, onPresetChange
     // effect this same tick, which sets the real elevation+azimuth direction correctly.
     if (dir) {
       dir.intensity = day.sunIntensity;
+      dir.diffuse = day.sunColor;
     }
     if (hemi) {
       hemi.intensity = day.ambientIntensity;

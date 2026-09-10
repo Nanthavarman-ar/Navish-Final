@@ -27,7 +27,11 @@ const MIN_WINDOW_VERTICES = 12; // skip trivial slivers (a thin mullion, a handl
 // ambient) - "subtle" was an explicit requirement, and erring toward too-subtle is the safe
 // direction to err in given the physics above; erring toward too-bright risks a visible hot
 // spot right next to a window with no way to catch it before a user sees it live.
-const FILL_TARGET_ILLUMINANCE = 0.12;
+// Nudged up from 0.12 - still well under hemiLight's 0.4 base ambient (the safety margin
+// the original calibration comment above is measured against), just enough to read as a
+// warm golden-hour bounce near windows instead of being nearly invisible next to direct
+// sun/skybox light at the "Golden Hour"/"Sunset" presets (see LightingPresets.tsx).
+const FILL_TARGET_ILLUMINANCE = 0.16;
 const MIN_OFFSET_METERS = 1.0;
 const MAX_OFFSET_METERS = 2.0;
 
@@ -64,7 +68,10 @@ function makeFillLight(scene: Scene, name: string, position: Vector3, offsetDist
   // Slightly warm, like real daylight bounced off interior surfaces - subtle, not a
   // colored-light effect (this app's own Interactive Fixtures lamp glow uses a similarly
   // restrained warm tint for the same "reads as natural, not as a stage light" reason).
-  light.diffuse = new Color3(1, 0.97, 0.9);
+  // Warmed a bit further (was 1, 0.97, 0.9) to actually read as golden bounce light next
+  // to the "Golden Hour"/"Sunset" presets' own warm sun color, rather than reading as a
+  // neutral daylight fill that clashes with them.
+  light.diffuse = new Color3(1, 0.93, 0.8);
   // Pure diffuse fill, no specular contribution - a small point light's specular highlight
   // on a glossy floor/countertop reads as an obvious fake bright dot, not as ambient fill.
   light.specular = Color3.Black();
