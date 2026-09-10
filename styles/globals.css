@@ -241,8 +241,16 @@
   }
 }
 
+/* Defense-in-depth for the real fix on .babylon-canvas (BabylonWorkspace.css) - without
+   touch-action:none there, dragging to orbit/pan the camera on a touchscreen is
+   indistinguishable from a native pull-to-refresh gesture to the browser, which reloads
+   the ENTIRE page (reported as "the model keeps reloading while scrolling" - every
+   manager/service re-initializing from scratch matches a real full page reload, not a
+   React remount). This html-level rule additionally blocks the same gesture from
+   anywhere else on the page that has scroll room, not just the canvas itself. */
 html {
   font-size: var(--font-size);
+  overscroll-behavior: none;
 }
 
 /* Technical readouts (coordinates, measurements, cost figures, timestamps) read like

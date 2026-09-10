@@ -39,6 +39,14 @@
   flex-grow: 1;
   height: 100%;
   width: 100%;
+  /* Without this, every touch drag/scroll on the canvas is ambiguous to the browser
+     between "pan/orbit the camera" (Babylon's own pointer input, which already works
+     fine either way) and a native browser gesture - pinch-to-zoom the whole page,
+     two-finger scroll, or (the one actually reported) pull-to-refresh, which reloads the
+     entire page the instant a drag starts near the top of the viewport. touch-action:none
+     hands 100% of touch input on this element to JS (Babylon's pointer events), so the
+     browser never intercepts it as a page-level gesture. */
+  touch-action: none;
 }
 
 .error-boundary {
