@@ -46,6 +46,17 @@ import { AbstractMesh, Color3, Material, PBRMaterial } from '@babylonjs/core';
 const GLASS_PATTERN = /\bglass\b|glazing|\bpane\b/i;
 const WINDOW_PATTERN = /\bwindow\b/i;
 const GLASS_FRAME_EXCLUSION_PATTERN = /frame|sill|trim|casing|jamb|mullion|header|surround|board|ledge|shutter|blind|curtain|drape/i;
+
+/**
+ * Same glass/window detection classify() below uses for material enhancement, exported so
+ * other passes that need "is this actually the glass pane, not its frame/sill/trim" (the
+ * ambient fill-light placement in ambientFillLights.ts, which places lights at detected
+ * windows) share one definition instead of a second copy that could silently drift out of
+ * sync with this one's own frame/sill/trim exclusion fix.
+ */
+export function isGlassLabel(label: string): boolean {
+  return GLASS_PATTERN.test(label) || (WINDOW_PATTERN.test(label) && !GLASS_FRAME_EXCLUSION_PATTERN.test(label));
+}
 const METAL_PATTERN = /steel|metal|aluminu?m|chrome|iron\b|railing|balustrade|hinge|handle|grille|mesh_wire/i;
 const FLOOR_PATTERN = /floor|tile|marble|granite|terrazzo|slab/i;
 const WOOD_PATTERN = /wood|timber|plywood|veneer|\bdoor\b/i;
@@ -117,8 +128,7 @@ function classify(label: string): MaterialLook | null {
   // not the texture pipeline: GLASS_PATTERN used to match "window" unconditionally, so a
   // frame/sill/trim/curtain mesh named e.g. "Window_Frame_01" or "Door_and_Window_Trim"
   // got forced to 20%-alpha transparency right alongside the actual glass pane.
-  const isGlass = GLASS_PATTERN.test(label) || (WINDOW_PATTERN.test(label) && !GLASS_FRAME_EXCLUSION_PATTERN.test(label));
-  if (isGlass) return { metallic: 0, roughness: 0.05, glassAlpha: 0.2 };
+  if (isGlassLabel(label)) return { metallic: 0, roughness: 0.05, glassAlpha: 0.2 };
   if (LIGHT_FIXTURE_PATTERN.test(label)) return { metallic: 0.2, roughness: 0.4, emissive: true };
   if (METAL_PATTERN.test(label)) return { metallic: 0.3, roughness: 0.4 };
   if (FLOOR_PATTERN.test(label)) return { metallic: 0, roughness: 0.3, clearcoat: true };

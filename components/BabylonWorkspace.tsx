@@ -4,7 +4,7 @@ import { useSearchParams } from 'react-router-dom';
 import './BabylonWorkspace.css';
 
 // Core Babylon.js imports only (minimal for initial load)
-import { Engine, Scene, ArcRotateCamera, FreeCamera, UniversalCamera, HemisphericLight, DirectionalLight, Vector3, Vector2, Quaternion, Color3, Color4, Mesh, AbstractMesh, StandardMaterial, DefaultRenderingPipeline, SSAO2RenderingPipeline, SSRRenderingPipeline, TAARenderingPipeline, IblShadowsRenderPipeline, HighlightLayer, PBRMaterial, Material, ImageProcessingConfiguration, ColorCurves, PointerInfo, PickingInfo, Camera, PointerEventTypes, ParticleSystem, MeshBuilder, Texture, GizmoManager, GizmoAnchorPoint, ShadowGenerator, CascadedShadowGenerator, Ray, Axis } from '@babylonjs/core';
+import { Engine, Scene, ArcRotateCamera, FreeCamera, UniversalCamera, HemisphericLight, DirectionalLight, PointLight, Vector3, Vector2, Quaternion, Color3, Color4, Mesh, AbstractMesh, StandardMaterial, DefaultRenderingPipeline, SSAO2RenderingPipeline, SSRRenderingPipeline, TAARenderingPipeline, IblShadowsRenderPipeline, HighlightLayer, PBRMaterial, Material, ImageProcessingConfiguration, ColorCurves, PointerInfo, PickingInfo, Camera, PointerEventTypes, ParticleSystem, MeshBuilder, Texture, GizmoManager, GizmoAnchorPoint, ShadowGenerator, CascadedShadowGenerator, Ray, Axis } from '@babylonjs/core';
 import { WaterMaterial } from '@babylonjs/materials/water';
 import { PerlinNoiseProceduralTexture } from '@babylonjs/procedural-textures';
 
@@ -67,6 +67,7 @@ import { captureSceneEdits, applySceneEdits, mergeAndSaveSceneEdits, loadSceneEd
 import { mergeDecorativeMeshes, isDecorativeClutterMesh } from './utils/meshMerging';
 import { runChunked } from './utils/runChunked';
 import { enhanceImportedMaterials } from './utils/materialEnhancement';
+import { addAmbientFillLights } from './utils/ambientFillLights';
 
 // UI Component imports
 import FeatureButton from './FeatureButton';
@@ -658,6 +659,14 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
       });
       loadedModelMeshesRef.current = [];
     }
+    // Same reasoning as the mesh disposal just above - the previous model's ambient fill
+    // lights (see ambientFillLights.ts) are positioned relative to ITS geometry, so they'd
+    // be meaningless (and just extra unexplained light sources) once a different model
+    // loads in.
+    if (ambientFillLightsRef.current.length) {
+      ambientFillLightsRef.current.forEach((light) => light.dispose());
+      ambientFillLightsRef.current = [];
+    }
 
     // Floor plan PDFs aren't 3D models - SceneLoader has no plugin for them at all.
     // Instead: render the PDF's first page (floor plans are effectively always single-
@@ -830,6 +839,15 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
           // touched) so left synchronous rather than chunked like the passes above.
           if (cancelled) return;
           enhanceImportedMaterials(newMeshes);
+          // Cheap real-time approximation of indirect/bounce light (see
+          // ambientFillLights.ts's own top comment for why this exists and how it stays
+          // safe/subtle) - a few soft lights placed near detected windows. Purely additive:
+          // does not touch the sun/hemispheric lights, HDRI, shadows, or any post-process
+          // pipeline set up elsewhere in this effect (all still ahead of this point in the
+          // file, at scene-init - this only ever adds new Light objects on top).
+          const fillResult = addAmbientFillLights(scene, newMeshes);
+          ambientFillLightsRef.current = fillResult.lights;
+          console.log(`[ambient-fill-lights] added ${fillResult.lights.length} (windows detected: ${fillResult.windowsDetected})`);
           // A cheap, safe win for decorative background clutter specifically (bush/rail/
           // lamp-shaped meshes - see isDecorativeClutterMesh, the exact same check
           // mergeDecorativeMeshes above already uses) - NOT applied to the rest of the
@@ -1604,6 +1622,11 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
   // (see the occlusion-culling loop below) - tracked separately so the fast-rotation guard
   // effect further down doesn't need to re-filter the whole mesh list every time it runs.
   const occlusionMeshesRef = useRef<AbstractMesh[]>([]);
+  // Soft fill lights approximating indirect/bounce light near windows (see
+  // ambientFillLights.ts) - tracked so the next model load can dispose the previous
+  // model's lights before adding its own, the same way loadedModelMeshesRef's own meshes
+  // get disposed just below.
+  const ambientFillLightsRef = useRef<PointLight[]>([]);
   // The full per-model record last loaded from (or about to be saved to) the backend -
   // holds every field of SceneEditsData (mesh edits, homeView, ...), not just whichever one
   // the caller currently cares about. Saves must always write this whole merged object back,
