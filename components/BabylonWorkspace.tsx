@@ -838,7 +838,27 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
           // material response until now. Cheap (property sets only, no textures/geometry
           // touched) so left synchronous rather than chunked like the passes above.
           if (cancelled) return;
-          enhanceImportedMaterials(newMeshes);
+          const materialEnhancementResult = enhanceImportedMaterials(newMeshes);
+          // Surface meshes whose source file assigned them no material at all (Babylon's
+          // own glTF-loader fallback, MISSING_MATERIAL_NAME - see materialEnhancement.ts).
+          // enhanceImportedMaterials already gave these a plausible generic PBR look so the
+          // scene doesn't render broken, but no name-based heuristic can invent real
+          // wood-grain/stone/glass data that was never in the file - flagging them (rather
+          // than silently leaving one object looking flatter than the rest with no
+          // explanation) is what lets a user go fix it via the Material Editor instead of
+          // wondering why lighting/HDRI changes never make that one object look right.
+          if (materialEnhancementResult.missingMaterialMeshes.length > 0) {
+            materialEnhancementResult.missingMaterialMeshes.forEach((m) => {
+              m.metadata = { ...(m.metadata || {}), missingMaterial: true };
+            });
+            const names = materialEnhancementResult.missingMaterialMeshes.map((m) => m.name);
+            console.warn('[materialEnhancement] Meshes with no material in the source file:', names);
+            const preview = names.slice(0, 3).join(', ') + (names.length > 3 ? `, +${names.length - 3} more` : '');
+            showToast.warning(
+              `${names.length} object${names.length > 1 ? 's have' : ' has'} no material assigned`,
+              `${preview} - the source file didn't include material data for ${names.length > 1 ? 'these' : 'this'}. Open Material Editor and assign a material to fix ${names.length > 1 ? 'them' : 'it'}.`
+            );
+          }
           // Cheap real-time approximation of indirect/bounce light (see
           // ambientFillLights.ts's own top comment for why this exists and how it stays
           // safe/subtle) - a few soft lights placed near detected windows. Purely additive:

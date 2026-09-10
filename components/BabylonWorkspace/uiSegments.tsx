@@ -1306,6 +1306,11 @@ const PropertyInspectorPanel: React.FC<{ mesh: any; meshCount: number; lightCoun
               </div>
             </div>
             <p className="text-slate-400">Material: {mesh.material?.name || 'None'}</p>
+            {mesh.metadata?.missingMaterial && (
+              <p className="text-amber-400 text-[11px]" title="The source file didn't include material data for this object - enhanceImportedMaterials() only gave it a generic placeholder look. Use Material Editor to assign a real material.">
+                ⚠ No material in source file - assign one in Material Editor
+              </p>
+            )}
             {materialColor && (
               <div>
                 <p className="text-slate-500 mb-1">Material Color</p>

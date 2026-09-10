@@ -70,6 +70,17 @@ const LIGHT_FIXTURE_PATTERN = /\blamp\b|chandelier|sconce|\bbulb\b|pendant.?ligh
 // risk of this pass fighting either of those for the same material.
 const WATER_PATTERN = /water|pool|pond|fountain/i;
 
+// The exact literal name Babylon's own glTF loader (@babylonjs/loaders) gives the
+// fallback material it creates when a primitive in the source file has NO material
+// assigned at all (confirmed against glTFLoader.pure.js's own `_createDefaultMaterial`
+// call site) - not a name this app chose, and not something classify() below can ever
+// turn into a real wood/glass/stone look, since there is no real material data behind it
+// to draw on. Exported so BabylonWorkspace.tsx can tell "generic name classify() couldn't
+// identify" (still gets a believable look below) apart from "the source file genuinely has
+// zero material here" (same generic look applied, but worth surfacing to the user - see
+// enhanceImportedMaterials' missingMaterialMeshes return value).
+export const MISSING_MATERIAL_NAME = '__GLTFLoader._default';
+
 interface MaterialLook {
   metallic: number;
   roughness: number;
@@ -178,19 +189,41 @@ function classify(label: string): MaterialLook | null {
 // true for a single named wall material, false for any surface actually built from many
 // repeated small materials, which ribbed panels/plank flooring/brick coursing all commonly
 // are. Left as a known dead end rather than something to silently retry later.
+/** Return value of {@link enhanceImportedMaterials} - see its own doc comment. */
+export interface MaterialEnhancementResult {
+  enhancedCount: number;
+  /**
+   * Every mesh whose material was Babylon's own MISSING_MATERIAL_NAME fallback - i.e. the
+   * source file assigned it no material at all, not just an undescriptive one. classify()
+   * still gives these a reasonable generic look (see the "no pattern matched" fallback
+   * below) so the scene doesn't render broken, but no name-based heuristic can invent real
+   * wood-grain/stone/glass data that was never in the file - worth surfacing to the user
+   * rather than leaving them to wonder why one object looks flatter than the rest.
+   */
+  missingMaterialMeshes: AbstractMesh[];
+}
+
 /**
  * Walks a just-loaded model's meshes and gives any "untouched" PBRMaterial a believable,
  * per-element-type PBR response instead of leaving it at whatever flat default the source
  * file's exporter left it with. Returns how many distinct materials it actually changed,
  * for an optional toast/log - not required for correctness.
  */
-export function enhanceImportedMaterials(meshes: AbstractMesh[]): number {
+export function enhanceImportedMaterials(meshes: AbstractMesh[]): MaterialEnhancementResult {
   const processed = new Set<Material>();
   let enhancedCount = 0;
+  const missingMaterialMeshes: AbstractMesh[] = [];
 
   for (const mesh of meshes) {
     const material = mesh.material;
-    if (!material || processed.has(material)) continue;
+    if (!material) continue;
+    // Checked before the processed-material dedup below (which is about not re-styling the
+    // same shared material object twice) - Babylon's glTF loader reuses ONE fallback
+    // material instance across every materialless primitive in the file, so multiple real
+    // meshes commonly share it; each still needs to be reported individually, not just the
+    // first one encountered.
+    if (material.name === MISSING_MATERIAL_NAME) missingMaterialMeshes.push(mesh);
+    if (processed.has(material)) continue;
     processed.add(material);
 
     if (!(material instanceof PBRMaterial)) continue;
@@ -232,5 +265,5 @@ export function enhanceImportedMaterials(meshes: AbstractMesh[]): number {
     }
   }
 
-  return enhancedCount;
+  return { enhancedCount, missingMaterialMeshes };
 }
