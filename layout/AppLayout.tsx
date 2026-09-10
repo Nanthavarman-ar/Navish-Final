@@ -226,6 +226,17 @@ export default function AppLayout() {
       return;
     }
     if (selectedModel) {
+      // Once ANY model is selected - restored from storage, opened manually from the
+      // models list, or via a shared link - "restore the last model" is moot for the rest
+      // of this mount's lifetime, whether or not it ever actually ran. Without setting the
+      // ref here too, a model selected any way OTHER than through this effect's own
+      // restore path left hasRestoredLastModelRef permanently false, so every later
+      // re-render that gave selectedModel a new object reference (a Lighting panel slider,
+      // any unrelated state change bubbling through AppLayout) re-ran this whole effect
+      // and re-logged this same line - reported this session as visible console/render
+      // churn happening WHILE a model was already mid-load, right alongside a "loading is
+      // very slow" complaint.
+      hasRestoredLastModelRef.current = true;
       console.log('[restore-last-model] skipped: a model is already selected', { selectedModel });
       return;
     }
