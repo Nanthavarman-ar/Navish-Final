@@ -207,7 +207,19 @@ const GLASS_NAME_PATTERN = /glass|window|glazing|pane/i;
 
 // Shared between the camera's initial setup and the Shift-held fast-zoom effect below -
 // both need to agree on what "normal" actually is to revert to it correctly.
-const CAMERA_WHEEL_DELTA_NORMAL = 0.01;
+//
+// Percentage-based zoom (see the wheelDeltaPercentage comment where this is applied) moves
+// the camera by this fraction of its CURRENT distance to target per scroll tick - it
+// naturally decelerates the closer the camera gets, which is the intended "precise up
+// close" behavior, but it's also proportional to how close minZ lets the camera get in the
+// first place. minZ used to be Babylon's default of 1 world unit, which was itself the near-
+// clip bug fixed elsewhere this session - at that distance floor, this deceleration was
+// never really reachable/noticeable. Now that minZ is 0.05, the camera can get 20x closer,
+// and at that range 0.01 (1% of a much smaller remaining distance) reads as "scroll barely
+// does anything" - reported this session as scroll feeling very slow. Doubled to keep
+// close-up zoom feeling responsive without making the far-away case (where 1% of a large
+// distance is already a big absolute step) uncomfortably twitchy.
+const CAMERA_WHEEL_DELTA_NORMAL = 0.02;
 const CAMERA_WHEEL_DELTA_FAST = 0.06;
 
 function isGlassMesh(mesh: AbstractMesh): boolean {
@@ -2114,6 +2126,21 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
           // highlight rolloff but pushes contrast and saturation up a step for a more
           // vivid, game-like look.
           pipeline.imageProcessing.contrast = 1.15;
+          // Contrast > 1 is an S-curve - it brightens highlights but also pushes shadows/
+          // midtones darker, on top of an already-conservative base scene (environmentIntensity
+          // 0.25, dimmed deliberately - see its own comment - plus modest hemi/directional
+          // light intensities). Reported this session as the interior reading noticeably
+          // dark by default, to the point of needing exposure manually pushed to ~2.9 (well
+          // past readable) to compensate - a real usability problem, not just a taste
+          // difference. A modest, fixed exposure lift here is a much smaller, safer
+          // correction than that: it directly counteracts contrast's shadow-darkening
+          // without re-flattening the highlight rolloff ACES/contrast are here for. This is
+          // scene.imageProcessingConfiguration under the hood (pipeline.imageProcessing IS
+          // that same shared object, confirmed in Babylon's own source), so it's applied
+          // scene-wide - VR gets this too, even though the DefaultRenderingPipeline itself
+          // is deliberately not attached to the XR camera (see XRManager.ts) to keep VR's
+          // own extra post-process cost - bloom/DoF/grain - light on a headset's GPU.
+          pipeline.imageProcessing.exposure = 1.2;
           pipeline.imageProcessing.colorCurvesEnabled = true;
           const colorCurves = new ColorCurves();
           colorCurves.globalSaturation = 25;
@@ -2790,6 +2817,11 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
       pipeline.imageProcessing.toneMappingEnabled = true;
       pipeline.imageProcessing.toneMappingType = ImageProcessingConfiguration.TONEMAPPING_ACES;
       pipeline.imageProcessing.contrast = 1.15;
+      // See the matching exposure comment on the other DefaultRenderingPipeline
+      // construction above (mount-time) - this reactive-recreate path (postProcessing
+      // toggled off then back on) needs the same correction, or re-enabling it mid-session
+      // would silently drop back to the too-dark default.
+      pipeline.imageProcessing.exposure = 1.2;
       pipeline.imageProcessing.colorCurvesEnabled = true;
       const colorCurves = new ColorCurves();
       colorCurves.globalSaturation = 25;
