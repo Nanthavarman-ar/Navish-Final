@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Scene, Mesh, AbstractMesh, TransformNode, MeshBuilder, StandardMaterial, VideoTexture, DynamicTexture, Texture, ParticleSystem, Color3, Color4, Vector3, Quaternion, Scalar, VertexBuffer, PointerEventTypes, PointLight, ArcRotateCamera, Space } from '@babylonjs/core';
+import { Scene, Mesh, AbstractMesh, TransformNode, MeshBuilder, StandardMaterial, Material, VideoTexture, DynamicTexture, Texture, ParticleSystem, Color3, Color4, Vector3, Quaternion, Scalar, VertexBuffer, PointerEventTypes, PointLight, ArcRotateCamera, Space } from '@babylonjs/core';
 import { X, Fan, Lightbulb, Tv, Trash2, Upload, DoorOpen, Flame, Droplets, FlipHorizontal, Wind, CloudRain, User, PawPrint, ArrowUpDown, Warehouse } from 'lucide-react';
 import { Button } from './ui/button';
 import { showToast } from './utils/toast';
@@ -386,6 +386,19 @@ const InteractiveFixtures: React.FC<InteractiveFixturesProps> = ({ scene, roomId
   const lightsRef = useRef<Map<string, PointLight>>(new Map());
   const resolvedMeshCacheRef = useRef<Map<string, ReturnType<typeof resolveMeshRef>>>(new Map());
   const videoTexturesRef = useRef<Map<string, { texture: VideoTexture; url: string }>>(new Map());
+  // 'light' and 'tv' (without an uploaded video) fixtures placed on a mesh mutate that
+  // mesh's EXISTING material's emissiveColor in place (on/off glow) rather than replacing
+  // the material - captured once, the first time each fixture's mesh is touched, so deleting
+  // the fixture can put emissiveColor back to whatever it was before this app ever touched
+  // it, the same "put it back" guarantee fan/curtain fixtures already have. Never updated
+  // after the first capture - re-reading it later would just capture this app's own
+  // most-recent on/off tint instead of the material's true original value.
+  const originalEmissiveRef = useRef<Map<string, { material: StandardMaterial; color: Color3 }>>(new Map());
+  // 'tv' fixtures WITH an uploaded video replace the mesh's material wholesale (see the
+  // video-texture effect below) rather than mutating it - captured once per fixture so
+  // deleting it (or removing just the video) can restore the ORIGINAL material object
+  // instead of leaving the mesh permanently wearing a disposed video texture's material.
+  const originalMaterialRef = useRef<Map<string, Material | null>>(new Map());
   const hingeNodesRef = useRef<Map<string, { node: TransformNode; hingeSide: 'min' | 'max' }>>(new Map());
   const particleSystemsRef = useRef<Map<string, ParticleSystem>>(new Map());
   const dotTextureRef = useRef<DynamicTexture | null>(null);
@@ -491,7 +504,13 @@ const InteractiveFixtures: React.FC<InteractiveFixturesProps> = ({ scene, roomId
       if (fixture.type === 'light' || (fixture.type === 'tv' && !fixture.videoUrl)) {
         const mesh = resolveFixtureMesh(fixture);
         const mat = mesh?.material as (StandardMaterial & { emissiveColor?: Color3 }) | null;
-        if (mat && 'emissiveColor' in mat) {
+        if (mat && 'emissiveColor' in mat && mat.emissiveColor) {
+          // Snapshot BEFORE the first mutation only - see originalEmissiveRef's own comment
+          // for why this must never be re-captured on a later pass (that would just record
+          // this app's own last on/off tint as the "original").
+          if (!originalEmissiveRef.current.has(fixture.id)) {
+            originalEmissiveRef.current.set(fixture.id, { material: mat, color: mat.emissiveColor.clone() });
+          }
           mat.emissiveColor = fixture.isOn
             ? (fixture.type === 'tv' ? new Color3(0.55, 0.7, 0.95) : new Color3(1, 0.88, 0.6))
             : new Color3(0, 0, 0);
@@ -563,6 +582,14 @@ const InteractiveFixtures: React.FC<InteractiveFixturesProps> = ({ scene, roomId
           const mediaError = texture.video.error;
           console.error(`[InteractiveFixtures] TV video element error (${videoUrl}):`, mediaError);
         });
+        // Captured BEFORE replacing mesh.material below, and only the first time this
+        // fixture ever gets a video - see originalMaterialRef's own comment. On a later
+        // video swap (existing.url !== fixture.videoUrl on a re-run) mesh.material is
+        // already OUR OWN previous video material at this point, not the true original, so
+        // re-capturing here would silently overwrite the real original with our own.
+        if (!originalMaterialRef.current.has(fixture.id)) {
+          originalMaterialRef.current.set(fixture.id, mesh.material);
+        }
         const mat = new StandardMaterial(`fixture_tv_mat_${fixture.id}`, scene);
         // Preserves whatever the original screen mesh's material had for double-sidedness -
         // common for a thin TV screen panel - the same fix already applied to swatch
@@ -592,6 +619,18 @@ const InteractiveFixtures: React.FC<InteractiveFixturesProps> = ({ scene, roomId
   // - sharing it would have the door's own hinge silently get clobbered back to center the
   // moment an admin selects that door mesh in the Property Inspector.
   const detachHinge = (entry: { node: TransformNode; hingeSide: 'min' | 'max' }) => {
+    // Reported this session as "delete panna model palaya nilaikke thirumba vaanum" (should
+    // go back to its original position on delete) - fixed for fan/curtain fixtures earlier,
+    // but doors were still missing it: the render loop only ever animates the HINGE NODE's
+    // rotation.y (0 = closed, DOOR_SWING_DEGREES = open), the door mesh's own local
+    // transform relative to that hinge never changes - so snapping the hinge back to 0
+    // BEFORE detaching puts the mesh's world transform back to exactly where it was when
+    // first parented (closed), the same way it would if it had just been switched off and
+    // given time to lerp shut. Skipping this left a door deleted mid-swing (or simply left
+    // open) permanently stuck open, since setParent(null) below only preserves whatever
+    // world transform is current at the moment of detaching, not the original one.
+    entry.node.rotation.y = 0;
+    entry.node.computeWorldMatrix(true);
     // Detach the door mesh back out from under the hinge node before disposing it -
     // otherwise the mesh would lose its parent transform contribution and visibly jump
     // the instant the (about to be disposed) hinge node's transform stops applying to it.
@@ -679,6 +718,14 @@ const InteractiveFixtures: React.FC<InteractiveFixturesProps> = ({ scene, roomId
     const currentIds = new Set(fixtures.filter((f) => f.type === 'elevator' || f.type === 'shutter').map((f) => f.id));
     moverNodesRef.current.forEach((entry, id) => {
       if (!currentIds.has(id)) {
+        // Same "put it back where it belongs" fix as the door hinge above - the render loop
+        // only ever moves this wrapper node's position.y (entry.baseY = resting, +travel =
+        // raised/open), the cabin/panel mesh's own local transform relative to it never
+        // changes. Reset to baseY before detaching so a deleted elevator/shutter that was
+        // mid-travel or left fully open settles back to its original resting position
+        // instead of staying stuck wherever it last was.
+        entry.node.position.y = entry.baseY;
+        entry.node.computeWorldMatrix(true);
         const child = entry.node.getChildren()[0];
         if (child && 'setParent' in child) (child as Mesh).setParent(null);
         entry.node.dispose();
@@ -729,6 +776,36 @@ const InteractiveFixtures: React.FC<InteractiveFixturesProps> = ({ scene, roomId
       });
     });
   }, [fixtures, resolveFixtureMesh]);
+
+  // Same "put it back" fix as the fan restore above, for 'light'/'tv' (no video) fixtures -
+  // these mutate an EXISTING material's emissiveColor in place (see originalEmissiveRef's
+  // own comment) rather than creating anything of their own to dispose, so nothing was ever
+  // resetting that color back when the fixture was deleted - a deleted "Light Switch" left
+  // whatever mesh it was on permanently glowing (or permanently dark, if deleted while off
+  // and the original material happened to have its own emissive glow).
+  useEffect(() => {
+    const currentIds = new Set(fixtures.filter((f) => f.type === 'light' || f.type === 'tv').map((f) => f.id));
+    originalEmissiveRef.current.forEach((original, id) => {
+      if (currentIds.has(id)) return;
+      original.material.emissiveColor = original.color;
+      originalEmissiveRef.current.delete(id);
+    });
+  }, [fixtures]);
+
+  // Same "put it back" fix, for 'tv' fixtures WITH an uploaded video - the video-texture
+  // effect below replaces mesh.material wholesale with its own StandardMaterial rather than
+  // mutating the existing one, so deleting the fixture (or just removing the video) needs to
+  // restore the ORIGINAL material object, not just dispose the video texture and leave the
+  // mesh wearing a now-broken material referencing it.
+  useEffect(() => {
+    const currentVideoIds = new Set(fixtures.filter((f) => f.type === 'tv' && f.videoUrl).map((f) => f.id));
+    originalMaterialRef.current.forEach((original, id) => {
+      if (currentVideoIds.has(id)) return;
+      const mesh = resolvedMeshCacheRef.current.get(id);
+      if (mesh) mesh.material = original;
+      originalMaterialRef.current.delete(id);
+    });
+  }, [fixtures]);
 
   // Caches each 'curtain'/'wind' fixture's original vertex positions once, so the render
   // loop below can displace them from a stable baseline every frame rather than drifting
