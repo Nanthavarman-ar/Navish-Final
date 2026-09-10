@@ -12,15 +12,27 @@ import { showToast } from './utils/toast';
 // itself sync the file to a physically separate VR headset's own browser session; that
 // would need the file going through whatever backend project-save system loads the
 // scene there, which is outside this component.
+//
+// Both this and LIGHTING_SETTINGS_KEY below used to be fixed, global keys (one shared
+// 'current' HDRI slot, one shared localStorage entry) - reported this session as "GF
+// project la maathina Living project layum maaruthu" (a change made in one project's
+// model leaked into every other model/project on the same browser): every model shared
+// the exact same saved lighting preset AND the exact same saved HDRI file, since nothing
+// here was ever scoped to WHICH model those settings belonged to. Same class of bug
+// already fixed for AnnotationTool/InteractiveFixtures (see BabylonWorkspace's
+// uiSegments.tsx: "Scoped to the loaded MODEL, not selectedWorkspaceId... notes placed
+// on one model were showing up... on every other model") - LightingPresets was simply
+// missed when that fix went in elsewhere. Every key below is now namespaced by the
+// model id the panel was opened for (see the `modelId` prop), so each model keeps its
+// own lighting/HDRI independently.
 const HDRI_DB_NAME = 'naviz-lighting';
 const HDRI_STORE_NAME = 'hdri';
-const HDRI_KEY = 'current';
 
 // Everything below (preset choice, custom sun/ambient sliders, exposure, exterior/
 // interior mode, flat/procedural sky) previously lived only in useState with no
 // persistence at all, unlike the HDRI file above - so switching lighting worked fine
 // in the moment but silently reset back to the hardcoded defaults on every reload/reopen.
-const LIGHTING_SETTINGS_KEY = 'naviz:lightingSettings';
+const LIGHTING_SETTINGS_KEY_PREFIX = 'naviz:lightingSettings:';
 
 interface PersistedLightingSettings {
   mode: 'exterior' | 'interior';
@@ -33,9 +45,9 @@ interface PersistedLightingSettings {
   skyMode: 'flat' | 'procedural';
 }
 
-function loadPersistedLightingSettings(): Partial<PersistedLightingSettings> {
+function loadPersistedLightingSettings(modelId: string): Partial<PersistedLightingSettings> {
   try {
-    const raw = localStorage.getItem(LIGHTING_SETTINGS_KEY);
+    const raw = localStorage.getItem(LIGHTING_SETTINGS_KEY_PREFIX + modelId);
     return raw ? JSON.parse(raw) : {};
   } catch {
     return {};
@@ -63,31 +75,33 @@ function openHdriDb(): Promise<IDBDatabase> {
   });
 }
 
-async function saveHdriToDb(data: StoredHdri): Promise<void> {
+// Keyed by modelId (was the fixed literal 'current') - one object store now holds every
+// model's own HDRI independently instead of a single shared slot every model overwrote.
+async function saveHdriToDb(modelId: string, data: StoredHdri): Promise<void> {
   const db = await openHdriDb();
   return new Promise((resolve, reject) => {
     const tx = db.transaction(HDRI_STORE_NAME, 'readwrite');
-    tx.objectStore(HDRI_STORE_NAME).put(data, HDRI_KEY);
+    tx.objectStore(HDRI_STORE_NAME).put(data, modelId);
     tx.oncomplete = () => resolve();
     tx.onerror = () => reject(tx.error);
   });
 }
 
-async function loadHdriFromDb(): Promise<StoredHdri | null> {
+async function loadHdriFromDb(modelId: string): Promise<StoredHdri | null> {
   const db = await openHdriDb();
   return new Promise((resolve, reject) => {
     const tx = db.transaction(HDRI_STORE_NAME, 'readonly');
-    const req = tx.objectStore(HDRI_STORE_NAME).get(HDRI_KEY);
+    const req = tx.objectStore(HDRI_STORE_NAME).get(modelId);
     req.onsuccess = () => resolve(req.result ?? null);
     req.onerror = () => reject(req.error);
   });
 }
 
-async function deleteHdriFromDb(): Promise<void> {
+async function deleteHdriFromDb(modelId: string): Promise<void> {
   const db = await openHdriDb();
   return new Promise((resolve, reject) => {
     const tx = db.transaction(HDRI_STORE_NAME, 'readwrite');
-    tx.objectStore(HDRI_STORE_NAME).delete(HDRI_KEY);
+    tx.objectStore(HDRI_STORE_NAME).delete(modelId);
     tx.oncomplete = () => resolve();
     tx.onerror = () => reject(tx.error);
   });
@@ -157,10 +171,15 @@ interface LightingPresetsProps {
   scene: BABYLON.Scene;
   onPresetChange?: (preset: LightingPreset) => void;
   workspaceArea?: { latitude?: number; longitude?: number };
+  // Which model this lighting/HDRI belongs to - every persisted key below (localStorage
+  // settings, IndexedDB HDRI) is namespaced by this, so switching models never leaks one
+  // model's lighting/HDRI into another's. Matches the same `roomId={currentModelId}`
+  // pattern AnnotationTool/InteractiveFixtures already use for the identical reason.
+  modelId: string;
 }
 
-const LightingPresets: React.FC<LightingPresetsProps> = ({ scene, onPresetChange, workspaceArea }) => {
-  const persistedLighting = useRef(loadPersistedLightingSettings()).current;
+const LightingPresets: React.FC<LightingPresetsProps> = ({ scene, onPresetChange, workspaceArea, modelId }) => {
+  const persistedLighting = useRef(loadPersistedLightingSettings(modelId)).current;
   const [mode, setMode] = useState<'exterior' | 'interior'>(persistedLighting.mode ?? 'exterior');
   const [selectedPreset, setSelectedPreset] = useState<string>(persistedLighting.selectedPreset ?? 'day');
   const [customIntensity, setCustomIntensity] = useState(persistedLighting.customIntensity ?? 1.0);
@@ -385,7 +404,7 @@ const LightingPresets: React.FC<LightingPresetsProps> = ({ scene, onPresetChange
     persistDebounceRef.current = setTimeout(() => {
       persistDebounceRef.current = null;
       try {
-        const previous = loadPersistedLightingSettings();
+        const previous = loadPersistedLightingSettings(modelId);
         const next: PersistedLightingSettings = {
           mode,
           selectedPreset,
@@ -396,13 +415,13 @@ const LightingPresets: React.FC<LightingPresetsProps> = ({ scene, onPresetChange
           exposure,
           skyMode: skyMode === 'hdri' ? (previous.skyMode ?? 'flat') : skyMode,
         };
-        localStorage.setItem(LIGHTING_SETTINGS_KEY, JSON.stringify(next));
+        localStorage.setItem(LIGHTING_SETTINGS_KEY_PREFIX + modelId, JSON.stringify(next));
       } catch {
         // localStorage unavailable (private browsing, etc) - lighting still works in-session
       }
     }, 400);
     return () => { if (persistDebounceRef.current) clearTimeout(persistDebounceRef.current); };
-  }, [mode, selectedPreset, customIntensity, customAngle, customAzimuth, ambientIntensity, exposure, skyMode]);
+  }, [mode, selectedPreset, customIntensity, customAngle, customAzimuth, ambientIntensity, exposure, skyMode, modelId]);
 
   // Time Simulation (merged from the old standalone Sun Study panel): scrub
   // any hour/month to preview shadow movement, independent of the real
@@ -593,7 +612,7 @@ const LightingPresets: React.FC<LightingPresetsProps> = ({ scene, onPresetChange
         // path (see handleHdriUpload's saveHdriToDb call, which runs regardless of whether
         // the texture actually decoded) keeps getting restored and failing again on every
         // future reload, showing this same error every time the model opens.
-        deleteHdriFromDb().catch(err => console.warn('[LightingPresets] Could not remove broken saved HDRI:', err));
+        deleteHdriFromDb(modelId).catch(err => console.warn('[LightingPresets] Could not remove broken saved HDRI:', err));
       }
     );
     hdrTexture.level = envIntensity;
@@ -656,7 +675,7 @@ const LightingPresets: React.FC<LightingPresetsProps> = ({ scene, onPresetChange
 
     setHdriFileName(fileName);
     setSkyMode('hdri');
-  }, [scene]);
+  }, [scene, modelId]);
 
   const handleHdriUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -684,7 +703,7 @@ const LightingPresets: React.FC<LightingPresetsProps> = ({ scene, onPresetChange
     // real, common failure here looked identical to it just working, and there was no
     // toast to distinguish "saved for next time" from "worked now, but won't survive a
     // reload".
-    saveHdriToDb({ blob: file, fileName: file.name, intensity: hdriIntensity, envLightingIntensity, rotation: hdriRotation })
+    saveHdriToDb(modelId, { blob: file, fileName: file.name, intensity: hdriIntensity, envLightingIntensity, rotation: hdriRotation })
       .then(() => showToast.success('HDRI saved', 'It will load automatically the next time this model opens, on this device.'))
       .catch(err => {
         console.warn('[LightingPresets] Could not save HDRI for persistence:', err);
@@ -700,7 +719,7 @@ const LightingPresets: React.FC<LightingPresetsProps> = ({ scene, onPresetChange
     if (hdriBlobUrlRef.current) { URL.revokeObjectURL(hdriBlobUrlRef.current); hdriBlobUrlRef.current = null; }
     setSkyMode('procedural');
     setHdriFileName(null);
-    deleteHdriFromDb().catch(err => console.warn('[LightingPresets] Could not remove saved HDRI:', err));
+    deleteHdriFromDb(modelId).catch(err => console.warn('[LightingPresets] Could not remove saved HDRI:', err));
   };
 
   // Restore a previously uploaded HDRI on mount, if one was saved - otherwise every
@@ -708,7 +727,7 @@ const LightingPresets: React.FC<LightingPresetsProps> = ({ scene, onPresetChange
   useEffect(() => {
     if (!scene) return;
     let cancelled = false;
-    loadHdriFromDb()
+    loadHdriFromDb(modelId)
       .then(saved => {
         if (cancelled || !saved) return;
         setHdriIntensity(saved.intensity);
@@ -727,10 +746,10 @@ const LightingPresets: React.FC<LightingPresetsProps> = ({ scene, onPresetChange
       })
       .catch(err => console.warn('[LightingPresets] Could not restore saved HDRI:', err));
     return () => { cancelled = true; };
-    // Deliberately mount-only (plus whenever the Scene itself changes) - this should
-    // run once to restore state, not every time applyHdriFile's identity changes.
+    // Deliberately mount-only (plus whenever the Scene or model itself changes) - this
+    // should run once to restore state, not every time applyHdriFile's identity changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [scene]);
+  }, [scene, modelId]);
 
   // "Sky Brightness" - visual only, the skybox's own cloned texture.
   useEffect(() => {

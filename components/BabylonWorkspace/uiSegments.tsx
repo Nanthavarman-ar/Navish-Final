@@ -685,7 +685,11 @@ const CoreFeaturesSegment: React.FC<Pick<CustomPanelsSegmentProps, 'featureState
           <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-400 hover:text-white" onClick={() => disableFeature('showLighting')} aria-label="Close Lighting">✕</Button>
         </div>
         <div className="flex-1 min-h-0 overflow-hidden p-4">
-          <LightingPresets scene={sceneRef.current} />
+          {/* Scoped to the loaded MODEL, same reasoning as AnnotationTool's roomId prop
+              below - a change made in one model/project's lighting or uploaded HDRI was
+              leaking into every other model on the same browser, since LightingPresets'
+              own localStorage/IndexedDB persistence had no model scoping at all until now. */}
+          <LightingPresets scene={sceneRef.current} modelId={currentModelId} />
         </div>
       </div>
       </Suspense>
