@@ -77,8 +77,9 @@ interface MaterialLook {
   glassAlpha?: number;
   /** Only floors get this - a subtle polished-surface highlight, not a mirror finish. */
   clearcoat?: boolean;
-  /** Only lamp/light fixtures get this - a warm always-on glow, not a real dynamic light. */
-  emissive?: boolean;
+  /** Lamps and glass/windows each get their own color/intensity - see LIGHT_FIXTURE_*/
+  /** WINDOW_GLOW_* below. */
+  emissive?: { color: Color3; intensity: number };
 }
 
 // A believable "polished floor" look needs a second, sharper specular response on top of
@@ -100,6 +101,19 @@ const FLOOR_CLEARCOAT_ROUGHNESS = 0.15;
 // basically free, since it's a property set on a material that's already being drawn.
 const LIGHT_FIXTURE_EMISSIVE_COLOR = new Color3(1, 0.85, 0.55);
 const LIGHT_FIXTURE_EMISSIVE_INTENSITY = 0.6;
+
+// Reported this session: the ambient fill lights (ambientFillLights.ts) placed near
+// windows brighten the room a little, but the window itself still reads as a flat, unlit
+// gray pane - "no daylight visible through it". Real-time archviz tools commonly fake
+// "bright sky/daylight visible through the glass" with exactly this same trick used above
+// for lamps: a material-only emissive glow, not an actual light source - free (a property
+// on a material that's already being drawn), and avoids ever needing real exterior
+// geometry/sky visible through the glass for it to read as "daylight outside". Cooler/
+// paler than the lamp glow (daylight, not a warm bulb) and noticeably dimmer per-pixel
+// than a lamp's small bulb surface - a whole window pane is a much larger emissive area,
+// so a lamp-level intensity here would read as a glowing screen, not soft daylight.
+const WINDOW_GLOW_COLOR = new Color3(0.85, 0.92, 1);
+const WINDOW_GLOW_INTENSITY = 0.4;
 
 // Reported regression, root-caused after this shipped: metal/lamp materials were coming
 // out solid black on some models, "works on some models, not others" on the rest -
@@ -128,8 +142,21 @@ function classify(label: string): MaterialLook | null {
   // not the texture pipeline: GLASS_PATTERN used to match "window" unconditionally, so a
   // frame/sill/trim/curtain mesh named e.g. "Window_Frame_01" or "Door_and_Window_Trim"
   // got forced to 20%-alpha transparency right alongside the actual glass pane.
-  if (isGlassLabel(label)) return { metallic: 0, roughness: 0.05, glassAlpha: 0.2 };
-  if (LIGHT_FIXTURE_PATTERN.test(label)) return { metallic: 0.2, roughness: 0.4, emissive: true };
+  if (isGlassLabel(label)) {
+    return {
+      metallic: 0,
+      roughness: 0.05,
+      glassAlpha: 0.2,
+      emissive: { color: WINDOW_GLOW_COLOR, intensity: WINDOW_GLOW_INTENSITY },
+    };
+  }
+  if (LIGHT_FIXTURE_PATTERN.test(label)) {
+    return {
+      metallic: 0.2,
+      roughness: 0.4,
+      emissive: { color: LIGHT_FIXTURE_EMISSIVE_COLOR, intensity: LIGHT_FIXTURE_EMISSIVE_INTENSITY },
+    };
+  }
   if (METAL_PATTERN.test(label)) return { metallic: 0.3, roughness: 0.4 };
   if (FLOOR_PATTERN.test(label)) return { metallic: 0, roughness: 0.3, clearcoat: true };
   if (WOOD_PATTERN.test(label)) return { metallic: 0, roughness: 0.55 };
@@ -196,8 +223,8 @@ export function enhanceImportedMaterials(meshes: AbstractMesh[]): number {
         material.clearCoat.roughness = FLOOR_CLEARCOAT_ROUGHNESS;
       }
       if (look.emissive) {
-        material.emissiveColor = LIGHT_FIXTURE_EMISSIVE_COLOR;
-        material.emissiveIntensity = LIGHT_FIXTURE_EMISSIVE_INTENSITY;
+        material.emissiveColor = look.emissive.color;
+        material.emissiveIntensity = look.emissive.intensity;
       }
       enhancedCount++;
     } catch (error) {
