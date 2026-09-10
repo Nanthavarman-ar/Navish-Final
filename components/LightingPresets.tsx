@@ -27,6 +27,7 @@ interface PersistedLightingSettings {
   selectedPreset: string;
   customIntensity: number;
   customAngle: number;
+  customAzimuth: number;
   ambientIntensity: number;
   exposure: number;
   skyMode: 'flat' | 'procedural';
@@ -156,6 +157,16 @@ const LightingPresets: React.FC<LightingPresetsProps> = ({ scene, onPresetChange
   const [selectedPreset, setSelectedPreset] = useState<string>(persistedLighting.selectedPreset ?? 'day');
   const [customIntensity, setCustomIntensity] = useState(persistedLighting.customIntensity ?? 1.0);
   const [customAngle, setCustomAngle] = useState(persistedLighting.customAngle ?? 45);
+  // Reported this session: the Custom Angle slider only ever changed how HIGH the sun sits
+  // (its old direction formula fixed the horizontal/compass component at a constant Z=0),
+  // so no matter the angle, sunlight always came from the exact same side of the building -
+  // it never felt like the sun was "rotating around", and a window facing the wrong way
+  // never caught direct light regardless of angle. Time Simulation (this same file, see
+  // applyTimeSimulation) already computes a real elevation+azimuth direction correctly -
+  // this is that same "compass direction" as its own independent slider, so Custom gets
+  // the same real rotation Time Simulation already had. 180 as a default (not 0) is
+  // arbitrary - any starting compass direction is equally valid until the user adjusts it.
+  const [customAzimuth, setCustomAzimuth] = useState(persistedLighting.customAzimuth ?? 180);
   const [ambientIntensity, setAmbientIntensity] = useState(persistedLighting.ambientIntensity ?? 0.3);
   const [exposure, setExposure] = useState(persistedLighting.exposure ?? 1.0);
   const [realWorldTimeMode, setRealWorldTimeMode] = useState(false);
@@ -235,10 +246,14 @@ const LightingPresets: React.FC<LightingPresetsProps> = ({ scene, onPresetChange
     setSelectedPreset(preset.id);
     const dir = getDirLight();
     const hemi = getHemiLight();
+    // dir.direction is intentionally NOT set directly here (it used to be, with the same
+    // limited "elevation only, compass direction fixed" formula customAzimuth's own comment
+    // explains) - setCustomAngle() below re-fires applyCustomExterior() via its own effect
+    // this same tick, which sets the correct elevation+azimuth direction using whatever
+    // customAzimuth already is. Setting it here too would just be redundant, immediately
+    // superseded work using the wrong formula.
     if (dir) {
       dir.intensity = preset.sunIntensity;
-      const rad = (preset.sunAngle * Math.PI) / 180;
-      dir.direction = new BABYLON.Vector3(Math.sin(rad), -Math.cos(rad), 0);
     }
     if (hemi) {
       hemi.intensity = preset.ambientIntensity;
@@ -264,11 +279,21 @@ const LightingPresets: React.FC<LightingPresetsProps> = ({ scene, onPresetChange
     const hemi = getHemiLight();
     if (dir) {
       dir.intensity = customIntensity;
-      const rad = (customAngle * Math.PI) / 180;
-      dir.direction = new BABYLON.Vector3(Math.sin(rad), -Math.cos(rad), 0);
+      // Same elevation+azimuth spherical direction Time Simulation already uses correctly
+      // (see applyTimeSimulation above) - customAngle is elevation (how high), customAzimuth
+      // is compass direction (which side of the building it shines from). The old formula
+      // fixed the horizontal component at a constant Z=0, so the sun never actually rotated
+      // around the building regardless of angle - see customAzimuth's own comment.
+      const elevationRad = (customAngle * Math.PI) / 180;
+      const azimuthRad = (customAzimuth * Math.PI) / 180;
+      dir.direction = new BABYLON.Vector3(
+        -Math.cos(elevationRad) * Math.sin(azimuthRad),
+        -Math.sin(elevationRad),
+        -Math.cos(elevationRad) * Math.cos(azimuthRad)
+      );
     }
     if (hemi) hemi.intensity = ambientIntensity;
-  }, [customIntensity, customAngle, ambientIntensity, realWorldTimeMode, timeSimEnabled, scene]);
+  }, [customIntensity, customAngle, customAzimuth, ambientIntensity, realWorldTimeMode, timeSimEnabled, scene]);
 
   // Also re-fires (via applyCustomExterior's own identity above, which now depends on
   // realWorldTimeMode/timeSimEnabled too) whenever either mode is switched OFF - previously
@@ -299,10 +324,11 @@ const LightingPresets: React.FC<LightingPresetsProps> = ({ scene, onPresetChange
     setSelectedPreset(day.id);
     const dir = getDirLight();
     const hemi = getHemiLight();
+    // dir.direction not set directly here either - same reasoning as applyPreset's own
+    // comment: setCustomAngle/setCustomAzimuth below re-fire applyCustomExterior() via its
+    // effect this same tick, which sets the real elevation+azimuth direction correctly.
     if (dir) {
       dir.intensity = day.sunIntensity;
-      const rad = (day.sunAngle * Math.PI) / 180;
-      dir.direction = new BABYLON.Vector3(Math.sin(rad), -Math.cos(rad), 0);
     }
     if (hemi) {
       hemi.intensity = day.ambientIntensity;
@@ -310,6 +336,7 @@ const LightingPresets: React.FC<LightingPresetsProps> = ({ scene, onPresetChange
     }
     setCustomIntensity(day.sunIntensity);
     setCustomAngle(day.sunAngle);
+    setCustomAzimuth(180); // same default a brand new browser starts at
     setAmbientIntensity(day.ambientIntensity);
     setExposure(1.0);
     // An HDRI deliberately dims the sun/ambient to 35%/60% of whatever they were (see the
@@ -350,6 +377,7 @@ const LightingPresets: React.FC<LightingPresetsProps> = ({ scene, onPresetChange
           selectedPreset,
           customIntensity,
           customAngle,
+          customAzimuth,
           ambientIntensity,
           exposure,
           skyMode: skyMode === 'hdri' ? (previous.skyMode ?? 'flat') : skyMode,
@@ -360,7 +388,7 @@ const LightingPresets: React.FC<LightingPresetsProps> = ({ scene, onPresetChange
       }
     }, 400);
     return () => { if (persistDebounceRef.current) clearTimeout(persistDebounceRef.current); };
-  }, [mode, selectedPreset, customIntensity, customAngle, ambientIntensity, exposure, skyMode]);
+  }, [mode, selectedPreset, customIntensity, customAngle, customAzimuth, ambientIntensity, exposure, skyMode]);
 
   // Time Simulation (merged from the old standalone Sun Study panel): scrub
   // any hour/month to preview shadow movement, independent of the real
@@ -825,6 +853,7 @@ const LightingPresets: React.FC<LightingPresetsProps> = ({ scene, onPresetChange
               <h4 className="section-title">Custom</h4>
               <Slider label="Sun" value={customIntensity} min={0} max={2} step={0.1} onChange={setCustomIntensity} />
               <Slider label="Angle" value={customAngle} min={-90} max={90} step={5} onChange={setCustomAngle} />
+              <Slider label="Direction" value={customAzimuth} min={0} max={360} step={5} onChange={setCustomAzimuth} />
               <Slider label="Ambient" value={ambientIntensity} min={0} max={1} step={0.05} onChange={setAmbientIntensity} />
               <Slider label="Exposure" value={exposure} min={0.1} max={3} step={0.1} onChange={setExposure} />
             </div>
