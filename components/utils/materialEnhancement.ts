@@ -129,6 +129,33 @@ function classify(label: string): MaterialLook | null {
   return { metallic: 0.1, roughness: 0.7 };
 }
 
+// Every material this pass classifies into the same bucket (e.g. every plain wall/ceiling/
+// generic surface with no distinguishing name) gets EXACTLY the same roughness value -
+// visually, that reads as "obviously computer-generated": a real building has some natural
+// variation between different wall segments/paint batches, a uniform CG material doesn't.
+// A procedural per-pixel detail texture (bump/roughness map) would be the fuller fix, but
+// that needs exact tangent-space RGB channel encoding to look right - genuinely easy to get
+// subtly wrong with no way to visually verify it here, and a wrong normal map reads as
+// obvious artifacting on every surface it touches, which is a worse outcome than the flat
+// look it would replace. A small, deterministic per-MATERIAL (not per-pixel) roughness
+// jitter is a much lower-risk way to get part of the same benefit: different materials
+// (different wall segments, different named surfaces) land at very slightly different
+// glossiness instead of being perfect clones of each other, with zero shader/texture risk -
+// worst case this does nothing visible, it can never look "broken".
+// Deterministic (hashed from the material's own label) rather than Math.random() so the
+// same material always jitters the same way across reloads/devices, instead of visibly
+// changing every time the model loads.
+function hashToUnitRange(label: string): number {
+  let hash = 0;
+  for (let i = 0; i < label.length; i++) {
+    hash = (hash * 31 + label.charCodeAt(i)) | 0;
+  }
+  // >>> 0 forces unsigned before dividing, so this is always in [0, 1) regardless of sign.
+  return (hash >>> 0) / 0xffffffff;
+}
+
+const ROUGHNESS_JITTER_RANGE = 0.06; // +/- half this, e.g. 0.06 -> roughness +/- 0.03
+
 /**
  * Walks a just-loaded model's meshes and gives any "untouched" PBRMaterial a believable,
  * per-element-type PBR response instead of leaving it at whatever flat default the source
@@ -163,7 +190,13 @@ export function enhanceImportedMaterials(meshes: AbstractMesh[]): number {
       if (!look) continue;
 
       material.metallic = look.metallic;
-      material.roughness = look.roughness;
+      // Glass is excluded from the jitter - a handful of glass panes benefit far more from
+      // staying precisely, uniformly clear than from the same "break up uniformity" win
+      // every other surface type gets here.
+      const jitter = look.glassAlpha === undefined
+        ? (hashToUnitRange(label) - 0.5) * ROUGHNESS_JITTER_RANGE
+        : 0;
+      material.roughness = Math.min(1, Math.max(0, look.roughness + jitter));
       if (look.glassAlpha !== undefined) {
         material.alpha = look.glassAlpha;
         material.transparencyMode = PBRMaterial.PBRMATERIAL_ALPHABLEND;
