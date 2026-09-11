@@ -112,6 +112,13 @@ export interface SavedFixture {
   id: string;
   type: 'fan' | 'light' | 'tv' | 'door' | 'fire' | 'water' | 'curtain' | 'wind' | 'rain' | 'person' | 'pet' | 'elevator' | 'shutter';
   label: string;
+  // Optional custom name the admin can give this specific fixture (e.g. "Front Door",
+  // "Living Room Candle") - reported as a real gap once a model has several fixtures of
+  // the SAME type: they all showed up as identical, indistinguishable "Door / Cabinet" /
+  // "Fireplace / Candle" rows with nothing to tell them apart. Falls back to `label`
+  // (the type's generic name) everywhere it's displayed - including the in-headset VR
+  // menu - when unset, so this is purely additive and never required.
+  name?: string;
   position: { x: number; y: number; z: number };
   // The mesh this fixture acts on - fan blades to spin, bulb/fixture mesh to glow, TV
   // screen to light up, the door/cabinet/shutter panel itself to swing/slide, the curtain/

@@ -1162,7 +1162,10 @@ const InteractiveFixtures: React.FC<InteractiveFixturesProps> = ({ scene, roomId
       manager.registerVRMenuProvider('fixtures', () =>
         fixturesRef.current.map((fixture): VRMenuItem => ({
           id: fixture.id,
-          label: fixture.label,
+          // Custom name (see SavedFixture.name) takes priority so telling apart several
+          // fixtures of the same type ("Front Door" vs "Kitchen Door") works in the VR
+          // menu exactly the same way it does in this panel's own list.
+          label: fixture.name || fixture.label,
           isOn: fixture.isOn,
           toggle: () => toggleFixture(fixture.id),
         }))
@@ -1257,6 +1260,18 @@ const InteractiveFixtures: React.FC<InteractiveFixturesProps> = ({ scene, roomId
   const deleteFixture = (id: string) => {
     setFixtures((prev) => {
       const next = prev.filter((f) => f.id !== id);
+      persist(next);
+      return next;
+    });
+  };
+
+  // Empty/whitespace-only clears back to no custom name (falls back to the type's generic
+  // label everywhere - see SavedFixture.name's own comment) rather than saving a blank
+  // string, which would otherwise show as an empty, seemingly-broken row.
+  const renameFixture = (id: string, name: string) => {
+    const trimmed = name.trim();
+    setFixtures((prev) => {
+      const next = prev.map((f) => (f.id === id ? { ...f, name: trimmed || undefined } : f));
       persist(next);
       return next;
     });
@@ -1367,14 +1382,44 @@ const InteractiveFixtures: React.FC<InteractiveFixturesProps> = ({ scene, roomId
             No fixtures yet. Pick a type above and click the right spot on the model.
           </div>
         )}
-        {fixtures.map((fixture) => {
+        {/* Sorted by type (Door, Candle, etc.) with a section header whenever the type
+            changes, rather than one flat list - reported as hard to tell fixtures apart
+            once a model has several of the same type, all showing up as identical-looking
+            rows. Each fixture keeps its own optional custom name (see SavedFixture.name)
+            so, say, "Front Door" and "Kitchen Door" are distinguishable within their
+            shared "Door / Cabinet" section. A plain sort + "did the type change since the
+            last row" check, not a nested map, so this stays a minimal change to the
+            existing per-row JSX below rather than restructuring it. */}
+        {(() => {
+          const sorted = [...fixtures].sort(
+            (a, b) => FIXTURE_TYPES.findIndex((t) => t.id === a.type) - FIXTURE_TYPES.findIndex((t) => t.id === b.type)
+          );
+          let lastType: string | null = null;
+          return sorted.map((fixture) => {
           const typeInfo = FIXTURE_TYPES.find((t) => t.id === fixture.type)!;
+          const showHeader = fixture.type !== lastType;
+          lastType = fixture.type;
           const isUploading = uploadingVideoId === fixture.id;
           return (
-            <div key={fixture.id} className="p-2.5 bg-slate-800/50 border border-slate-700/80 rounded-lg group space-y-1.5">
+            <React.Fragment key={fixture.id}>
+            {showHeader && (
+              <div className="flex items-center gap-1.5 px-0.5 pt-1 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                <typeInfo.icon className="w-3.5 h-3.5 shrink-0" style={{ color: `rgb(${typeInfo.color.r * 255}, ${typeInfo.color.g * 255}, ${typeInfo.color.b * 255})` }} />
+                {typeInfo.label}
+                <span className="text-slate-600">({sorted.filter((f) => f.type === fixture.type).length})</span>
+              </div>
+            )}
+            <div className="p-2.5 bg-slate-800/50 border border-slate-700/80 rounded-lg group space-y-1.5">
               <div className="flex items-center gap-2">
                 <typeInfo.icon className="w-4 h-4 shrink-0" style={{ color: `rgb(${typeInfo.color.r * 255}, ${typeInfo.color.g * 255}, ${typeInfo.color.b * 255})` }} />
-                <span className="flex-1 text-sm text-gray-100 truncate">{fixture.label}</span>
+                <input
+                  type="text"
+                  defaultValue={fixture.name ?? ''}
+                  placeholder={fixture.label}
+                  onBlur={(e) => renameFixture(fixture.id, e.target.value)}
+                  title="Give this fixture its own name to tell it apart from others of the same type"
+                  className="flex-1 min-w-0 bg-transparent text-sm text-gray-100 placeholder-gray-500 focus:outline-none focus:bg-slate-700/60 rounded px-1 -mx-1 truncate"
+                />
                 <Button
                   size="sm"
                   variant={fixture.isOn ? 'default' : 'outline'}
@@ -1462,8 +1507,10 @@ const InteractiveFixtures: React.FC<InteractiveFixturesProps> = ({ scene, roomId
                 </div>
               )}
             </div>
+            </React.Fragment>
           );
-        })}
+          });
+        })()}
       </div>
     </div>
   );
