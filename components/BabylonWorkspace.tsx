@@ -2270,30 +2270,32 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
           // from the cascade-seam fix above (that one's about mismatches BETWEEN cascade
           // zones; this is self-shadowing WITHIN one surface), so autoCalcDepthBounds
           // alone never touched it.
-          csm.bias = 0.002;
-          // 0.06 (original) cleaned up flat roof/ground banding but left the same striping
-          // on concave curved surfaces (an archway/sunshade underside). Pushed to 0.1 to
-          // clear that - which traded it for the opposite, equally real artifact: a visibly
-          // detached/floating shadow at object-to-ground contact points ("peter panning",
-          // confirmed against a follow-up screenshot - the classic failure mode of pushing
-          // normalBias too far, since it's shifting the shadow sample away from the surface
-          // along its normal, and a large shift is exactly as visible at a contact edge as a
-          // small one is invisible on a curve). 0.1 and 0.06 are opposite failure directions
-          // for the SAME lever, not two independent bugs - 0.08 splits the difference rather
-          // than continuing to push one further while the other regresses.
-          csm.normalBias = 0.08;
+          csm.bias = 0.0018;
+          // Went 0.035 (original) -> 0.06 -> 0.08 -> 0.1 -> 0.08 chasing this, and EVERY
+          // value from 0.06 up still peter-panned (a roof eave/overhang's shadow visibly
+          // detached from the object instead of hugging it, confirmed against a follow-up
+          // screenshot even at 0.08). That's because forceBackFacesOnly below (added at the
+          // same time as the first bias increase) already does the actual acne-fixing work
+          // by itself - it changes WHICH face's depth gets written to the shadow map, which
+          // alone removes most self-intersection, independent of bias. Stacking a large
+          // normalBias on TOP of that was double-compensating: two different fixes for the
+          // same symptom, each pushing the shadow sample further from the true surface, and
+          // thin protruding geometry (eaves, overhangs) shows that combined push as an
+          // obvious gap far more readily than the curved surfaces normalBias alone was aimed
+          // at. Brought back down near its original value - forceBackFacesOnly is now the
+          // primary fix for both the flat and curved banding, this is only the small
+          // remaining margin still needed.
+          csm.normalBias = 0.04;
           // Renders the shadow map from each mesh's BACK faces instead of its front faces -
           // Babylon's own documented fix for shadow acne on solid/closed geometry (walls,
           // roofs, most architectural meshes), since the surface actually visible to the
           // camera then never self-intersects the depth values written by its own front
-          // face. Reported this session as fine parallel diagonal banding across large flat
-          // roof/ground surfaces, worst at the shallow/near-grazing sun angles a top-down or
-          // aerial camera view makes common - bias/normalBias alone (raised above too, from
-          // 0.0015/0.035) reduce but don't eliminate that at a steep enough grazing angle;
-          // this removes the self-intersection at its source instead of just pushing the
-          // sample further away from it. Only correct for solid meshes with real backfaces
-          // (every wall/roof/floor here) - a truly single-sided plane would need the default
-          // front-face path instead, but this app has none of those as shadow casters.
+          // face. This is the primary fix for the flat roof/ground banding and the curved
+          // sunshade banding both - see the normalBias comment above for why bias itself was
+          // brought back down instead of staying stacked on top of this. Only correct for
+          // solid meshes with real backfaces (every wall/roof/floor here) - a truly
+          // single-sided plane would need the default front-face path instead, but this app
+          // has none of those as shadow casters.
           csm.forceBackFacesOnly = true;
           shadowGenerator = csm;
         } catch (csmError) {
@@ -2301,8 +2303,8 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
           shadowGenerator = new ShadowGenerator(1024, dirLight);
           shadowGenerator.useBlurExponentialShadowMap = true;
           shadowGenerator.blurKernel = 32;
-          shadowGenerator.bias = 0.002;
-          shadowGenerator.normalBias = 0.08;
+          shadowGenerator.bias = 0.0018;
+          shadowGenerator.normalBias = 0.04;
           shadowGenerator.forceBackFacesOnly = true;
         }
         shadowGeneratorRef.current = shadowGenerator;
