@@ -15,192 +15,8 @@ import { usePanelStack } from '../../hooks/usePanelStack';
 
 // Lazy load components
 const LeftPanel = React.lazy(() => import('../LeftPanel'));
-const ControlPanel = React.lazy(() => import('../../src/components/UI/ControlPanel/ControlPanel'));
-const TopBar = React.lazy(() => import('../TopBar'));
 const SimpleWorkspaceTopBar = React.lazy(() => import('./SimpleWorkspaceTopBar').then(m => ({ default: m.SimpleWorkspaceTopBar })));
 const BottomPanel = React.lazy(() => import('../BottomPanel'));
-const EnhancedWorkspaceLayout = React.lazy(() => import('../EnhancedWorkspaceLayout'));
-const EnhancedToolbar = React.lazy(() => import('../EnhancedToolbar'));
-
-// Props interfaces
-interface LeftPanelSegmentProps {
-  featureCategories: Record<string, any[]>;
-  categoryPanelVisible: Record<string, boolean>;
-  searchTerm: string;
-  activeFeatures: Set<string>;
-  currentLayoutMode: 'standard' | 'compact' | 'immersive';
-  onCategoryToggle: (category: string) => void;
-  onSearchChange: (term: string) => void;
-  onFeatureToggle: (featureId: string | number, enabled: boolean) => void;
-  onClose: () => void;
-  aiManagerRef?: React.RefObject<any>;
-  bimManagerRef?: React.RefObject<any>;
-}
-
-interface TopBarSegmentProps {
-  isGenerating: boolean;
-  generationProgress: number;
-  onToggleRealTime: () => void;
-  realTimeEnabled: boolean;
-  fps: number;
-  activeFeatures: Set<string>;
-  cameraMode: 'orbit' | 'fly' | 'walk' | undefined;
-  onCameraModeChange: (mode: 'orbit' | 'fly' | 'walk' | undefined) => void;
-  onToggleGrid: () => void;
-  gridVisible: boolean;
-  onToggleWireframe: () => void;
-  wireframeEnabled: boolean;
-  onToggleStats: () => void;
-  statsVisible: boolean;
-}
-
-interface BottomPanelSegmentProps {
-  activeFeatures: string[];
-  performanceMode: 'low' | 'medium' | 'high';
-  selectedMesh: any;
-  onFeatureToggle: (featureId: string) => void;
-  onPerformanceModeChange: (mode: 'low' | 'medium' | 'high') => void;
-  featureStats: { total: number; active: number; byCategory: Record<string, number>; byStatus: Record<string, number> };
-  warnings: string[];
-  suggestions: string[];
-  onSequenceCreate: (sequence: any) => void;
-  onSequencePlay: (sequenceId: string) => void;
-}
-
-// Components
-export const LeftPanelSegment: React.FC<LeftPanelSegmentProps> = ({
-  featureCategories,
-  categoryPanelVisible,
-  searchTerm,
-  activeFeatures,
-  currentLayoutMode,
-  onCategoryToggle,
-  onSearchChange,
-  onFeatureToggle,
-  onClose,
-  aiManagerRef,
-  bimManagerRef
-}) => (
-  <Suspense fallback={<div className="p-4">Loading Left Panel...</div>}>
-    <LeftPanel
-      featureCategories={featureCategories}
-      categoryPanelVisible={categoryPanelVisible}
-      searchTerm={searchTerm}
-      activeFeatures={activeFeatures}
-      currentLayoutMode={currentLayoutMode}
-      onCategoryToggle={onCategoryToggle}
-      onSearchChange={onSearchChange}
-      onFeatureToggle={onFeatureToggle}
-      onClose={onClose}
-      aiManagerRef={aiManagerRef}
-      bimManagerRef={bimManagerRef}
-    />
-  </Suspense>
-);
-
-export const TopBarSegment: React.FC<TopBarSegmentProps> = ({
-  isGenerating,
-  generationProgress,
-  onToggleRealTime,
-  realTimeEnabled,
-  fps,
-  activeFeatures,
-  cameraMode,
-  onCameraModeChange,
-  onToggleGrid,
-  gridVisible,
-  onToggleWireframe,
-  wireframeEnabled,
-  onToggleStats,
-  statsVisible
-}) => (
-  <Suspense fallback={<div className="p-2">Loading Top Bar...</div>}>
-    <TopBar
-      isGenerating={isGenerating}
-      generationProgress={generationProgress}
-      onToggleRealTime={onToggleRealTime}
-      realTimeEnabled={realTimeEnabled}
-      fps={fps.toString()}
-      activeFeatures={activeFeatures.size.toString()}
-      cameraMode={cameraMode}
-      onCameraModeChange={onCameraModeChange}
-      onToggleGrid={onToggleGrid}
-      gridVisible={gridVisible}
-      onToggleWireframe={onToggleWireframe}
-      wireframeEnabled={wireframeEnabled}
-      onToggleStats={onToggleStats}
-      statsVisible={statsVisible}
-    />
-  </Suspense>
-);
-
-export const BottomPanelSegment: React.FC<BottomPanelSegmentProps> = ({
-  activeFeatures,
-  performanceMode,
-  selectedMesh,
-  onFeatureToggle,
-  onPerformanceModeChange,
-  featureStats,
-  warnings,
-  suggestions,
-  onSequenceCreate,
-  onSequencePlay
-}) => (
-  <Suspense fallback={<div className="p-2">Loading Bottom Panel...</div>}>
-    <BottomPanel
-      activeFeatures={activeFeatures}
-      performanceMode={performanceMode}
-      selectedMesh={selectedMesh}
-      onFeatureToggle={onFeatureToggle}
-      onPerformanceModeChange={onPerformanceModeChange}
-      featureStats={featureStats}
-      warnings={warnings}
-      suggestions={suggestions}
-      onSequenceCreate={onSequenceCreate}
-      onSequencePlay={onSequencePlay}
-    />
-  </Suspense>
-);
-
-// Immersive mode controls component
-export const ImmersiveControls: React.FC<{
-  activeFeatures: Set<string>;
-  featuresByCategory: Record<string, any[]>;
-  handleCategoryToggle: (category: string) => void;
-  updateState: (updates: any) => void;
-}> = ({ activeFeatures, featuresByCategory, handleCategoryToggle, updateState }) => (
-  <div className="absolute top-4 left-1/2 transform -translate-x-1/2 z-20">
-    <Card className="bg-background">
-      <CardContent className="p-2 flex items-center gap-2">
-        <Badge variant="outline">{activeFeatures.size}</Badge>
-        <Separator orientation="vertical" className="h-6" />
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button size="sm" variant="ghost" aria-label="Feature Categories">
-              📂
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent>
-            {Object.keys(featuresByCategory).map(category => (
-              <DropdownMenuItem key={category} onClick={() => handleCategoryToggle(category)}>
-                {category.charAt(0).toUpperCase() + category.slice(1)}
-              </DropdownMenuItem>
-            ))}
-          </DropdownMenuContent>
-        </DropdownMenu>
-        <Button size="sm" variant="ghost" onClick={() => updateState({ leftPanelVisible: false })} title="Toggle Left Panel">
-          🎛️
-        </Button>
-        <Button size="sm" variant="ghost" onClick={() => updateState({ rightPanelVisible: false })} title="Toggle Right Panel">
-          ⚙️
-        </Button>
-        <Button size="sm" variant="ghost" onClick={() => updateState({ leftPanelVisible: true, rightPanelVisible: true, bottomPanelVisible: true })} title="Exit Immersive Mode">
-          🔙
-        </Button>
-      </CardContent>
-    </Card>
-  </div>
-);
 
 // Loading overlay component
 export const LoadingOverlay: React.FC<{
@@ -825,7 +641,7 @@ const CoreFeaturesSegment: React.FC<Pick<CustomPanelsSegmentProps, 'featureState
           <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-400 hover:text-white" onClick={() => disableFeature('showEnergyDashboard')} aria-label="Close Energy Analysis">✕</Button>
         </div>
         <div className="flex-1 min-h-0 overflow-y-auto p-2">
-          <EnergyDashboard bimManager={bimManagerRef.current ?? undefined} simulationManager={simulationManagerRef?.current ?? undefined} modelId={currentModelId} />
+          <EnergyDashboard bimManager={bimManagerRef.current ?? undefined} simulationManager={simulationManagerRef?.current ?? undefined} modelId={currentModelId} scene={sceneRef.current} />
         </div>
       </div>
       </Suspense>
@@ -2149,6 +1965,17 @@ interface RenderBottomPanelProps {
   selectedMesh: any;
   handleFeatureToggle: (featureId: string | number, enabled: boolean) => void;
   setPerformanceMode: (mode: 'low' | 'medium' | 'high') => void;
+  // Real counts/live warnings computed in BabylonWorkspace.tsx - this used to be hardcoded
+  // to {total:0, active:0, byCategory:{}, byStatus:{}} / [] right at the JSX call below,
+  // so the Performance tab's "Feature Statistics"/"Warnings" sections always rendered empty
+  // no matter how many features were active or how low the live FPS actually was.
+  featureStats: { total: number; active: number; byCategory: Record<string, number>; byStatus: Record<string, number> };
+  warnings: string[];
+  // Real export/screenshot actions (the same ones the top bar's Export/Screenshot buttons
+  // call) - the Export tab used to have no way to reach these and instead simulated a fake
+  // setInterval progress bar with no real file ever produced.
+  onExportScene: () => void;
+  onExportScreenshot: (format?: 'png' | 'jpeg') => void;
   handleTourSequenceCreate: (sequence: any) => void;
   handleTourSequencePlay: (sequenceId: string) => void;
   // The real AnimationManager instance (BabylonWorkspace.tsx's animationManagerRef) - the
@@ -2292,9 +2119,11 @@ export const renderBottomPanel = (props: RenderBottomPanelProps) => {
         selectedMesh={props.selectedMesh}
         onFeatureToggle={(featureId: string) => props.handleFeatureToggle(featureId, false)}
         onPerformanceModeChange={props.setPerformanceMode}
-        featureStats={{ total: 0, active: 0, byCategory: {}, byStatus: {} }}
-        warnings={[]}
+        featureStats={props.featureStats}
+        warnings={props.warnings}
         suggestions={[]}
+        onExportScene={props.onExportScene}
+        onExportScreenshot={props.onExportScreenshot}
         onSequenceCreate={props.handleTourSequenceCreate}
         onSequencePlay={props.handleTourSequencePlay}
         animationManager={props.animationManagerRef?.current ?? null}

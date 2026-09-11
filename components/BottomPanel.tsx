@@ -5,11 +5,9 @@ import { ScrollArea } from './ui/scroll-area';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
 import { Separator } from './ui/separator';
-import { Progress } from './ui/progress';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { Input } from './ui/input';
-import { Label } from './ui/label';
 import {
   Activity, AlertTriangle, CheckCircle, Clock,
   Cpu, Zap, Users, Settings, Info, Play, Pause, RotateCcw,
@@ -35,6 +33,11 @@ interface BottomPanelProps {
   suggestions: string[];
   onSequenceCreate: (sequence: any) => void;
   onSequencePlay: (sequenceId: string) => void;
+  // Real export actions (same ones the top bar's own Export/Screenshot buttons call) -
+  // the Export tab below used to only simulate a fake setInterval progress bar with no
+  // real file ever produced regardless of which format/quality was picked.
+  onExportScene: () => void;
+  onExportScreenshot: (format?: 'png' | 'jpeg') => void;
   // Optional - the Timeline tab falls back to AnimationTimeline's own "no manager" empty
   // state when this is omitted, same as it did with the hardcoded null it used to get.
   animationManager?: AnimationManager | null;
@@ -51,6 +54,8 @@ const BottomPanel: React.FC<BottomPanelProps> = ({
   suggestions,
   onSequenceCreate,
   onSequencePlay,
+  onExportScene,
+  onExportScreenshot,
   animationManager = null
 }) => {
   const getStatusIcon = (status: string) => {
@@ -65,25 +70,14 @@ const BottomPanel: React.FC<BottomPanelProps> = ({
   // Timeline and Export state
   const [currentTime, setCurrentTime] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
-  const [exportFormat, setExportFormat] = useState('gltf');
-  const [exportQuality, setExportQuality] = useState('high');
-  const [exportProgress, setExportProgress] = useState(0);
-  const [isExporting, setIsExporting] = useState(false);
+  const [exportFormat, setExportFormat] = useState<'gltf' | 'png' | 'jpeg'>('gltf');
 
   const handleExport = () => {
-    setIsExporting(true);
-    setExportProgress(0);
-    // Simulate export progress
-    const interval = setInterval(() => {
-      setExportProgress(prev => {
-        if (prev >= 100) {
-          clearInterval(interval);
-          setIsExporting(false);
-          return 100;
-        }
-        return prev + 10;
-      });
-    }, 300);
+    if (exportFormat === 'gltf') {
+      onExportScene();
+    } else {
+      onExportScreenshot(exportFormat);
+    }
   };
 
   return (
@@ -220,38 +214,25 @@ const BottomPanel: React.FC<BottomPanelProps> = ({
         <TabsContent value="export" className="p-4 h-full">
           <div>
             <h3 className="text-sm font-medium mb-2">Export Scene</h3>
-            <Select value={exportFormat} onValueChange={setExportFormat}>
+            <Select value={exportFormat} onValueChange={(v) => setExportFormat(v as 'gltf' | 'png' | 'jpeg')}>
               <SelectTrigger>
                 <SelectValue placeholder="Select format" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="gltf">GLTF</SelectItem>
-                <SelectItem value="png">PNG</SelectItem>
-                <SelectItem value="video">Video</SelectItem>
+                <SelectItem value="gltf">3D Model (.glb)</SelectItem>
+                <SelectItem value="png">Screenshot (PNG)</SelectItem>
+                <SelectItem value="jpeg">Screenshot (JPEG)</SelectItem>
               </SelectContent>
             </Select>
-            <Label className="mt-4">Quality</Label>
-            <Select value={exportQuality} onValueChange={setExportQuality}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select quality" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="low">Low</SelectItem>
-                <SelectItem value="medium">Medium</SelectItem>
-                <SelectItem value="high">High</SelectItem>
-              </SelectContent>
-            </Select>
+            <p className="text-xs text-muted-foreground mt-2">
+              Need a video walkthrough instead? Use the Walkthrough Recorder panel from the left toolbar.
+            </p>
             <Button
               className="mt-4"
               onClick={handleExport}
-              disabled={isExporting}
             >
-              {isExporting ? "Exporting..." : "Export"}
+              Export
             </Button>
-            {isExporting && (
-              <Progress value={exportProgress} className="mt-2" />
-            )}
-            {/* Export status and settings can be expanded here */}
           </div>
         </TabsContent>
 

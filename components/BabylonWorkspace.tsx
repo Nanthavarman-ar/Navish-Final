@@ -27,7 +27,7 @@ import { supabase, projectId } from '../supabase/client';
 
 // Import extracted modules
 import { useMeshSceneHandlers, isSelectableMesh } from './BabylonWorkspace/meshSceneHandlers';
-import { LeftPanelSegment, TopBarSegment, BottomPanelSegment, ImmersiveControls, renderLeftPanel, renderTopBar, renderRightPanel, renderBottomPanel, renderCustomPanels } from './BabylonWorkspace/uiSegments';
+import { renderLeftPanel, renderTopBar, renderRightPanel, renderBottomPanel, renderCustomPanels } from './BabylonWorkspace/uiSegments';
 
 // Interfaces
 import * as AnimationInterfaces from './interfaces/AnimationInterfaces';
@@ -516,6 +516,22 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
     });
     return filtered;
   }, [rawFeaturesByCategory, isAdmin]);
+
+  // Real counts for the Bottom Panel's "Feature Statistics" (Performance tab) - this used
+  // to be a hardcoded { total: 0, active: 0, byCategory: {}, byStatus: {} } passed straight
+  // through at the render call site, even though the real data (activeFeatures,
+  // rawFeaturesByCategoryVisible) was already available here, so the tab always rendered
+  // as permanently empty regardless of how many features were actually on.
+  const featureStatsComputed = React.useMemo(() => {
+    const byCategory: Record<string, number> = {};
+    let total = 0;
+    Object.entries(rawFeaturesByCategoryVisible).forEach(([category, features]) => {
+      const count = (features as any[]).length;
+      byCategory[category] = count;
+      total += count;
+    });
+    return { total, active: activeFeatures.size, byCategory, byStatus: {} };
+  }, [rawFeaturesByCategoryVisible, activeFeatures]);
 
   // "Open in Workspace" from a Tools & Features page (ToolPage.tsx) navigates here as
   // /workspace?feature=showXxx - this is what actually turns that flag on. Only enables
@@ -1247,6 +1263,65 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
   // recommendedQuality] further below.
   const [graphicsQuality, setGraphicsQuality] = React.useState<'auto' | 'low' | 'medium' | 'high' | 'ultra'>(renderingQuality);
   const [recommendedQuality, setRecommendedQuality] = React.useState<'low' | 'medium' | 'high' | 'ultra'>('medium');
+  // Bottom Panel's 3-button Performance Mode control (low/medium/high only) is a simplified
+  // view onto the real 5-tier graphicsQuality system above, not a separate setting - it used
+  // to be backed by useWorkspaceState's setPerformanceMode, which was a TODO stub that only
+  // console.logged, so clicking Low/Medium/High visibly highlighted a button but never
+  // actually changed anything. 'auto' resolves to whatever tier recommendedQuality currently
+  // is; 'ultra' collapses into 'high' since the simplified control has no ultra button.
+  const performanceModeResolved = React.useMemo<'low' | 'medium' | 'high'>(() => {
+    const resolved = graphicsQuality === 'auto' ? recommendedQuality : graphicsQuality;
+    return resolved === 'ultra' ? 'high' : resolved;
+  }, [graphicsQuality, recommendedQuality]);
+  const handlePerformanceModeChange = React.useCallback((mode: 'low' | 'medium' | 'high') => {
+    setGraphicsQuality(mode);
+  }, []);
+
+  // Real scene export (GLB via glTF-Serializer) - named/hoisted here (rather than inline
+  // in the top bar's props object, where it originally lived) so the Bottom Panel's own
+  // Export tab can call the SAME real export instead of the fake setInterval-driven
+  // progress bar it used to simulate with no actual file ever produced.
+  const handleExportScene = React.useCallback(() => {
+    const scene = sceneRef.current;
+    if (!scene) {
+      showToast.error('Scene not ready to export');
+      return;
+    }
+    const toastId = showToast.loading('Exporting scene...', 'Preparing GLB file');
+    import('@babylonjs/serializers/glTF/2.0/glTFSerializer').then(({ GLTF2Export }) => {
+      GLTF2Export.GLBAsync(scene, `naviz-scene-${new Date().toISOString().slice(0, 10)}`)
+        .then((glb) => {
+          showToast.dismiss(toastId);
+          glb.downloadFiles();
+          showToast.success('Scene exported', 'Downloaded as .glb');
+        })
+        .catch((error) => {
+          showToast.dismiss(toastId);
+          console.error('Scene export failed:', error);
+          showToast.error('Failed to export scene');
+        });
+    });
+  }, []);
+
+  // Real screenshot capture - same hoisting reason as handleExportScene above, so the
+  // Bottom Panel's Export tab's "PNG" option produces an actual downloaded image instead
+  // of a fake progress bar.
+  const handleScreenshotCapture = React.useCallback((format?: 'png' | 'jpeg') => {
+    const canvas = engineRef.current?.getRenderingCanvas() as HTMLCanvasElement | null;
+    if (!canvas) { showToast.error('Canvas not ready'); return; }
+    const mime = format === 'jpeg' ? 'image/jpeg' : 'image/png';
+    const ext = format === 'jpeg' ? 'jpg' : 'png';
+    try {
+      const dataUrl = canvas.toDataURL(mime, format === 'jpeg' ? 0.92 : undefined);
+      const a = document.createElement('a');
+      a.href = dataUrl;
+      a.download = `screenshot-${new Date().toISOString().slice(0, 19).replace(/[:-]/g, '')}.${ext}`;
+      a.click();
+      showToast.success(`Screenshot saved as ${ext.toUpperCase()}`);
+    } catch (e) {
+      showToast.error('Screenshot failed');
+    }
+  }, []);
   const [gpuName, setGpuName] = React.useState<string>('');
   const gizmoManagerRef = useRef<GizmoManager | null>(null);
   const [transformMode, setTransformMode] = React.useState<'none' | 'position' | 'rotation' | 'scale'>('none');
@@ -1285,6 +1360,13 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
   useEffect(() => { floodOnRef.current = floodOn; }, [floodOn]);
   const [currentModelId, setCurrentModelId] = React.useState<string>('default-model');
   const [fps, setFps] = React.useState(60);
+  // Real "Warnings" content for the Bottom Panel's Performance tab (previously always []
+  // regardless of actual scene performance) - a genuinely low live FPS is exactly what that
+  // tab exists to surface, using the same `fps` state the FPS badge elsewhere already reads.
+  const performanceWarnings = React.useMemo(
+    () => (fps > 0 && fps < 30 ? [`Low frame rate (${fps} FPS) - try switching Performance Mode to a lower tier.`] : []),
+    [fps]
+  );
   const [workspaces, setWorkspaces] = React.useState<GeoWorkspaceArea[]>([]);
   const [enablePostProcessing, setEnablePostProcessing] = React.useState(true);
   const [enableBloom, setEnableBloom] = React.useState(true);
@@ -2188,16 +2270,30 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
           // from the cascade-seam fix above (that one's about mismatches BETWEEN cascade
           // zones; this is self-shadowing WITHIN one surface), so autoCalcDepthBounds
           // alone never touched it.
-          csm.bias = 0.0015;
-          csm.normalBias = 0.035;
+          csm.bias = 0.002;
+          csm.normalBias = 0.06;
+          // Renders the shadow map from each mesh's BACK faces instead of its front faces -
+          // Babylon's own documented fix for shadow acne on solid/closed geometry (walls,
+          // roofs, most architectural meshes), since the surface actually visible to the
+          // camera then never self-intersects the depth values written by its own front
+          // face. Reported this session as fine parallel diagonal banding across large flat
+          // roof/ground surfaces, worst at the shallow/near-grazing sun angles a top-down or
+          // aerial camera view makes common - bias/normalBias alone (raised above too, from
+          // 0.0015/0.035) reduce but don't eliminate that at a steep enough grazing angle;
+          // this removes the self-intersection at its source instead of just pushing the
+          // sample further away from it. Only correct for solid meshes with real backfaces
+          // (every wall/roof/floor here) - a truly single-sided plane would need the default
+          // front-face path instead, but this app has none of those as shadow casters.
+          csm.forceBackFacesOnly = true;
           shadowGenerator = csm;
         } catch (csmError) {
           console.warn('CascadedShadowGenerator unavailable (likely WebGL1) - falling back to standard shadows:', csmError);
           shadowGenerator = new ShadowGenerator(1024, dirLight);
           shadowGenerator.useBlurExponentialShadowMap = true;
           shadowGenerator.blurKernel = 32;
-          shadowGenerator.bias = 0.0015;
-          shadowGenerator.normalBias = 0.035;
+          shadowGenerator.bias = 0.002;
+          shadowGenerator.normalBias = 0.06;
+          shadowGenerator.forceBackFacesOnly = true;
         }
         shadowGeneratorRef.current = shadowGenerator;
 
@@ -5307,43 +5403,8 @@ const getCategoryDescription = (categoryName: string): string => {
               if (fileInputRef.current) fileInputRef.current.click();
               showToast.success('Import dialog opened');
             } : undefined,
-            onExport: () => {
-              const scene = sceneRef.current;
-              if (!scene) {
-                showToast.error('Scene not ready to export');
-                return;
-              }
-              const toastId = showToast.loading('Exporting scene...', 'Preparing GLB file');
-              import('@babylonjs/serializers/glTF/2.0/glTFSerializer').then(({ GLTF2Export }) => {
-                GLTF2Export.GLBAsync(scene, `naviz-scene-${new Date().toISOString().slice(0, 10)}`)
-                  .then((glb) => {
-                    showToast.dismiss(toastId);
-                    glb.downloadFiles();
-                    showToast.success('Scene exported', 'Downloaded as .glb');
-                  })
-                  .catch((error) => {
-                    showToast.dismiss(toastId);
-                    console.error('Scene export failed:', error);
-                    showToast.error('Failed to export scene');
-                  });
-              });
-            },
-            onScreenshot: (format?: 'png' | 'jpeg') => {
-              const canvas = engineRef.current?.getRenderingCanvas() as HTMLCanvasElement | null;
-              if (!canvas) { showToast.error('Canvas not ready'); return; }
-              const mime = format === 'jpeg' ? 'image/jpeg' : 'image/png';
-              const ext = format === 'jpeg' ? 'jpg' : 'png';
-              try {
-                const dataUrl = canvas.toDataURL(mime, format === 'jpeg' ? 0.92 : undefined);
-                const a = document.createElement('a');
-                a.href = dataUrl;
-                a.download = `screenshot-${new Date().toISOString().slice(0, 19).replace(/[:-]/g, '')}.${ext}`;
-                a.click();
-                showToast.success(`Screenshot saved as ${ext.toUpperCase()}`);
-              } catch (e) {
-                showToast.error('Screenshot failed');
-              }
-            },
+            onExport: handleExportScene,
+            onScreenshot: handleScreenshotCapture,
             onAutoZoom: () => {
               const scene = sceneRef.current;
               const camera = cameraRef.current;
@@ -5594,10 +5655,14 @@ const getCategoryDescription = (categoryName: string): string => {
           {layoutMode !== 'immersive' && workspaceState.bottomPanelVisible && renderBottomPanel({
             workspaceState,
             activeFeatures,
-            performanceMode,
+            performanceMode: performanceModeResolved,
             selectedMesh,
             handleFeatureToggle,
-            setPerformanceMode,
+            setPerformanceMode: handlePerformanceModeChange,
+            featureStats: featureStatsComputed,
+            warnings: performanceWarnings,
+            onExportScene: handleExportScene,
+            onExportScreenshot: handleScreenshotCapture,
             handleTourSequenceCreate,
             handleTourSequencePlay,
             animationManagerRef
