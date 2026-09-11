@@ -272,8 +272,23 @@ export function AuditLogsPage() {
   };
 
   const exportLogs = () => {
-    console.log('Exporting audit logs...');
-    // Here you would implement actual export functionality
+    if (filteredLogs.length === 0) return;
+    const headers = ['Timestamp', 'User', 'Action', 'Target', 'Details', 'Severity', 'IP Address', 'User Agent'];
+    const escapeCsvCell = (value: string) => `"${String(value).replace(/"/g, '""')}"`;
+    const rows = filteredLogs.map((log) => [
+      log.timestamp, log.user, log.action, log.target, log.details, log.severity, log.ipAddress, log.userAgent,
+    ].map(escapeCsvCell).join(','));
+    const csv = [headers.map(escapeCsvCell).join(','), ...rows].join('\r\n');
+
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `audit-logs-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
   };
 
   const uniqueUsers = [...new Set(auditLogs.map(log => log.user))];
@@ -289,7 +304,8 @@ export function AuditLogsPage() {
         <div className="flex items-center gap-3">
           <Button
             onClick={exportLogs}
-            className="bg-linear-to-r from-green-500 to-emerald-500 hover:from-green-400 hover:to-emerald-400"
+            disabled={filteredLogs.length === 0}
+            className="bg-linear-to-r from-green-500 to-emerald-500 hover:from-green-400 hover:to-emerald-400 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <Download className="w-4 h-4 mr-2" />
             Export Logs
