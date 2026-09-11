@@ -2270,17 +2270,18 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
           // from the cascade-seam fix above (that one's about mismatches BETWEEN cascade
           // zones; this is self-shadowing WITHIN one surface), so autoCalcDepthBounds
           // alone never touched it.
-          csm.bias = 0.0025;
-          // 0.06 (up from the original 0.035) cleaned up the flat roof/ground banding, but
-          // left the same striping on concave curved surfaces specifically - the underside
-          // of an archway/sunshade overhang, reported separately after that fix. Concave
-          // curves get self-shadowed by the NEARBY part of the same curved surface (the
-          // overhang shadowing its own underside), not just a single point self-intersecting
-          // its own depth sample - forceBackFacesOnly below addresses the latter but not the
-          // former, so it needs a bigger normal-direction margin to actually clear the
-          // neighbouring curve's occlusion footprint. Pushed further here rather than
-          // stopping at 0.06.
-          csm.normalBias = 0.1;
+          csm.bias = 0.002;
+          // 0.06 (original) cleaned up flat roof/ground banding but left the same striping
+          // on concave curved surfaces (an archway/sunshade underside). Pushed to 0.1 to
+          // clear that - which traded it for the opposite, equally real artifact: a visibly
+          // detached/floating shadow at object-to-ground contact points ("peter panning",
+          // confirmed against a follow-up screenshot - the classic failure mode of pushing
+          // normalBias too far, since it's shifting the shadow sample away from the surface
+          // along its normal, and a large shift is exactly as visible at a contact edge as a
+          // small one is invisible on a curve). 0.1 and 0.06 are opposite failure directions
+          // for the SAME lever, not two independent bugs - 0.08 splits the difference rather
+          // than continuing to push one further while the other regresses.
+          csm.normalBias = 0.08;
           // Renders the shadow map from each mesh's BACK faces instead of its front faces -
           // Babylon's own documented fix for shadow acne on solid/closed geometry (walls,
           // roofs, most architectural meshes), since the surface actually visible to the
@@ -2300,8 +2301,8 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
           shadowGenerator = new ShadowGenerator(1024, dirLight);
           shadowGenerator.useBlurExponentialShadowMap = true;
           shadowGenerator.blurKernel = 32;
-          shadowGenerator.bias = 0.0025;
-          shadowGenerator.normalBias = 0.1;
+          shadowGenerator.bias = 0.002;
+          shadowGenerator.normalBias = 0.08;
           shadowGenerator.forceBackFacesOnly = true;
         }
         shadowGeneratorRef.current = shadowGenerator;
