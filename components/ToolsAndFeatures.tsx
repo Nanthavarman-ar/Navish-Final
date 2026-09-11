@@ -1,7 +1,7 @@
 import React from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Button } from './ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
-import { useApp } from '../contexts/AppContext';
 import {
   Activity,
   Calculator,
@@ -47,7 +47,7 @@ interface Tool {
 }
 
 const ToolsAndFeatures: React.FC = () => {
-  const { setCurrentPage } = useApp();
+  const navigate = useNavigate();
 
   const categories: ToolCategory[] = [
     {
@@ -142,8 +142,18 @@ const ToolsAndFeatures: React.FC = () => {
     }
   ];
 
+  // Was setCurrentPage(page), relying on AppLayout.tsx's currentPage<->URL sync effects to
+  // pick it up and navigate - that sync has a same-render race (both effects read the same
+  // stale currentPage/location snapshot in one pass) that made every setCurrentPage() call
+  // from outside those effects a silent no-op: all ~34 "Open Tool" buttons below did nothing
+  // at all when clicked, no error, URL never changed. Calling react-router's own navigate()
+  // directly sidesteps that shared, easy-to-re-break sync entirely - same mechanism
+  // Home.tsx/Header.tsx already use successfully for their own navigation.
+  // traffic-parking-simulation is the one tool with its own dedicated top-level route
+  // (/traffic-parking-simulation) rather than the generic /tool/:toolId one every other
+  // entry in `categories` above resolves to (see layout/AppLayout.tsx's route list).
   const handleToolClick = (page: string) => {
-    setCurrentPage(page);
+    navigate(page === 'traffic-parking-simulation' ? '/traffic-parking-simulation' : `/tool/${page}`);
   };
 
   return (
@@ -157,7 +167,7 @@ const ToolsAndFeatures: React.FC = () => {
               <p className="text-gray-400 mt-1">Explore all available design and analysis tools</p>
             </div>
             <Button
-              onClick={() => setCurrentPage('home')}
+              onClick={() => navigate('/')}
               variant="outline"
               className="border-cyan-400 text-cyan-400 hover:bg-cyan-400 hover:text-black"
             >

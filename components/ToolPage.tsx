@@ -4,11 +4,9 @@ import { ArrowLeft, ExternalLink } from 'lucide-react';
 import { Button } from './ui/button';
 import { Card, CardContent, CardHeader, CardDescription, CardTitle } from './ui/card';
 import { Badge } from './ui/badge';
-import { useApp } from '../contexts/AppContext';
 import { toolPageDefinitions, ToolPageId } from './toolPageDefinitions';
 
 const ToolPage: React.FC<{ page: ToolPageId }> = ({ page }) => {
-  const { setCurrentPage } = useApp();
   const navigate = useNavigate();
   const definition = toolPageDefinitions[page];
 
@@ -23,7 +21,7 @@ const ToolPage: React.FC<{ page: ToolPageId }> = ({ page }) => {
             </CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-3">
-            <Button onClick={() => setCurrentPage('tools-features')}>Back to Tools</Button>
+            <Button onClick={() => navigate('/tools-features')}>Back to Tools</Button>
           </CardContent>
         </Card>
       </div>
@@ -39,7 +37,7 @@ const ToolPage: React.FC<{ page: ToolPageId }> = ({ page }) => {
           <Button
             variant="outline"
             className="border-slate-600 text-slate-200 hover:border-cyan-400 hover:text-white"
-            onClick={() => setCurrentPage('tools-features')}
+            onClick={() => navigate('/tools-features')}
           >
             <ArrowLeft className="w-4 h-4 mr-2" />
             Tools & Features
@@ -89,10 +87,10 @@ const ToolPage: React.FC<{ page: ToolPageId }> = ({ page }) => {
                   Open in Workspace
                 </Button>
               )}
-              <Button variant="outline" className="border-slate-600 text-slate-200 hover:border-cyan-400 hover:text-white" onClick={() => setCurrentPage('tools-features')}>
+              <Button variant="outline" className="border-slate-600 text-slate-200 hover:border-cyan-400 hover:text-white" onClick={() => navigate('/tools-features')}>
                 Open Tools Collection
               </Button>
-              <Button variant="ghost" onClick={() => setCurrentPage('home')}>
+              <Button variant="ghost" onClick={() => navigate('/')}>
                 Back to Home
               </Button>
             </div>

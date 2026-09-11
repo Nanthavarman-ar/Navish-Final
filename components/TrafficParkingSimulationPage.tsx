@@ -1,13 +1,13 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Button } from './ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
-import { useApp } from '../contexts/AppContext';
 import TrafficParkingSimulation from './TrafficParkingSimulation';
 import { SimulationManager } from './SimulationManager';
 import { ArrowLeft, Play, Pause, Square, Download } from 'lucide-react';
 
 const TrafficParkingSimulationPage: React.FC = () => {
-  const { setCurrentPage } = useApp();
+  const navigate = useNavigate();
   const [simulationManager, setSimulationManager] = useState<SimulationManager | null>(null);
   const [isInitialized, setIsInitialized] = useState(false);
 
@@ -78,7 +78,7 @@ const TrafficParkingSimulationPage: React.FC = () => {
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-4">
             <Button
-              onClick={() => setCurrentPage('tools-features')}
+              onClick={() => navigate('/tools-features')}
               variant="outline"
               className="border-cyan-400 text-cyan-400 hover:bg-cyan-400 hover:text-black"
             >
