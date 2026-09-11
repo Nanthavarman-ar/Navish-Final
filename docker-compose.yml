@@ -5,6 +5,11 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.frontend
+      # Dockerfile.frontend's final stage is a bare nginx image with no node/npm at all -
+      # running `command: npm run dev` against it (as this service used to) would fail
+      # immediately. Its `builder` stage still has the full source tree + node_modules on
+      # a real node base, which is what `npm run dev` actually needs.
+      target: builder
     ports:
       - "3000:3000"
     volumes:
@@ -12,14 +17,24 @@ services:
       - /app/node_modules
     environment:
       - NODE_ENV=development
-      - VITE_SOCKET_URL=http://localhost:3001
+      # Read by components/CollabManager.ts (the real multi-user collaboration client) -
+      # this used to be VITE_SOCKET_URL, a name nothing in the frontend actually reads, so
+      # CollabManager silently fell back to its own http://localhost:3004 default instead
+      # of the backend service below (which listens on 3001 here).
+      - VITE_COLLAB_SERVER_URL=http://localhost:3001
     depends_on:
       - backend
     command: npm run dev
 
   backend:
     build:
-      context: ./server
+      # The real backend/signaling server (server/server.js) is built by the root-level
+      # Dockerfile (see its own top comment), which COPYs server/package*.json and server/
+      # using paths relative to the REPO ROOT - it needs the repo root as build context,
+      # not ./server. This service used to point at context: ./server, dockerfile:
+      # Dockerfile, which resolved to server/Dockerfile - a file that has never existed in
+      # this repo, so `docker-compose up` failed to build this service at all.
+      context: .
       dockerfile: Dockerfile
     ports:
       - "3001:3001"
