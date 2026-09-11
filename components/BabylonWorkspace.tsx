@@ -2284,8 +2284,15 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
           // obvious gap far more readily than the curved surfaces normalBias alone was aimed
           // at. Brought back down near its original value - forceBackFacesOnly is now the
           // primary fix for both the flat and curved banding, this is only the small
-          // remaining margin still needed.
-          csm.normalBias = 0.04;
+          // remaining margin still needed. Even at this low value, the curved sunshade
+          // underside still banded (confirmed against a further follow-up screenshot) -
+          // rather than raising this again and risking the eave peter-panning coming back,
+          // the shadow map resolution itself is raised on Ultra instead (mapSize, in the
+          // graphicsQuality-tier effect and the device-capability effect further down) -
+          // more texel precision reduces the SAME banding without pushing samples further
+          // from the surface the way normalBias does. This stays low; 0.05 is only a small
+          // safety margin on top of that, not the primary fix anymore.
+          csm.normalBias = 0.05;
           // Renders the shadow map from each mesh's BACK faces instead of its front faces -
           // Babylon's own documented fix for shadow acne on solid/closed geometry (walls,
           // roofs, most architectural meshes), since the surface actually visible to the
@@ -2304,7 +2311,7 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
           shadowGenerator.useBlurExponentialShadowMap = true;
           shadowGenerator.blurKernel = 32;
           shadowGenerator.bias = 0.0018;
-          shadowGenerator.normalBias = 0.04;
+          shadowGenerator.normalBias = 0.05;
           shadowGenerator.forceBackFacesOnly = true;
         }
         shadowGeneratorRef.current = shadowGenerator;
@@ -2465,7 +2472,11 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
         // baseline rather than adding more GPU cost on top of the resolution scale-down
         // XRManager already applies for headset use.
         if (!capabilities.mobile && (resolvedQuality === 'high' || resolvedQuality === 'ultra') && shadowGeneratorRef.current && !shouldAbort()) {
-          shadowGeneratorRef.current.mapSize = 2048;
+          // Ultra gets 4096 instead of 2048 - see the matching mapSize comment in the
+          // graphicsQuality-tier effect further down for why (extra shadow-map precision to
+          // resolve remaining curved-surface banding without the peter-panning a larger
+          // normalBias caused on thin edges elsewhere).
+          shadowGeneratorRef.current.mapSize = resolvedQuality === 'ultra' ? 4096 : 2048;
           shadowGeneratorRef.current.filteringQuality = ShadowGenerator.QUALITY_HIGH;
         }
         // autoCalcDepthBounds (see the long comment where CSM is constructed above) - same
@@ -3233,7 +3244,16 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
     // only removes it from Ultra's automatic default, not the feature itself.
     setEnableIBLShadows(iblShadowsOverride !== null ? iblShadowsOverride : false);
     if (shadowGeneratorRef.current) {
-      shadowGeneratorRef.current.mapSize = isHighTier ? 2048 : 1024;
+      // Ultra gets a further bump over High (2048 -> 4096): the remaining banding on
+      // concave curved surfaces (a sunshade underside) after forceBackFacesOnly + a modest
+      // normalBias needs finer shadow-map texel precision to actually resolve, not more
+      // bias - normalBias alone couldn't fix it without reintroducing peter-panning on thin
+      // convex edges elsewhere (roof eaves), confirmed against two separate follow-up
+      // screenshots. Resolution is the one lever that reduces both failure modes at once
+      // instead of trading one for the other, which is why it's the next thing reached for
+      // here rather than pushing normalBias further - gated to Ultra only since 4096 is a
+      // real GPU/memory cost not worth paying by default on High.
+      shadowGeneratorRef.current.mapSize = resolved === 'ultra' ? 4096 : (isHighTier ? 2048 : 1024);
       shadowGeneratorRef.current.filteringQuality = isHighTier ? ShadowGenerator.QUALITY_HIGH : ShadowGenerator.QUALITY_MEDIUM;
       // Same capable-tier gate as at creation time, plus the watchdog's sticky
       // "don't turn this back on" flag - see the long comment where CSM is constructed.
