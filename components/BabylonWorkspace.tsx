@@ -1120,17 +1120,24 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
           // Meta Quest headset.
           const isStandaloneXRHeadsetBrowser = /OculusBrowser|Quest/i.test(navigator.userAgent);
           const engine = engineRef.current;
-          // RE-ENABLED - was hardcoded off after whole models were reported rendering fine
-          // for a frame or two then vanishing entirely, independent of graphics quality
-          // tier. Root cause found: BoundingBoxRenderer.renderOcclusionBoundingBox() (see
-          // the patch applied right after `engine.useReverseDepthBuffer = true` in
-          // initializeScene) reset the GPU depth function to the wrong value after every
-          // occlusion query, corrupting the depth test for every mesh drawn afterwards that
-          // same frame - not a fundamental incompatibility between occlusion queries and
-          // the reverse-Z buffer, just a one-line bug in how Babylon restored state
-          // afterwards. That patch fixes it at the source, so this no longer needs to give
-          // up the behind-a-wall culling win to avoid it.
-          const supportsOcclusion = !!engine?.getCaps().supportOcclusionQuery && (!deviceCapabilities?.mobile || isStandaloneXRHeadsetBrowser);
+          // DISABLED AGAIN (hardcoded false) - was briefly re-enabled after finding and
+          // patching a real Babylon.js bug (BoundingBoxRenderer.renderOcclusionBoundingBox()
+          // restoring the wrong GPU depth function after each occlusion query - see the
+          // patch right after `engine.useReverseDepthBuffer = true` in initializeScene,
+          // which is KEPT since it's a correct, harmless-when-unused fix and costs nothing
+          // sitting dormant). Re-enabling it reintroduced visible flicker/blinking in real
+          // use, live-tested this session, plus a reported FPS regression. That patch only
+          // covers the main color pass; CascadedShadowGenerator's shadow map render targets
+          // also iterate mesh.render() (see mesh.pure.js's inline _checkOcclusionQuery call)
+          // against their OWN depth-stencil texture, which independently follows
+          // useReverseDepthBuffer for its format (shadowGenerator.js) - an occlusion query
+          // firing during a shadow pass instead of the main pass would corrupt depth state
+          // for a different render target than the one this patch corrects, which fits
+          // "blinking" (intermittent, frame-to-frame) better than a one-time, fully-fixed
+          // bug would. Not confirmed without deeper live testing than is possible from here
+          // - disabling outright again rather than guessing at a second patch blind.
+          // Frustum culling (cullingStrategy right below) still applies on its own.
+          const supportsOcclusion = false && !!engine?.getCaps().supportOcclusionQuery && (!deviceCapabilities?.mobile || isStandaloneXRHeadsetBrowser);
           const OCCLUSION_MIN_VERTICES = 24; // skip trivial hardware (a screw, a handle) - query overhead isn't worth it for those
           occlusionMeshesRef.current = [];
           await runChunked(loadedModelMeshesRef.current, (m) => {
