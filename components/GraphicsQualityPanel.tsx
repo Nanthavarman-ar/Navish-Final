@@ -20,6 +20,12 @@ interface GraphicsQualityPanelProps {
   // in BabylonWorkspace.tsx, independent of SSR's.
   iblShadowsEnabled?: boolean;
   onIblShadowsToggle?: (enabled: boolean) => void;
+  // AMD FSR 1.0 edge-aware sharpen/reconstruction pass (see components/utils/
+  // fsrPostProcess.ts) - same live-state/override pattern as ssrEnabled/iblShadowsEnabled
+  // above. Off by default and new this session - no watchdog auto-disable for this one yet,
+  // since it doesn't carry the same known FPS cost SSR/IBL Shadows do.
+  fsrEnabled?: boolean;
+  onFsrToggle?: (enabled: boolean) => void;
 }
 
 const OPTIONS: { id: QualityLevel; label: string; description: string }[] = [
@@ -35,7 +41,7 @@ const OPTIONS: { id: QualityLevel; label: string; description: string }[] = [
 // for that tradeoff (previously the app only auto-detected a quality tier with no way to
 // see or override it; see the reactive effect in BabylonWorkspace.tsx keyed on
 // graphicsQuality/recommendedQuality that actually applies these levels).
-const GraphicsQualityPanel: React.FC<GraphicsQualityPanelProps> = ({ value, onChange, recommended, gpuName, capabilities, ssrEnabled, onSsrToggle, iblShadowsEnabled, onIblShadowsToggle }) => {
+const GraphicsQualityPanel: React.FC<GraphicsQualityPanelProps> = ({ value, onChange, recommended, gpuName, capabilities, ssrEnabled, onSsrToggle, iblShadowsEnabled, onIblShadowsToggle, fsrEnabled, onFsrToggle }) => {
   return (
     <div className="space-y-3 text-sm">
       <p className="text-xs text-slate-400">
@@ -115,6 +121,28 @@ const GraphicsQualityPanel: React.FC<GraphicsQualityPanelProps> = ({ value, onCh
             Adds soft, realistic shadowing from the environment lighting itself, on any tier -
             not just Ultra. The most GPU-hungry effect here; it'll turn itself back off
             automatically if the frame rate drops too much.
+          </p>
+        </div>
+      )}
+      {onFsrToggle && (
+        <div className="pt-3 border-t border-slate-700">
+          <button
+            type="button"
+            onClick={() => onFsrToggle(!fsrEnabled)}
+            aria-pressed={!!fsrEnabled}
+            className={`w-full flex items-center justify-between px-3 py-2 rounded-md border transition-colors ${
+              fsrEnabled ? 'border-blue-500 bg-blue-500/10 text-white' : 'border-slate-700 bg-slate-800/60 text-slate-300 hover:border-slate-500'
+            }`}
+          >
+            <span className="font-medium">FSR Sharpening (experimental)</span>
+            <span className={`text-xs px-2 py-0.5 rounded ${fsrEnabled ? 'bg-blue-500 text-white' : 'bg-slate-700 text-slate-400'}`}>
+              {fsrEnabled ? 'On' : 'Off'}
+            </span>
+          </button>
+          <p className="text-xs text-slate-400 mt-1.5">
+            AMD FSR edge-aware sharpening - recovers detail SSAO/bloom/shadows soften, on
+            desktop and in VR/AR walkthroughs. New and experimental - try it and turn it back
+            off if anything looks wrong.
           </p>
         </div>
       )}
