@@ -4,7 +4,7 @@ import { useSearchParams } from 'react-router-dom';
 import './BabylonWorkspace.css';
 
 // Core Babylon.js imports only (minimal for initial load)
-import { Engine, Scene, ArcRotateCamera, FreeCamera, UniversalCamera, HemisphericLight, DirectionalLight, PointLight, Vector3, Vector2, Quaternion, Color3, Color4, Mesh, AbstractMesh, StandardMaterial, DefaultRenderingPipeline, SSAO2RenderingPipeline, SSRRenderingPipeline, TAARenderingPipeline, IblShadowsRenderPipeline, HighlightLayer, PBRMaterial, Material, ImageProcessingConfiguration, ColorCurves, PointerInfo, PickingInfo, Camera, PointerEventTypes, ParticleSystem, MeshBuilder, Texture, GizmoManager, GizmoAnchorPoint, ShadowGenerator, CascadedShadowGenerator, Ray, Axis, BoundingBoxRenderer } from '@babylonjs/core';
+import { Engine, Scene, ArcRotateCamera, FreeCamera, UniversalCamera, HemisphericLight, DirectionalLight, PointLight, Vector3, Vector2, Quaternion, Color3, Color4, Mesh, AbstractMesh, StandardMaterial, DefaultRenderingPipeline, SSAO2RenderingPipeline, SSRRenderingPipeline, TAARenderingPipeline, IblShadowsRenderPipeline, HighlightLayer, PBRMaterial, Material, ImageProcessingConfiguration, ColorCurves, PointerInfo, PickingInfo, Camera, PointerEventTypes, ParticleSystem, MeshBuilder, Texture, GizmoManager, GizmoAnchorPoint, ShadowGenerator, CascadedShadowGenerator, Ray, Axis, BoundingBoxRenderer, FSR1RenderingPipeline } from '@babylonjs/core';
 import { WaterMaterial } from '@babylonjs/materials/water';
 import { PerlinNoiseProceduralTexture } from '@babylonjs/procedural-textures';
 
@@ -1286,6 +1286,19 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
   // recommendedQuality] further below.
   const [graphicsQuality, setGraphicsQuality] = React.useState<'auto' | 'low' | 'medium' | 'high' | 'ultra'>(renderingQuality);
   const [recommendedQuality, setRecommendedQuality] = React.useState<'low' | 'medium' | 'high' | 'ultra'>('medium');
+  // AMD FSR 1.0 upscale+sharpen - uses Babylon's own built-in FSR1RenderingPipeline
+  // (@babylonjs/core, added in a recent Babylon version) rather than a hand-rolled shader.
+  // A hand-rolled GLSL ES 300 port was tried first and shipped a real bug: Babylon's shader
+  // processor strips a `#version 300 es` line the source declares but never re-adds an
+  // equivalent one, so the shader silently compiled as legacy ES 100 - where `textureGather`
+  // doesn't exist - and every mesh vanished the instant it was enabled. Confirmed live (a
+  // Playwright-driven headless Chromium against this app's own dev server, not guessed) via
+  // the exact "FRAGMENT SHADER ERROR ... textureGather : no matching overloaded function
+  // found" compiler error, then confirmed FIXED by switching to Babylon's own
+  // FSR1RenderingPipeline in the same live test - same AMD algorithm, already correctly
+  // integrated with Babylon's WebGL2/WebGPU shader pipeline. Still off by default: this is
+  // the first time it's wired into the real app/UI, not yet seen with a real loaded model.
+  const [enableFSR, setEnableFSR] = React.useState(false);
   // Bottom Panel's 3-button Performance Mode control (low/medium/high only) is a simplified
   // view onto the real 5-tier graphicsQuality system above, not a separate setting - it used
   // to be backed by useWorkspaceState's setPerformanceMode, which was a TODO stub that only
@@ -1795,6 +1808,7 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
   const cameraRef = useRef<ArcRotateCamera | null>(null);
   const pipelineRef = useRef<DefaultRenderingPipeline | null>(null);
   const ssaoPipelineRef = useRef<SSAO2RenderingPipeline | null>(null);
+  const fsrPipelineRef = useRef<FSR1RenderingPipeline | null>(null);
   const ssrPipelineRef = useRef<SSRRenderingPipeline | null>(null);
   const iblShadowsRef = useRef<IblShadowsRenderPipeline | null>(null);
   // TAA is constructed once at mount (before any other pipeline - Babylon requires TAA to
@@ -3321,6 +3335,42 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
       taaPipelineRef.current.isEnabled = isHighTier;
     }
   }, [graphicsQuality, recommendedQuality, ssrOverride, iblShadowsOverride]);
+
+  // Attaches/detaches Babylon's built-in FSR1RenderingPipeline (see enableFSR above) to
+  // whichever camera is actually active, and re-attaches whenever the active camera changes -
+  // which is what makes this cover VR/AR too without any XRManager.ts changes: entering an
+  // XR session swaps scene.activeCamera to the WebXRCamera, this effect notices via
+  // onActiveCameraChanged and re-attaches there, and the pipeline's own
+  // attachCamerasToRenderPipeline -> camera.attachPostProcess call cascades to that camera's
+  // per-eye rig cameras automatically (Camera._cascadePostProcessesToRigCams).
+  useEffect(() => {
+    const scene = sceneRef.current;
+    if (!scene) return;
+    const attachToActiveCamera = () => {
+      if (fsrPipelineRef.current) {
+        fsrPipelineRef.current.dispose();
+        fsrPipelineRef.current = null;
+      }
+      if (!enableFSR) return;
+      const camera = scene.activeCamera;
+      if (!camera) return;
+      try {
+        fsrPipelineRef.current = new FSR1RenderingPipeline('naviz-fsr1', scene, [camera]);
+      } catch (err) {
+        console.error('[FSR] Failed to attach - leaving it off for this session.', err);
+        fsrPipelineRef.current = null;
+      }
+    };
+    attachToActiveCamera();
+    const observer = scene.onActiveCameraChanged.add(attachToActiveCamera);
+    return () => {
+      scene.onActiveCameraChanged.remove(observer);
+      if (fsrPipelineRef.current) {
+        fsrPipelineRef.current.dispose();
+        fsrPipelineRef.current = null;
+      }
+    };
+  }, [enableFSR]);
 
   // The top bar's FPS badge (`fps` state) was declared but never actually updated anywhere -
   // always showing a fixed "60 FPS" regardless of the real frame rate. Sampling every 500ms
@@ -5666,6 +5716,8 @@ const getCategoryDescription = (categoryName: string): string => {
               onSsrOverrideChange: handleSsrOverrideChange,
               enableIBLShadows,
               onIblShadowsOverrideChange: handleIblShadowsOverrideChange,
+              enableFSR,
+              onFsrToggle: setEnableFSR,
               sustainabilityReport,
               onRainToggle,
               rainOn,
