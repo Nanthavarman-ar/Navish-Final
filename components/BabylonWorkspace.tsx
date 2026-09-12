@@ -64,7 +64,7 @@ import { SustainabilityManager, SustainabilityReport } from './SustainabilityMan
 import { PresentationManager } from './PresentationManager';
 import { IoTManager } from './IoTManager';
 import { captureSceneEdits, applySceneEdits, mergeAndSaveSceneEdits, loadSceneEdits, type SceneEditsData } from './utils/sceneEditsPersistence';
-import { mergeDecorativeMeshes, isDecorativeClutterMesh } from './utils/meshMerging';
+import { mergeDecorativeMeshes, thinInstanceDecorativeMeshes, isDecorativeClutterMesh } from './utils/meshMerging';
 import { runChunked } from './utils/runChunked';
 import { enhanceImportedMaterials } from './utils/materialEnhancement';
 import { classifyMaterialsByTexture } from './utils/textureMaterialClassifier';
@@ -844,6 +844,13 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
           // between was long enough for Chrome to conclude the tab had hung and show its
           // own "Page Unresponsive" dialog, even though the work itself was going to
           // finish fine given a few more seconds.
+          if (cancelled) return;
+          // Runs BEFORE mergeDecorativeMeshes on purpose - thin-instancing exact repeats
+          // (same Geometry object, same material - see thinInstanceDecorativeMeshes) first
+          // leaves fewer, more genuinely heterogeneous meshes for the merge pass below to
+          // combine, and avoids paying MergeMeshes' full vertex-buffer-copy cost for repeats
+          // instancing already handled more cheaply.
+          await thinInstanceDecorativeMeshes(newMeshes, scene);
           if (cancelled) return;
           await mergeDecorativeMeshes(newMeshes, scene);
           // Gives any "untouched" imported material (still at whatever flat default the
