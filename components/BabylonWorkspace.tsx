@@ -4,7 +4,7 @@ import { useSearchParams } from 'react-router-dom';
 import './BabylonWorkspace.css';
 
 // Core Babylon.js imports only (minimal for initial load)
-import { Engine, Scene, ArcRotateCamera, FreeCamera, UniversalCamera, HemisphericLight, DirectionalLight, PointLight, Vector3, Vector2, Quaternion, Color3, Color4, Mesh, AbstractMesh, StandardMaterial, DefaultRenderingPipeline, SSAO2RenderingPipeline, SSRRenderingPipeline, TAARenderingPipeline, IblShadowsRenderPipeline, HighlightLayer, PBRMaterial, Material, ImageProcessingConfiguration, ColorCurves, PointerInfo, PickingInfo, Camera, PointerEventTypes, ParticleSystem, MeshBuilder, Texture, GizmoManager, GizmoAnchorPoint, ShadowGenerator, CascadedShadowGenerator, Ray, Axis } from '@babylonjs/core';
+import { Engine, Scene, ArcRotateCamera, FreeCamera, UniversalCamera, HemisphericLight, DirectionalLight, PointLight, Vector3, Vector2, Quaternion, Color3, Color4, Mesh, AbstractMesh, StandardMaterial, DefaultRenderingPipeline, SSAO2RenderingPipeline, SSRRenderingPipeline, TAARenderingPipeline, IblShadowsRenderPipeline, HighlightLayer, PBRMaterial, Material, ImageProcessingConfiguration, ColorCurves, PointerInfo, PickingInfo, Camera, PointerEventTypes, ParticleSystem, MeshBuilder, Texture, GizmoManager, GizmoAnchorPoint, ShadowGenerator, CascadedShadowGenerator, Ray, Axis, BoundingBoxRenderer } from '@babylonjs/core';
 import { WaterMaterial } from '@babylonjs/materials/water';
 import { PerlinNoiseProceduralTexture } from '@babylonjs/procedural-textures';
 
@@ -978,6 +978,30 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
             await runChunked(newMeshes, (m) => {
               if (!isDecorativeClutterMesh(m, modelDiagonal)) return;
               m.isPickable = false;
+              if (!(m instanceof Mesh)) return; // addLODLevel is Mesh-only; every real loaded/merged mesh already is one
+              // Distance-cull only (addLODLevel(distance, null) - stop drawing this exact
+              // mesh past `distance`, no replacement mesh involved) - NOT the mesh.simplify()
+              // runtime LOD that used to live here and was removed (see the comment above
+              // this block): that queued a brand-new decimated Mesh object per candidate,
+              // one at a time, on the main thread, and the swapped-in replacement never
+              // inherited freezeWorldMatrix/culling-strategy/shadow-caster/isPickable,
+              // which is what caused the pop-in/glitch/post-load-lag bugs that got it
+              // reverted. addLODLevel(distance, null) has none of that: it's a synchronous,
+              // built-in Babylon flag on the SAME mesh object, so every flag already applied
+              // to it (and applied further below, after this runs) still applies unchanged
+              // whether it's within range or culled. Cutoff is relative to the mesh's own
+              // size - a single small lamp disappears close, a long merged hedge/railing run
+              // (merged_decorative_* - larger, but still matched by isDecorativeClutterMesh)
+              // stays visible further - and capped at half the whole model's diagonal so it
+              // never outlives visibility of the model it belongs to.
+              const radius = m.getBoundingInfo().boundingSphere.radiusWorld;
+              const LOD_CLUTTER_DISTANCE_FACTOR = 60;
+              const LOD_CLUTTER_MIN_DISTANCE = 15;
+              const lodDistance = Math.min(
+                Math.max(radius * LOD_CLUTTER_DISTANCE_FACTOR, LOD_CLUTTER_MIN_DISTANCE),
+                Math.max(modelDiagonal * 0.5, LOD_CLUTTER_MIN_DISTANCE)
+              );
+              m.addLODLevel(lodDistance, null);
             });
           }
           // Register the real loaded meshes as a BIM model so Cost Estimator,
@@ -1096,25 +1120,17 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
           // Meta Quest headset.
           const isStandaloneXRHeadsetBrowser = /OculusBrowser|Quest/i.test(navigator.userAgent);
           const engine = engineRef.current;
-          // TEMPORARILY DISABLED (hardcoded false) - reported this session as whole models
-          // rendering fine for the first frame or two, then vanishing entirely, with no user
-          // interaction required and independent of graphics quality tier (which rules out
-          // the tier-gated SSR/IBL Shadows conflict documented elsewhere in this file). That
-          // symptom shape - visible while OPTIMISTIC has no query result yet, gone once the
-          // first result comes back - points straight at occlusion queries returning wrong
-          // results, and this session also switched the engine to a reverse depth buffer
-          // (engine.useReverseDepthBuffer = true, see initializeScene) to fix a separate
-          // Z-fighting issue, which changes which depth comparison direction counts as
-          // "passed" for every depth test in the scene, occlusion queries included. This
-          // mechanism has also already caused a similar wrongly-hides-real-geometry bug once
-          // before, in VR specifically (see the "guard occlusion culling against fast
-          // head-turns" fix elsewhere in this file) - a second, broader instance of the same
-          // class of bug is more likely than two unrelated causes. Disabling outright rather
-          // than trying to patch the interaction blind, with no way to verify a fix live in
-          // this environment: frustum culling (cullingStrategy right below) still applies on
-          // its own, so this only gives up the additional behind-a-wall win, not correctness.
-          // Re-enable once confirmed fixed (or confirmed unrelated) via live testing.
-          const supportsOcclusion = false && !!engine?.getCaps().supportOcclusionQuery && (!deviceCapabilities?.mobile || isStandaloneXRHeadsetBrowser);
+          // RE-ENABLED - was hardcoded off after whole models were reported rendering fine
+          // for a frame or two then vanishing entirely, independent of graphics quality
+          // tier. Root cause found: BoundingBoxRenderer.renderOcclusionBoundingBox() (see
+          // the patch applied right after `engine.useReverseDepthBuffer = true` in
+          // initializeScene) reset the GPU depth function to the wrong value after every
+          // occlusion query, corrupting the depth test for every mesh drawn afterwards that
+          // same frame - not a fundamental incompatibility between occlusion queries and
+          // the reverse-Z buffer, just a one-line bug in how Babylon restored state
+          // afterwards. That patch fixes it at the source, so this no longer needs to give
+          // up the behind-a-wall culling win to avoid it.
+          const supportsOcclusion = !!engine?.getCaps().supportOcclusionQuery && (!deviceCapabilities?.mobile || isStandaloneXRHeadsetBrowser);
           const OCCLUSION_MIN_VERTICES = 24; // skip trivial hardware (a screw, a handle) - query overhead isn't worth it for those
           occlusionMeshesRef.current = [];
           await runChunked(loadedModelMeshesRef.current, (m) => {
@@ -2068,6 +2084,36 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
         // try/catch further down) so that's not a new constraint.
         engine.useReverseDepthBuffer = true;
         engineRef.current = engine;
+
+        // Patches a real Babylon.js bug this app's occlusion culling hit (see the
+        // supportsOcclusion comment further down): BoundingBoxRenderer.
+        // renderOcclusionBoundingBox() correctly sets the GPU depth-test function to
+        // GEQUAL before drawing a mesh's occlusion query bounding box when
+        // useReverseDepthBuffer is on (matching the depth func the reverse-Z setter above
+        // put in place), but then unconditionally resets it back to LEQUAL afterwards
+        // instead of restoring GEQUAL - see node_modules/@babylonjs/core/Rendering/
+        // boundingBoxRenderer.pure.js, renderOcclusionBoundingBox(), the line right after
+        // "engine.drawElementsType(...)". Every mesh's occlusion query runs inline right
+        // before that same mesh's own draw call (Mesh.render() in mesh.pure.js), and
+        // ordinary materials never re-assert the depth function themselves (Material.bind()
+        // only touches it for materials with an explicit custom depthFunction override) -
+        // so that wrong LEQUAL stuck around and corrupted the depth test for every mesh
+        // drawn afterwards that frame, which is exactly the "renders for a frame or two,
+        // then the whole model vanishes" symptom occlusion culling was disabled for. Fixing
+        // it here (rather than patching node_modules, which `npm install` would wipe) by
+        // wrapping the method once and correcting the depth function back to GEQUAL
+        // ourselves right after the original runs, only when reverse-Z is actually on.
+        if (!(BoundingBoxRenderer.prototype as any)._navizReverseDepthOcclusionPatched) {
+          const originalRenderOcclusionBoundingBox = BoundingBoxRenderer.prototype.renderOcclusionBoundingBox;
+          BoundingBoxRenderer.prototype.renderOcclusionBoundingBox = function (mesh) {
+            originalRenderOcclusionBoundingBox.call(this, mesh);
+            const patchedEngine = this.scene.getEngine();
+            if (patchedEngine.useReverseDepthBuffer) {
+              patchedEngine.setDepthFunctionToGreaterOrEqual();
+            }
+          };
+          (BoundingBoxRenderer.prototype as any)._navizReverseDepthOcclusionPatched = true;
+        }
 
         // A lost WebGL context (the GPU driver reclaiming memory under pressure - common
         // on phones/low-VRAM devices with a heavy model, or just too many tabs open) used
