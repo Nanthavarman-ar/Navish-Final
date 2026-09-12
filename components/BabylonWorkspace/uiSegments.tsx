@@ -395,10 +395,6 @@ interface CustomPanelsSegmentProps {
   // voxel-traced ambient shadowing pipeline).
   enableIBLShadows?: boolean;
   onIblShadowsOverrideChange?: (enabled: boolean) => void;
-  // AMD FSR 1.0 edge-aware sharpen/reconstruction toggle - see components/utils/
-  // fsrPostProcess.ts and the enableFSR state in BabylonWorkspace.tsx.
-  enableFSR?: boolean;
-  onFsrToggle?: (enabled: boolean) => void;
   sustainabilityReport?: {
     greenScore: number;
     energyEfficiency: number;
@@ -434,8 +430,8 @@ export const CustomPanelsSegment: React.FC<CustomPanelsSegmentProps> = (props) =
 );
 
 // Sub-segment components for CustomPanels
-const CoreFeaturesSegment: React.FC<Pick<CustomPanelsSegmentProps, 'featureStates' | 'sceneRef' | 'engineRef' | 'cameraRef' | 'bimManagerRef' | 'materialManagerRef' | 'aiManagerRef' | 'workspaces' | 'selectedWorkspaceId' | 'handleWorkspaceSelect' | 'handleMaterialApplied' | 'handleAnimationCreate' | 'handleSequencePlay' | 'disableFeature' | 'workspaceState' | 'scenarioManagerRef' | 'moodSceneManagerRef' | 'animationManagerRef' | 'cloudAnchorManagerRef' | 'arCloudAnchorsRef' | 'gpsTransformUtilsRef' | 'xrManagerRef' | 'graphicsQuality' | 'setGraphicsQuality' | 'recommendedQuality' | 'gpuName' | 'deviceCapabilities' | 'enableSSR' | 'onSsrOverrideChange' | 'enableIBLShadows' | 'onIblShadowsOverrideChange' | 'enableFSR' | 'onFsrToggle' | 'simulationManagerRef' | 'currentModelId' | 'floorPlans' | 'onFloorPlansChange'>> = ({
-  featureStates, sceneRef, engineRef, cameraRef, bimManagerRef, materialManagerRef, aiManagerRef, workspaces, selectedWorkspaceId, handleWorkspaceSelect, handleMaterialApplied, handleAnimationCreate, handleSequencePlay, disableFeature, workspaceState, scenarioManagerRef, moodSceneManagerRef, animationManagerRef, cloudAnchorManagerRef, arCloudAnchorsRef, gpsTransformUtilsRef, xrManagerRef, graphicsQuality, setGraphicsQuality, recommendedQuality, gpuName, deviceCapabilities, enableSSR, onSsrOverrideChange, enableIBLShadows, onIblShadowsOverrideChange, enableFSR, onFsrToggle, simulationManagerRef, currentModelId, floorPlans, onFloorPlansChange
+const CoreFeaturesSegment: React.FC<Pick<CustomPanelsSegmentProps, 'featureStates' | 'sceneRef' | 'engineRef' | 'cameraRef' | 'bimManagerRef' | 'materialManagerRef' | 'aiManagerRef' | 'workspaces' | 'selectedWorkspaceId' | 'handleWorkspaceSelect' | 'handleMaterialApplied' | 'handleAnimationCreate' | 'handleSequencePlay' | 'disableFeature' | 'workspaceState' | 'scenarioManagerRef' | 'moodSceneManagerRef' | 'animationManagerRef' | 'cloudAnchorManagerRef' | 'arCloudAnchorsRef' | 'gpsTransformUtilsRef' | 'xrManagerRef' | 'graphicsQuality' | 'setGraphicsQuality' | 'recommendedQuality' | 'gpuName' | 'deviceCapabilities' | 'enableSSR' | 'onSsrOverrideChange' | 'enableIBLShadows' | 'onIblShadowsOverrideChange' | 'simulationManagerRef' | 'currentModelId' | 'floorPlans' | 'onFloorPlansChange'>> = ({
+  featureStates, sceneRef, engineRef, cameraRef, bimManagerRef, materialManagerRef, aiManagerRef, workspaces, selectedWorkspaceId, handleWorkspaceSelect, handleMaterialApplied, handleAnimationCreate, handleSequencePlay, disableFeature, workspaceState, scenarioManagerRef, moodSceneManagerRef, animationManagerRef, cloudAnchorManagerRef, arCloudAnchorsRef, gpsTransformUtilsRef, xrManagerRef, graphicsQuality, setGraphicsQuality, recommendedQuality, gpuName, deviceCapabilities, enableSSR, onSsrOverrideChange, enableIBLShadows, onIblShadowsOverrideChange, simulationManagerRef, currentModelId, floorPlans, onFloorPlansChange
 }) => {
   const lightingPanel = usePanelStack('top-left', !!featureStates.showLighting);
   const graphicsQualityPanel = usePanelStack('top-right');
@@ -534,8 +530,6 @@ const CoreFeaturesSegment: React.FC<Pick<CustomPanelsSegmentProps, 'featureState
             onSsrToggle={onSsrOverrideChange}
             iblShadowsEnabled={!!enableIBLShadows}
             onIblShadowsToggle={onIblShadowsOverrideChange}
-            fsrEnabled={!!enableFSR}
-            onFsrToggle={onFsrToggle}
           />
         </div>
       </div>
@@ -2051,8 +2045,6 @@ interface RenderCustomPanelsProps {
   onSsrOverrideChange?: CustomPanelsSegmentProps['onSsrOverrideChange'];
   enableIBLShadows?: CustomPanelsSegmentProps['enableIBLShadows'];
   onIblShadowsOverrideChange?: CustomPanelsSegmentProps['onIblShadowsOverrideChange'];
-  enableFSR?: CustomPanelsSegmentProps['enableFSR'];
-  onFsrToggle?: CustomPanelsSegmentProps['onFsrToggle'];
   sustainabilityReport?: CustomPanelsSegmentProps['sustainabilityReport'];
   floorPlans?: CustomPanelsSegmentProps['floorPlans'];
   onFloorPlansChange?: CustomPanelsSegmentProps['onFloorPlansChange'];

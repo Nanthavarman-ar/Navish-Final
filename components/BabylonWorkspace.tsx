@@ -27,7 +27,6 @@ import { supabase, projectId } from '../supabase/client';
 
 // Import extracted modules
 import { useMeshSceneHandlers, isSelectableMesh } from './BabylonWorkspace/meshSceneHandlers';
-import { attachFSR, FSRHandle } from './utils/fsrPostProcess';
 import { renderLeftPanel, renderTopBar, renderRightPanel, renderBottomPanel, renderCustomPanels } from './BabylonWorkspace/uiSegments';
 
 // Interfaces
@@ -1287,13 +1286,6 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
   // recommendedQuality] further below.
   const [graphicsQuality, setGraphicsQuality] = React.useState<'auto' | 'low' | 'medium' | 'high' | 'ultra'>(renderingQuality);
   const [recommendedQuality, setRecommendedQuality] = React.useState<'low' | 'medium' | 'high' | 'ultra'>('medium');
-  // AMD FSR 1.0 (EASU+RCAS) edge-aware reconstruction/sharpen - see components/utils/
-  // fsrPostProcess.ts for exactly what this does (and doesn't yet do) and why. Off by
-  // default: new, WebGL2-only custom shader that hasn't had live-browser verification yet -
-  // this session already had one "confirmed root cause, still broke live" scare with the
-  // occlusion-culling fix, so this ships opt-in rather than folded into the default quality
-  // tiers until someone's actually seen it render correctly in a real browser.
-  const [enableFSR, setEnableFSR] = React.useState(false);
   // Bottom Panel's 3-button Performance Mode control (low/medium/high only) is a simplified
   // view onto the real 5-tier graphicsQuality system above, not a separate setting - it used
   // to be backed by useWorkspaceState's setPerformanceMode, which was a TODO stub that only
@@ -1803,7 +1795,6 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
   const cameraRef = useRef<ArcRotateCamera | null>(null);
   const pipelineRef = useRef<DefaultRenderingPipeline | null>(null);
   const ssaoPipelineRef = useRef<SSAO2RenderingPipeline | null>(null);
-  const fsrHandleRef = useRef<FSRHandle | null>(null);
   const ssrPipelineRef = useRef<SSRRenderingPipeline | null>(null);
   const iblShadowsRef = useRef<IblShadowsRenderPipeline | null>(null);
   // TAA is constructed once at mount (before any other pipeline - Babylon requires TAA to
@@ -3330,42 +3321,6 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
       taaPipelineRef.current.isEnabled = isHighTier;
     }
   }, [graphicsQuality, recommendedQuality, ssrOverride, iblShadowsOverride]);
-
-  // Attaches/detaches FSR (see enableFSR above and fsrPostProcess.ts) to whichever camera
-  // is actually active, and re-attaches whenever the active camera changes - which is what
-  // makes this cover VR/AR too without any XRManager.ts changes: entering an XR session
-  // swaps scene.activeCamera to the WebXRCamera, this effect notices via
-  // onActiveCameraChanged and re-attaches there, and Babylon's own
-  // Camera._cascadePostProcessesToRigCams then propagates it to that camera's per-eye rig
-  // cameras automatically.
-  useEffect(() => {
-    const scene = sceneRef.current;
-    if (!scene) return;
-    const attachToActiveCamera = () => {
-      if (fsrHandleRef.current) {
-        fsrHandleRef.current.dispose();
-        fsrHandleRef.current = null;
-      }
-      if (!enableFSR) return;
-      const camera = scene.activeCamera;
-      if (!camera) return;
-      try {
-        fsrHandleRef.current = attachFSR(camera);
-      } catch (err) {
-        console.error('[FSR] Failed to attach - leaving it off for this session.', err);
-        fsrHandleRef.current = null;
-      }
-    };
-    attachToActiveCamera();
-    const observer = scene.onActiveCameraChanged.add(attachToActiveCamera);
-    return () => {
-      scene.onActiveCameraChanged.remove(observer);
-      if (fsrHandleRef.current) {
-        fsrHandleRef.current.dispose();
-        fsrHandleRef.current = null;
-      }
-    };
-  }, [enableFSR]);
 
   // The top bar's FPS badge (`fps` state) was declared but never actually updated anywhere -
   // always showing a fixed "60 FPS" regardless of the real frame rate. Sampling every 500ms
@@ -5711,8 +5666,6 @@ const getCategoryDescription = (categoryName: string): string => {
               onSsrOverrideChange: handleSsrOverrideChange,
               enableIBLShadows,
               onIblShadowsOverrideChange: handleIblShadowsOverrideChange,
-              enableFSR,
-              onFsrToggle: setEnableFSR,
               sustainabilityReport,
               onRainToggle,
               rainOn,
