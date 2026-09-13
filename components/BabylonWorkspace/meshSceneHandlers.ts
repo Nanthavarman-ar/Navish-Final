@@ -224,6 +224,16 @@ export const useMeshSceneHandlers = ({
           // object") also populated the Move/Rotate/Delete toolbar with it.
           if (isSelectableMesh(mesh)) {
             internalHandleMeshSelect(mesh);
+          } else {
+            // Reported this session: clicking "outside" the model (ground, skybox, or any
+            // other non-selectable helper mesh) did nothing at all, leaving the Move/Rotate/
+            // Delete toolbar stuck on the previous selection - the ray almost always hits
+            // the ground or skybox plane behind/around the model, so pickInfo.hit is true
+            // and this branch used to be a silent no-op instead of ever reaching the
+            // deselect call below. From the user's point of view, ground/skybox/markers ARE
+            // "empty space" - clicking any of them should clear the current selection the
+            // same as a true pick-miss does.
+            internalHandleMeshDeselect();
           }
         } else {
           internalHandleMeshDeselect();
