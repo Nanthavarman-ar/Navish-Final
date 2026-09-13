@@ -4,7 +4,7 @@ import { useSearchParams } from 'react-router-dom';
 import './BabylonWorkspace.css';
 
 // Core Babylon.js imports only (minimal for initial load)
-import { Engine, Scene, ArcRotateCamera, FreeCamera, UniversalCamera, HemisphericLight, DirectionalLight, PointLight, Vector3, Vector2, Quaternion, Color3, Color4, Mesh, AbstractMesh, StandardMaterial, DefaultRenderingPipeline, SSAO2RenderingPipeline, SSRRenderingPipeline, TAARenderingPipeline, IblShadowsRenderPipeline, HighlightLayer, PBRMaterial, Material, ImageProcessingConfiguration, ColorCurves, PointerInfo, PickingInfo, Camera, PointerEventTypes, ParticleSystem, MeshBuilder, Texture, GizmoManager, GizmoAnchorPoint, ShadowGenerator, CascadedShadowGenerator, Ray, Axis, BoundingBoxRenderer, FSR1RenderingPipeline, GIRSMManager, GIRSM, ReflectiveShadowMap } from '@babylonjs/core';
+import { Engine, Scene, ArcRotateCamera, FreeCamera, UniversalCamera, HemisphericLight, DirectionalLight, PointLight, Vector3, Vector2, Quaternion, Color3, Color4, Mesh, AbstractMesh, StandardMaterial, DefaultRenderingPipeline, SSAO2RenderingPipeline, SSRRenderingPipeline, TAARenderingPipeline, IblShadowsRenderPipeline, HighlightLayer, PBRMaterial, Material, ImageProcessingConfiguration, ColorCurves, PointerInfo, PickingInfo, Camera, PointerEventTypes, ParticleSystem, MeshBuilder, Texture, GizmoManager, GizmoAnchorPoint, ShadowGenerator, CascadedShadowGenerator, Ray, Axis, BoundingBoxRenderer, FSR1RenderingPipeline, GIRSMManager, GIRSM, ReflectiveShadowMap, ReflectionProbe, RenderTargetTexture } from '@babylonjs/core';
 import { WaterMaterial } from '@babylonjs/materials/water';
 import { PerlinNoiseProceduralTexture } from '@babylonjs/procedural-textures';
 
@@ -898,6 +898,55 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
             classifyMaterialsByTexture(newMeshes).catch((error) => {
               console.warn('[textureMaterialClassifier] Material recognition pass failed:', error);
             });
+          }
+          // Baked (not real-time) local reflections for glossy surfaces (polished floors,
+          // glass - the low-roughness end of what enhanceImportedMaterials just set up
+          // above) via a single ReflectionProbe, refreshed ONCE rather than every frame
+          // (RenderTargetTexture.REFRESHRATE_RENDER_ONCE) - a real reflection of the
+          // actual nearby geometry, at a one-time cost (a handful of extra cube-face
+          // renders right after load) instead of SSR's ongoing per-frame cost. This is
+          // additive and independent of the SSR/IBL Shadows/GIRSM exclusivity elsewhere -
+          // it doesn't touch GeometryBufferRenderer at all.
+          if (cancelled) return;
+          if (reflectionProbeRef.current) {
+            reflectionProbeRef.current.dispose();
+            reflectionProbeRef.current = null;
+          }
+          try {
+            const reflectiveMeshes = newMeshes.filter((m): m is Mesh =>
+              m instanceof Mesh && m.material instanceof PBRMaterial && m.material.roughness != null && m.material.roughness <= 0.3
+            );
+            if (reflectiveMeshes.length > 0) {
+              let probeMin = newMeshes[0]?.getBoundingInfo().boundingBox.minimumWorld.clone() ?? Vector3.Zero();
+              let probeMax = newMeshes[0]?.getBoundingInfo().boundingBox.maximumWorld.clone() ?? Vector3.Zero();
+              for (const m of newMeshes) {
+                if (m.getTotalVertices() === 0) continue;
+                const bb = m.getBoundingInfo().boundingBox;
+                probeMin = Vector3.Minimize(probeMin, bb.minimumWorld);
+                probeMax = Vector3.Maximize(probeMax, bb.maximumWorld);
+              }
+              const probe = new ReflectionProbe('modelReflectionProbe', 256, scene);
+              probe.position = probeMin.add(probeMax).scale(0.5);
+              probe.refreshRate = RenderTargetTexture.REFRESHRATE_RENDER_ONCE;
+              // Excludes the reflective meshes themselves from their own probe's render
+              // list - a mesh that both feeds a reflection texture's bake AND samples that
+              // same texture as its own reflectionTexture forms a framebuffer/texture
+              // feedback loop (confirmed live this session: WebGL logs "Feedback loop
+              // formed between Framebuffer and active Texture" and the probe's capture goes
+              // wrong when this isn't excluded).
+              const reflectiveSet = new Set<AbstractMesh>(reflectiveMeshes);
+              const renderList = newMeshes.filter((m) => !reflectiveSet.has(m));
+              probe.renderList?.push(...renderList);
+              reflectiveMeshes.forEach((m) => {
+                const mat = m.material as PBRMaterial;
+                if (!mat.reflectionTexture) {
+                  mat.reflectionTexture = probe.cubeTexture;
+                }
+              });
+              reflectionProbeRef.current = probe;
+            }
+          } catch (err) {
+            console.error('[ReflectionProbe] Failed to set up - skipping.', err);
           }
           // Cheap real-time approximation of indirect/bounce light (see
           // ambientFillLights.ts's own top comment for why this exists and how it stays
@@ -1844,6 +1893,7 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
   const fsrPipelineRef = useRef<FSR1RenderingPipeline | null>(null);
   const dirLightRef = useRef<DirectionalLight | null>(null);
   const girsmManagerRef = useRef<GIRSMManager | null>(null);
+  const reflectionProbeRef = useRef<ReflectionProbe | null>(null);
   const ssrPipelineRef = useRef<SSRRenderingPipeline | null>(null);
   const iblShadowsRef = useRef<IblShadowsRenderPipeline | null>(null);
   // TAA is constructed once at mount (before any other pipeline - Babylon requires TAA to
