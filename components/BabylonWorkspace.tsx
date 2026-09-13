@@ -4,7 +4,7 @@ import { useSearchParams } from 'react-router-dom';
 import './BabylonWorkspace.css';
 
 // Core Babylon.js imports only (minimal for initial load)
-import { Engine, Scene, ArcRotateCamera, FreeCamera, UniversalCamera, HemisphericLight, DirectionalLight, PointLight, Vector3, Vector2, Quaternion, Color3, Color4, Mesh, AbstractMesh, StandardMaterial, DefaultRenderingPipeline, SSAO2RenderingPipeline, SSRRenderingPipeline, TAARenderingPipeline, IblShadowsRenderPipeline, HighlightLayer, PBRMaterial, Material, ImageProcessingConfiguration, ColorCurves, PointerInfo, PickingInfo, Camera, PointerEventTypes, ParticleSystem, MeshBuilder, Texture, GizmoManager, GizmoAnchorPoint, ShadowGenerator, CascadedShadowGenerator, Ray, Axis, BoundingBoxRenderer, FSR1RenderingPipeline } from '@babylonjs/core';
+import { Engine, Scene, ArcRotateCamera, FreeCamera, UniversalCamera, HemisphericLight, DirectionalLight, PointLight, Vector3, Vector2, Quaternion, Color3, Color4, Mesh, AbstractMesh, StandardMaterial, DefaultRenderingPipeline, SSAO2RenderingPipeline, SSRRenderingPipeline, TAARenderingPipeline, IblShadowsRenderPipeline, HighlightLayer, PBRMaterial, Material, ImageProcessingConfiguration, ColorCurves, PointerInfo, PickingInfo, Camera, PointerEventTypes, ParticleSystem, MeshBuilder, Texture, GizmoManager, GizmoAnchorPoint, ShadowGenerator, CascadedShadowGenerator, Ray, Axis, BoundingBoxRenderer, FSR1RenderingPipeline, GIRSMManager, GIRSM, ReflectiveShadowMap } from '@babylonjs/core';
 import { WaterMaterial } from '@babylonjs/materials/water';
 import { PerlinNoiseProceduralTexture } from '@babylonjs/procedural-textures';
 
@@ -1437,32 +1437,58 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
   // accumulating a shadow buffer every frame is at least as expensive.
   const [enableIBLShadows, setEnableIBLShadows] = React.useState(false);
   const [iblShadowsOverride, setIblShadowsOverride] = React.useState<boolean | null>(null);
-  // SSR and IBL Shadows both reconfigure the scene's shared GeometryBufferRenderer when
-  // enabled (see their creation effects further down for the exact mechanism - confirmed
-  // by reading @babylonjs/core's own IblShadowsRenderPipeline source, which forces
-  // generateNormalsInWorldSpace=true on it, conflicting with what SSR's own
-  // forceGeometryBuffer=true depends on). Having both active at once is what broke
-  // rendering into a black scene with only bloom-lit edges glowing (reported this
-  // session). Not defaulting IBL Shadows on at Ultra alongside SSR (an earlier fix this
-  // same session) only closed the AUTOMATIC path into that combination - manually
-  // toggling both on via the Graphics Quality panel's own switches hits the exact same
-  // conflict, which these wrappers close too: turning one on while the other is
-  // currently active turns the other off, with an explanation, rather than allowing the
-  // broken combination through any path.
+  // Real-time global illumination (bounce light) via GIRSMManager (Reflective Shadow Maps -
+  // @babylonjs/core, added in a recent Babylon version). Off by default and experimental:
+  // live-tested this session (isolated Babylon scenes, not guessed) and confirmed it works
+  // correctly at conservative settings (small RSM texture, blur off, low sample count, GI
+  // texture at a fraction of render resolution), but pushing those settings up (large RSM +
+  // blur enabled + full-resolution GI texture) crashed the browser tab outright in that same
+  // testing - only ever tried on this machine's software WebGL renderer, so it's unknown
+  // whether that crash is software-rendering-specific or would also happen on real GPU
+  // hardware. Defaults here stay at the settings confirmed safe; raising them is unverified.
+  // No tier-based default (unlike SSR/IBL above) - toggle-only, so enableGIRSM alone is both
+  // the live state and the user's explicit choice; no separate override needed.
+  const [enableGIRSM, setEnableGIRSM] = React.useState(false);
+  // SSR, IBL Shadows, AND GIRSM all reconfigure the scene's shared GeometryBufferRenderer
+  // when enabled (confirmed for GIRSM by live-testing this session: enabling it alongside
+  // either SSR or IBL Shadows didn't crash or error, it just silently produced zero GI
+  // contribution - byte-identical rendered output whether GIRSM was on or off, in either
+  // enable order. Same underlying cause as the pre-existing SSR/IBL conflict below: only one
+  // of the three's shared-buffer configuration can actually win at a time). All three are
+  // therefore mutually exclusive here, not just the original two.
   const handleSsrOverrideChange = React.useCallback((value: boolean | null) => {
     setSsrOverride(value);
     if (value === true && enableIBLShadows) {
       setIblShadowsOverride(false);
       showToast.info('Turned off Ambient Shadows', 'Reflections and Ambient Shadows conflict with each other when both are on at once - only one can be active at a time.');
     }
-  }, [enableIBLShadows]);
+    if (value === true && enableGIRSM) {
+      setEnableGIRSM(false);
+      showToast.info('Turned off Global Illumination', 'Reflections and Global Illumination conflict with each other when both are on at once - only one can be active at a time.');
+    }
+  }, [enableIBLShadows, enableGIRSM]);
   const handleIblShadowsOverrideChange = React.useCallback((value: boolean | null) => {
     setIblShadowsOverride(value);
     if (value === true && enableSSR) {
       setSsrOverride(false);
       showToast.info('Turned off Reflections', 'Reflections and Ambient Shadows conflict with each other when both are on at once - only one can be active at a time.');
     }
-  }, [enableSSR]);
+    if (value === true && enableGIRSM) {
+      setEnableGIRSM(false);
+      showToast.info('Turned off Global Illumination', 'Ambient Shadows and Global Illumination conflict with each other when both are on at once - only one can be active at a time.');
+    }
+  }, [enableSSR, enableGIRSM]);
+  const handleGirsmToggle = React.useCallback((value: boolean) => {
+    setEnableGIRSM(value);
+    if (value === true && enableSSR) {
+      setSsrOverride(false);
+      showToast.info('Turned off Reflections', 'Reflections and Global Illumination conflict with each other when both are on at once - only one can be active at a time.');
+    }
+    if (value === true && enableIBLShadows) {
+      setIblShadowsOverride(false);
+      showToast.info('Turned off Ambient Shadows', 'Ambient Shadows and Global Illumination conflict with each other when both are on at once - only one can be active at a time.');
+    }
+  }, [enableSSR, enableIBLShadows]);
   const [enableGrain, setEnableGrain] = React.useState(false);
   const [enableVignette, setEnableVignette] = React.useState(false);
   const [viewMode, setViewMode] = React.useState<'walk' | 'orbit' | 'dollhouse' | 'vr' | 'ar'>('orbit');
@@ -1816,6 +1842,8 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
   const pipelineRef = useRef<DefaultRenderingPipeline | null>(null);
   const ssaoPipelineRef = useRef<SSAO2RenderingPipeline | null>(null);
   const fsrPipelineRef = useRef<FSR1RenderingPipeline | null>(null);
+  const dirLightRef = useRef<DirectionalLight | null>(null);
+  const girsmManagerRef = useRef<GIRSMManager | null>(null);
   const ssrPipelineRef = useRef<SSRRenderingPipeline | null>(null);
   const iblShadowsRef = useRef<IblShadowsRenderPipeline | null>(null);
   // TAA is constructed once at mount (before any other pipeline - Babylon requires TAA to
@@ -2286,6 +2314,7 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
         const dirLight = new DirectionalLight("sun", new Vector3(-1, -2, -1), scene);
         dirLight.position = new Vector3(10, 20, 10);
         dirLight.intensity = 1.2;
+        dirLightRef.current = dirLight;
 
         // Shadow casting for the sun light - without this, Sun Study (and any
         // other tool that moves "sun") only produces a faint brightness/color
@@ -3378,6 +3407,60 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
       }
     };
   }, [enableFSR]);
+
+  // Attaches/detaches GIRSMManager (see enableGIRSM above) using the main sun DirectionalLight
+  // as the reflective shadow map source. Settings here are deliberately pinned to exactly
+  // what was confirmed live this session NOT to crash (small 128x128 RSM texture, blur off,
+  // 64 samples, GI texture at 25% of render resolution) - raising any of these is
+  // unverified and was the combination that crashed a browser tab outright in testing.
+  // Re-runs whenever enableFSR (or fsrPipelineRef's scaleFactor) changes: FSR1RenderingPipeline
+  // renders the scene at a reduced internal resolution via its own scaleFactor, but
+  // GIRSMManager's output-dimensions are fixed at construction time - without re-syncing them
+  // to FSR's actual current render size, the GI contribution shader samples the wrong
+  // screen-space coordinates and silently renders zero GI contribution (confirmed live: the
+  // previously-visible GI fill light on a shadowed face went fully black within a few seconds
+  // of enabling FSR, with no error). setOutputDimensions() below is that fix.
+  useEffect(() => {
+    const scene = sceneRef.current;
+    const engine = engineRef.current;
+    const light = dirLightRef.current;
+    if (!scene || !engine || !light) return;
+    if (girsmManagerRef.current) {
+      girsmManagerRef.current.dispose();
+      girsmManagerRef.current = null;
+    }
+    if (!enableGIRSM) return;
+    try {
+      const rsm = new ReflectiveShadowMap(scene, light, { width: 128, height: 128 });
+      rsm.addMesh();
+      const girsm = new GIRSM(rsm);
+      girsm.intensity = 1.0;
+      girsm.numSamples = 64;
+      const giTextureDim = {
+        width: Math.max(64, Math.round(engine.getRenderWidth() * 0.25)),
+        height: Math.max(64, Math.round(engine.getRenderHeight() * 0.25)),
+      };
+      const fsr = fsrPipelineRef.current;
+      const outputDim = fsr
+        ? { width: Math.round(engine.getRenderWidth() / fsr.scaleFactor), height: Math.round(engine.getRenderHeight() / fsr.scaleFactor) }
+        : { width: engine.getRenderWidth(), height: engine.getRenderHeight() };
+      const manager = new GIRSMManager(scene, outputDim, giTextureDim);
+      manager.enableBlur = false;
+      manager.addGIRSM(girsm);
+      manager.addMaterial();
+      manager.enable = true;
+      girsmManagerRef.current = manager;
+    } catch (err) {
+      console.error('[GIRSM] Failed to attach - leaving it off for this session.', err);
+      girsmManagerRef.current = null;
+    }
+    return () => {
+      if (girsmManagerRef.current) {
+        girsmManagerRef.current.dispose();
+        girsmManagerRef.current = null;
+      }
+    };
+  }, [enableGIRSM, enableFSR]);
 
   // The top bar's FPS badge (`fps` state) was declared but never actually updated anywhere -
   // always showing a fixed "60 FPS" regardless of the real frame rate. Sampling every 500ms
@@ -5725,6 +5808,8 @@ const getCategoryDescription = (categoryName: string): string => {
               onIblShadowsOverrideChange: handleIblShadowsOverrideChange,
               enableFSR,
               onFsrToggle: setEnableFSR,
+              enableGIRSM,
+              onGirsmToggle: handleGirsmToggle,
               sustainabilityReport,
               onRainToggle,
               rainOn,

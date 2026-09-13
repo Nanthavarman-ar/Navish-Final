@@ -26,6 +26,12 @@ interface GraphicsQualityPanelProps {
   // since it doesn't carry the same known FPS cost SSR/IBL Shadows do.
   fsrEnabled?: boolean;
   onFsrToggle?: (enabled: boolean) => void;
+  // Real-time global illumination (GIRSMManager) - mutually exclusive with ssrEnabled/
+  // iblShadowsEnabled above (all three fight over the same shared GeometryBufferRenderer
+  // configuration - see the handler wiring in BabylonWorkspace.tsx). No tier default; purely
+  // an explicit opt-in toggle.
+  girsmEnabled?: boolean;
+  onGirsmToggle?: (enabled: boolean) => void;
 }
 
 const OPTIONS: { id: QualityLevel; label: string; description: string }[] = [
@@ -41,7 +47,7 @@ const OPTIONS: { id: QualityLevel; label: string; description: string }[] = [
 // for that tradeoff (previously the app only auto-detected a quality tier with no way to
 // see or override it; see the reactive effect in BabylonWorkspace.tsx keyed on
 // graphicsQuality/recommendedQuality that actually applies these levels).
-const GraphicsQualityPanel: React.FC<GraphicsQualityPanelProps> = ({ value, onChange, recommended, gpuName, capabilities, ssrEnabled, onSsrToggle, iblShadowsEnabled, onIblShadowsToggle, fsrEnabled, onFsrToggle }) => {
+const GraphicsQualityPanel: React.FC<GraphicsQualityPanelProps> = ({ value, onChange, recommended, gpuName, capabilities, ssrEnabled, onSsrToggle, iblShadowsEnabled, onIblShadowsToggle, fsrEnabled, onFsrToggle, girsmEnabled, onGirsmToggle }) => {
   return (
     <div className="space-y-3 text-sm">
       <p className="text-xs text-slate-400">
@@ -144,6 +150,29 @@ const GraphicsQualityPanel: React.FC<GraphicsQualityPanelProps> = ({ value, onCh
             edge-aware upscale + sharpen, on desktop and in VR/AR walkthroughs. Real GPU
             savings, not just a sharpen filter. New this session - try it and turn it back off
             if anything looks wrong.
+          </p>
+        </div>
+      )}
+      {onGirsmToggle && (
+        <div className="pt-3 border-t border-slate-700">
+          <button
+            type="button"
+            onClick={() => onGirsmToggle(!girsmEnabled)}
+            aria-pressed={!!girsmEnabled}
+            className={`w-full flex items-center justify-between px-3 py-2 rounded-md border transition-colors ${
+              girsmEnabled ? 'border-blue-500 bg-blue-500/10 text-white' : 'border-slate-700 bg-slate-800/60 text-slate-300 hover:border-slate-500'
+            }`}
+          >
+            <span className="font-medium">Global Illumination (experimental)</span>
+            <span className={`text-xs px-2 py-0.5 rounded ${girsmEnabled ? 'bg-blue-500 text-white' : 'bg-slate-700 text-slate-400'}`}>
+              {girsmEnabled ? 'On' : 'Off'}
+            </span>
+          </button>
+          <p className="text-xs text-slate-400 mt-1.5">
+            Real-time bounced/indirect light from the sun - conservative low-cost settings.
+            Conflicts with Reflections and Ambient Shadows (only one of the three can be on at
+            once - turning this on turns those off). New and experimental - try it and turn it
+            back off if anything looks wrong.
           </p>
         </div>
       )}
