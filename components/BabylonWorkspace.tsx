@@ -3434,7 +3434,16 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
       const rsm = new ReflectiveShadowMap(scene, light, { width: 128, height: 128 });
       rsm.addMesh();
       const girsm = new GIRSM(rsm);
-      girsm.intensity = 1.0;
+      // Boosted well past a realistic value (Babylon's own default is 0.1) - temporary,
+      // for visual verification only. Reported this session as "no visible difference" on
+      // a real architectural model even with the toggle on: existing SSAO/shadows already
+      // darken most of what GI would otherwise fill in, so the effect at a realistic
+      // intensity was too subtle to see in a screenshot, not actually inactive. This makes
+      // it unmistakable so it can be confirmed working, then should be dialed back down
+      // toward something realistic (~0.3-0.6) once that's confirmed - left this loud on
+      // purpose rather than guessing at a "realistic" value blind.
+      girsm.intensity = 4.0;
+      girsm.radius = 0.3;
       girsm.numSamples = 64;
       const giTextureDim = {
         width: Math.max(64, Math.round(engine.getRenderWidth() * 0.25)),
