@@ -32,6 +32,14 @@ interface GraphicsQualityPanelProps {
   // an explicit opt-in toggle.
   girsmEnabled?: boolean;
   onGirsmToggle?: (enabled: boolean) => void;
+  // Auto material enhancement (materialEnhancement.ts) - classifies an imported model's own
+  // materials by name (glass/metal/floor/wood/fabric) and gives them a believable PBR
+  // response. On by default; only takes effect on the NEXT model load, not the one currently
+  // open. Exposed as an escape hatch for the (rare but real) case where a name collision in
+  // the source file - e.g. a leftover DCC-tool helper material happening to have "glass" in
+  // its name - gets misclassified as real architectural glass.
+  autoMaterialEnhancementEnabled?: boolean;
+  onAutoMaterialEnhancementToggle?: (enabled: boolean) => void;
 }
 
 const OPTIONS: { id: QualityLevel; label: string; description: string }[] = [
@@ -47,7 +55,7 @@ const OPTIONS: { id: QualityLevel; label: string; description: string }[] = [
 // for that tradeoff (previously the app only auto-detected a quality tier with no way to
 // see or override it; see the reactive effect in BabylonWorkspace.tsx keyed on
 // graphicsQuality/recommendedQuality that actually applies these levels).
-const GraphicsQualityPanel: React.FC<GraphicsQualityPanelProps> = ({ value, onChange, recommended, gpuName, capabilities, ssrEnabled, onSsrToggle, iblShadowsEnabled, onIblShadowsToggle, fsrEnabled, onFsrToggle, girsmEnabled, onGirsmToggle }) => {
+const GraphicsQualityPanel: React.FC<GraphicsQualityPanelProps> = ({ value, onChange, recommended, gpuName, capabilities, ssrEnabled, onSsrToggle, iblShadowsEnabled, onIblShadowsToggle, fsrEnabled, onFsrToggle, girsmEnabled, onGirsmToggle, autoMaterialEnhancementEnabled, onAutoMaterialEnhancementToggle }) => {
   return (
     <div className="space-y-3 text-sm">
       <p className="text-xs text-slate-400">
@@ -173,6 +181,29 @@ const GraphicsQualityPanel: React.FC<GraphicsQualityPanelProps> = ({ value, onCh
             Conflicts with Reflections and Ambient Shadows (only one of the three can be on at
             once - turning this on turns those off). New and experimental - try it and turn it
             back off if anything looks wrong.
+          </p>
+        </div>
+      )}
+      {onAutoMaterialEnhancementToggle && (
+        <div className="pt-3 border-t border-slate-700">
+          <button
+            type="button"
+            onClick={() => onAutoMaterialEnhancementToggle(!autoMaterialEnhancementEnabled)}
+            aria-pressed={!!autoMaterialEnhancementEnabled}
+            className={`w-full flex items-center justify-between px-3 py-2 rounded-md border transition-colors ${
+              autoMaterialEnhancementEnabled ? 'border-blue-500 bg-blue-500/10 text-white' : 'border-slate-700 bg-slate-800/60 text-slate-300 hover:border-slate-500'
+            }`}
+          >
+            <span className="font-medium">Auto Material Detection</span>
+            <span className={`text-xs px-2 py-0.5 rounded ${autoMaterialEnhancementEnabled ? 'bg-blue-500 text-white' : 'bg-slate-700 text-slate-400'}`}>
+              {autoMaterialEnhancementEnabled ? 'On' : 'Off'}
+            </span>
+          </button>
+          <p className="text-xs text-slate-400 mt-1.5">
+            Detects glass/metal/floor/wood/fabric materials by name and upgrades them to a
+            realistic PBR look automatically. Turn this off and reload the model if an
+            unrelated material gets misdetected (e.g. a helper material with "glass" in its
+            name turning the wrong mesh transparent). Only applies on the next model load.
           </p>
         </div>
       )}

@@ -862,7 +862,9 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
           // material response until now. Cheap (property sets only, no textures/geometry
           // touched) so left synchronous rather than chunked like the passes above.
           if (cancelled) return;
-          const materialEnhancementResult = enhanceImportedMaterials(newMeshes);
+          const materialEnhancementResult = enableAutoMaterialEnhancement
+            ? enhanceImportedMaterials(newMeshes)
+            : { enhancedCount: 0, missingMaterialMeshes: [] };
           // Surface meshes whose source file assigned them no material at all (Babylon's
           // own glTF-loader fallback, MISSING_MATERIAL_NAME - see materialEnhancement.ts).
           // enhanceImportedMaterials already gave these a plausible generic PBR look so the
@@ -1498,6 +1500,19 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
   // No tier-based default (unlike SSR/IBL above) - toggle-only, so enableGIRSM alone is both
   // the live state and the user's explicit choice; no separate override needed.
   const [enableGIRSM, setEnableGIRSM] = React.useState(false);
+  // Auto material enhancement (materialEnhancement.ts) - on by default, since it's what
+  // closes the "flat/plastic, not like Enscape" gap for most uploads. Reported this session:
+  // a DCC-exported model can carry a leftover, non-architectural material (e.g. a V-Ray/
+  // SketchUp environment-reflection helper material literally named "Glass_Sky_Reflection_01")
+  // that matches materialEnhancement.ts's glass-name heuristic by accident, making an
+  // unrelated large mesh render as transparent glass with no way to tell it apart from a
+  // real authored material short of opening the source file - a false positive this app
+  // can't reliably rule out by name alone. Exposed as a toggle specifically so a model
+  // hitting that (or any other name collision) can be re-uploaded/reloaded with automatic
+  // enhancement off, rather than requiring the source file to be manually edited and
+  // re-exported. Only takes effect on the NEXT model load - toggling it does not undo
+  // enhancement already applied to whatever is currently loaded.
+  const [enableAutoMaterialEnhancement, setEnableAutoMaterialEnhancement] = React.useState(true);
   // SSR, IBL Shadows, AND GIRSM all reconfigure the scene's shared GeometryBufferRenderer
   // when enabled (confirmed for GIRSM by live-testing this session: enabling it alongside
   // either SSR or IBL Shadows didn't crash or error, it just silently produced zero GI
@@ -5869,6 +5884,8 @@ const getCategoryDescription = (categoryName: string): string => {
               onFsrToggle: setEnableFSR,
               enableGIRSM,
               onGirsmToggle: handleGirsmToggle,
+              enableAutoMaterialEnhancement,
+              onAutoMaterialEnhancementToggle: setEnableAutoMaterialEnhancement,
               sustainabilityReport,
               onRainToggle,
               rainOn,
