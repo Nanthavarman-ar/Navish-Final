@@ -40,6 +40,12 @@ interface GraphicsQualityPanelProps {
   // its name - gets misclassified as real architectural glass.
   autoMaterialEnhancementEnabled?: boolean;
   onAutoMaterialEnhancementToggle?: (enabled: boolean) => void;
+  // For a model with lighting already baked into its textures (Blender/Cycles bake pipeline) -
+  // skips this app's normal real-time lighting response so the baked texture isn't double-lit
+  // (baked brightness x real-time sun/IBL = washed-out/overexposed). Live toggle, takes effect
+  // immediately on the currently loaded model, no reload needed.
+  bakedLightingModeEnabled?: boolean;
+  onBakedLightingModeToggle?: (enabled: boolean) => void;
 }
 
 const OPTIONS: { id: QualityLevel; label: string; description: string }[] = [
@@ -55,7 +61,7 @@ const OPTIONS: { id: QualityLevel; label: string; description: string }[] = [
 // for that tradeoff (previously the app only auto-detected a quality tier with no way to
 // see or override it; see the reactive effect in BabylonWorkspace.tsx keyed on
 // graphicsQuality/recommendedQuality that actually applies these levels).
-const GraphicsQualityPanel: React.FC<GraphicsQualityPanelProps> = ({ value, onChange, recommended, gpuName, capabilities, ssrEnabled, onSsrToggle, iblShadowsEnabled, onIblShadowsToggle, fsrEnabled, onFsrToggle, girsmEnabled, onGirsmToggle, autoMaterialEnhancementEnabled, onAutoMaterialEnhancementToggle }) => {
+const GraphicsQualityPanel: React.FC<GraphicsQualityPanelProps> = ({ value, onChange, recommended, gpuName, capabilities, ssrEnabled, onSsrToggle, iblShadowsEnabled, onIblShadowsToggle, fsrEnabled, onFsrToggle, girsmEnabled, onGirsmToggle, autoMaterialEnhancementEnabled, onAutoMaterialEnhancementToggle, bakedLightingModeEnabled, onBakedLightingModeToggle }) => {
   return (
     <div className="space-y-3 text-sm">
       <p className="text-xs text-slate-400">
@@ -204,6 +210,28 @@ const GraphicsQualityPanel: React.FC<GraphicsQualityPanelProps> = ({ value, onCh
             realistic PBR look automatically. Turn this off and reload the model if an
             unrelated material gets misdetected (e.g. a helper material with "glass" in its
             name turning the wrong mesh transparent). Only applies on the next model load.
+          </p>
+        </div>
+      )}
+      {onBakedLightingModeToggle && (
+        <div className="pt-3 border-t border-slate-700">
+          <button
+            type="button"
+            onClick={() => onBakedLightingModeToggle(!bakedLightingModeEnabled)}
+            aria-pressed={!!bakedLightingModeEnabled}
+            className={`w-full flex items-center justify-between px-3 py-2 rounded-md border transition-colors ${
+              bakedLightingModeEnabled ? 'border-blue-500 bg-blue-500/10 text-white' : 'border-slate-700 bg-slate-800/60 text-slate-300 hover:border-slate-500'
+            }`}
+          >
+            <span className="font-medium">Baked Lighting Mode</span>
+            <span className={`text-xs px-2 py-0.5 rounded ${bakedLightingModeEnabled ? 'bg-blue-500 text-white' : 'bg-slate-700 text-slate-400'}`}>
+              {bakedLightingModeEnabled ? 'On' : 'Off'}
+            </span>
+          </button>
+          <p className="text-xs text-slate-400 mt-1.5">
+            Turn this on if your model already has lighting baked into its textures (e.g. a
+            Blender/Cycles bake). Skips this app's own real-time lighting so the baked look
+            isn't double-lit and washed out. Takes effect immediately, no reload needed.
           </p>
         </div>
       )}

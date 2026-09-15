@@ -407,6 +407,10 @@ interface CustomPanelsSegmentProps {
   // enableAutoMaterialEnhancement state in BabylonWorkspace.tsx.
   enableAutoMaterialEnhancement?: boolean;
   onAutoMaterialEnhancementToggle?: (enabled: boolean) => void;
+  // Live "unlit" toggle for models with lighting baked into their textures - see the
+  // enableBakedLightingMode state in BabylonWorkspace.tsx.
+  enableBakedLightingMode?: boolean;
+  onBakedLightingModeToggle?: (enabled: boolean) => void;
   sustainabilityReport?: {
     greenScore: number;
     energyEfficiency: number;
@@ -442,8 +446,8 @@ export const CustomPanelsSegment: React.FC<CustomPanelsSegmentProps> = (props) =
 );
 
 // Sub-segment components for CustomPanels
-const CoreFeaturesSegment: React.FC<Pick<CustomPanelsSegmentProps, 'featureStates' | 'sceneRef' | 'engineRef' | 'cameraRef' | 'bimManagerRef' | 'materialManagerRef' | 'aiManagerRef' | 'workspaces' | 'selectedWorkspaceId' | 'handleWorkspaceSelect' | 'handleMaterialApplied' | 'handleAnimationCreate' | 'handleSequencePlay' | 'disableFeature' | 'workspaceState' | 'scenarioManagerRef' | 'moodSceneManagerRef' | 'animationManagerRef' | 'cloudAnchorManagerRef' | 'arCloudAnchorsRef' | 'gpsTransformUtilsRef' | 'xrManagerRef' | 'graphicsQuality' | 'setGraphicsQuality' | 'recommendedQuality' | 'gpuName' | 'deviceCapabilities' | 'enableSSR' | 'onSsrOverrideChange' | 'enableIBLShadows' | 'onIblShadowsOverrideChange' | 'enableFSR' | 'onFsrToggle' | 'enableGIRSM' | 'onGirsmToggle' | 'enableAutoMaterialEnhancement' | 'onAutoMaterialEnhancementToggle' | 'simulationManagerRef' | 'currentModelId' | 'floorPlans' | 'onFloorPlansChange'>> = ({
-  featureStates, sceneRef, engineRef, cameraRef, bimManagerRef, materialManagerRef, aiManagerRef, workspaces, selectedWorkspaceId, handleWorkspaceSelect, handleMaterialApplied, handleAnimationCreate, handleSequencePlay, disableFeature, workspaceState, scenarioManagerRef, moodSceneManagerRef, animationManagerRef, cloudAnchorManagerRef, arCloudAnchorsRef, gpsTransformUtilsRef, xrManagerRef, graphicsQuality, setGraphicsQuality, recommendedQuality, gpuName, deviceCapabilities, enableSSR, onSsrOverrideChange, enableIBLShadows, onIblShadowsOverrideChange, enableFSR, onFsrToggle, enableGIRSM, onGirsmToggle, enableAutoMaterialEnhancement, onAutoMaterialEnhancementToggle, simulationManagerRef, currentModelId, floorPlans, onFloorPlansChange
+const CoreFeaturesSegment: React.FC<Pick<CustomPanelsSegmentProps, 'featureStates' | 'sceneRef' | 'engineRef' | 'cameraRef' | 'bimManagerRef' | 'materialManagerRef' | 'aiManagerRef' | 'workspaces' | 'selectedWorkspaceId' | 'handleWorkspaceSelect' | 'handleMaterialApplied' | 'handleAnimationCreate' | 'handleSequencePlay' | 'disableFeature' | 'workspaceState' | 'scenarioManagerRef' | 'moodSceneManagerRef' | 'animationManagerRef' | 'cloudAnchorManagerRef' | 'arCloudAnchorsRef' | 'gpsTransformUtilsRef' | 'xrManagerRef' | 'graphicsQuality' | 'setGraphicsQuality' | 'recommendedQuality' | 'gpuName' | 'deviceCapabilities' | 'enableSSR' | 'onSsrOverrideChange' | 'enableIBLShadows' | 'onIblShadowsOverrideChange' | 'enableFSR' | 'onFsrToggle' | 'enableGIRSM' | 'onGirsmToggle' | 'enableAutoMaterialEnhancement' | 'onAutoMaterialEnhancementToggle' | 'enableBakedLightingMode' | 'onBakedLightingModeToggle' | 'simulationManagerRef' | 'currentModelId' | 'floorPlans' | 'onFloorPlansChange'>> = ({
+  featureStates, sceneRef, engineRef, cameraRef, bimManagerRef, materialManagerRef, aiManagerRef, workspaces, selectedWorkspaceId, handleWorkspaceSelect, handleMaterialApplied, handleAnimationCreate, handleSequencePlay, disableFeature, workspaceState, scenarioManagerRef, moodSceneManagerRef, animationManagerRef, cloudAnchorManagerRef, arCloudAnchorsRef, gpsTransformUtilsRef, xrManagerRef, graphicsQuality, setGraphicsQuality, recommendedQuality, gpuName, deviceCapabilities, enableSSR, onSsrOverrideChange, enableIBLShadows, onIblShadowsOverrideChange, enableFSR, onFsrToggle, enableGIRSM, onGirsmToggle, enableAutoMaterialEnhancement, onAutoMaterialEnhancementToggle, enableBakedLightingMode, onBakedLightingModeToggle, simulationManagerRef, currentModelId, floorPlans, onFloorPlansChange
 }) => {
   const lightingPanel = usePanelStack('top-left', !!featureStates.showLighting);
   const graphicsQualityPanel = usePanelStack('top-right');
@@ -548,6 +552,8 @@ const CoreFeaturesSegment: React.FC<Pick<CustomPanelsSegmentProps, 'featureState
             onGirsmToggle={onGirsmToggle}
             autoMaterialEnhancementEnabled={!!enableAutoMaterialEnhancement}
             onAutoMaterialEnhancementToggle={onAutoMaterialEnhancementToggle}
+            bakedLightingModeEnabled={!!enableBakedLightingMode}
+            onBakedLightingModeToggle={onBakedLightingModeToggle}
           />
         </div>
       </div>
@@ -2069,6 +2075,8 @@ interface RenderCustomPanelsProps {
   onGirsmToggle?: CustomPanelsSegmentProps['onGirsmToggle'];
   enableAutoMaterialEnhancement?: CustomPanelsSegmentProps['enableAutoMaterialEnhancement'];
   onAutoMaterialEnhancementToggle?: CustomPanelsSegmentProps['onAutoMaterialEnhancementToggle'];
+  enableBakedLightingMode?: CustomPanelsSegmentProps['enableBakedLightingMode'];
+  onBakedLightingModeToggle?: CustomPanelsSegmentProps['onBakedLightingModeToggle'];
   sustainabilityReport?: CustomPanelsSegmentProps['sustainabilityReport'];
   floorPlans?: CustomPanelsSegmentProps['floorPlans'];
   onFloorPlansChange?: CustomPanelsSegmentProps['onFloorPlansChange'];

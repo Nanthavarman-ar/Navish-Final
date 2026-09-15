@@ -1513,6 +1513,27 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
   // re-exported. Only takes effect on the NEXT model load - toggling it does not undo
   // enhancement already applied to whatever is currently loaded.
   const [enableAutoMaterialEnhancement, setEnableAutoMaterialEnhancement] = React.useState(true);
+  // Reported this session: a model with lighting BAKED into its textures (via a Blender/
+  // Cycles bake pipeline, to work around the lack of real lightmap baking in SketchUp+V-Ray/
+  // Enscape) looked correct in Blender but washed out pale/ghostly on upload here. Root cause
+  // is double-lighting: this app's PBRMaterial still computes a normal real-time lighting
+  // response (sun + environment IBL) on TOP of a texture that already has full lighting baked
+  // into it, so the two multiply together and overexpose to near-white. The fix is Babylon's
+  // own PBRMaterial.unlit flag - it skips the real-time lighting response entirely and shows
+  // the texture exactly as authored, which is exactly what a pre-baked texture needs. Unlike
+  // enableAutoMaterialEnhancement above, this is a live per-frame material flag, not a
+  // one-time destructive edit, so it's applied in the effect below immediately on toggle -
+  // no reload needed, and turning it back off immediately restores normal lighting response.
+  const [enableBakedLightingMode, setEnableBakedLightingMode] = React.useState(false);
+  React.useEffect(() => {
+    const scene = sceneRef.current;
+    if (!scene) return;
+    for (const mesh of scene.meshes) {
+      if (mesh.material instanceof PBRMaterial) {
+        mesh.material.unlit = enableBakedLightingMode;
+      }
+    }
+  }, [enableBakedLightingMode, currentModelId]);
   // SSR, IBL Shadows, AND GIRSM all reconfigure the scene's shared GeometryBufferRenderer
   // when enabled (confirmed for GIRSM by live-testing this session: enabling it alongside
   // either SSR or IBL Shadows didn't crash or error, it just silently produced zero GI
@@ -5886,6 +5907,8 @@ const getCategoryDescription = (categoryName: string): string => {
               onGirsmToggle: handleGirsmToggle,
               enableAutoMaterialEnhancement,
               onAutoMaterialEnhancementToggle: setEnableAutoMaterialEnhancement,
+              enableBakedLightingMode,
+              onBakedLightingModeToggle: setEnableBakedLightingMode,
               sustainabilityReport,
               onRainToggle,
               rainOn,
