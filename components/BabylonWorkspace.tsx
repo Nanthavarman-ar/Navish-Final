@@ -3368,8 +3368,24 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
   useEffect(() => {
     const pipeline = pipelineRef.current;
     if (!pipeline) return;
-    pipeline.bloomEnabled = enableBloom;
-    if (enableBloom) {
+    // Baked Lighting Mode (see enableBakedLightingMode above) turns off material.unlit's
+    // real-time lighting response, but that alone left a mismatch reported this session: the
+    // baked texture still looked cooler/flatter than Blender, plus a glowing white halo on
+    // bright baked highlights (balcony edge, archway) that Blender's viewport never showed.
+    // Root cause is that ACES tone mapping/contrast/exposure/color-curve grading AND bloom
+    // are all POST-PROCESS effects on the final pixels, applied after unlit materials are
+    // composited - unlit only skips the per-material lighting calculation, it does not bypass
+    // this pipeline. A baked texture is already graded/exposed correctly by Cycles; pushing it
+    // through this app's own real-time grading on top double-processes it the same way normal
+    // lighting was double-applied. Neutralized here (tone mapping off, contrast/exposure back
+    // to 1, color curves + bloom off) while Baked Lighting Mode is on; restored to this app's
+    // normal real-time-content grading (same values the pipeline is created with) when off.
+    pipeline.imageProcessing.toneMappingEnabled = !enableBakedLightingMode;
+    pipeline.imageProcessing.contrast = enableBakedLightingMode ? 1.0 : 1.15;
+    pipeline.imageProcessing.exposure = enableBakedLightingMode ? 1.0 : 1.2;
+    pipeline.imageProcessing.colorCurvesEnabled = !enableBakedLightingMode;
+    pipeline.bloomEnabled = enableBloom && !enableBakedLightingMode;
+    if (pipeline.bloomEnabled) {
       pipeline.bloomThreshold = 0.8;
       pipeline.bloomWeight = bloomIntensity;
       pipeline.bloomKernel = 64;
@@ -3389,7 +3405,7 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
     if (enableVignette) {
       pipeline.imageProcessing.vignetteWeight = vignetteIntensity;
     }
-  }, [enableBloom, bloomIntensity, enableDepthOfField, depthOfFieldFocusDistance, enableGrain, grainIntensity, enableVignette, vignetteIntensity]);
+  }, [enableBloom, bloomIntensity, enableDepthOfField, depthOfFieldFocusDistance, enableGrain, grainIntensity, enableVignette, vignetteIntensity, enableBakedLightingMode]);
 
   // Reactively update SSAO settings without recreating the scene
   useEffect(() => {
