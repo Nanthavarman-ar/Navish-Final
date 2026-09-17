@@ -799,6 +799,32 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
           if (cancelled) return;
           const newMeshes = scene.meshes.filter((m) => !meshesBefore.has(m));
           loadedModelMeshesRef.current = newMeshes;
+          // Detect glTF-authored unlit materials (KHR_materials_unlit) - the standard,
+          // Khronos-documented way a Blender bake gets exported as "unlit" at the file
+          // level (an Emission shader wired straight to Material Output, no Principled
+          // BSDF - exactly what a Cycles-bake-to-Babylon export script should do so the
+          // baked image isn't re-lit here). Babylon's own glTF loader extension
+          // (@babylonjs/loaders' KHR_materials_unlit) already set material.unlit=true for
+          // these during the SceneLoader.Append above, before this callback ever runs -
+          // captured into each material's metadata here so the enableBakedLightingMode
+          // effect below can tell "the file itself says unlit" apart from "nothing said
+          // anything" instead of unconditionally forcing every material back to lit
+          // whenever that toggle happens to be off, which used to silently undo a
+          // correctly-authored unlit bake on every load.
+          let authoredUnlitFound = false;
+          for (const mesh of newMeshes) {
+            if (mesh.material instanceof PBRMaterial) {
+              mesh.material.metadata = { ...(mesh.material.metadata || {}), authoredUnlit: mesh.material.unlit };
+              if (mesh.material.unlit) authoredUnlitFound = true;
+            }
+          }
+          if (authoredUnlitFound && !enableBakedLightingMode) {
+            setEnableBakedLightingMode(true);
+            showToast.info(
+              'Baked Lighting Mode turned on automatically',
+              "This model's materials are already marked unlit in the file (glTF KHR_materials_unlit) - typically a Blender/Cycles bake. Turned on Baked Lighting Mode to match, so this app's own lighting, tone mapping and SSAO don't get layered on top of the bake."
+            );
+          }
           // Re-applies whatever was auto-saved (see pushUndo/scheduleAutoSave above) the
           // last time this same model was edited - a fresh SceneLoader.Append here always
           // recreates meshes straight from the source file with none of that, which is why
@@ -862,7 +888,20 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
           // material response until now. Cheap (property sets only, no textures/geometry
           // touched) so left synchronous rather than chunked like the passes above.
           if (cancelled) return;
-          const materialEnhancementResult = enableAutoMaterialEnhancement
+          // Also skipped entirely under Baked Lighting Mode (see enableBakedLightingMode
+          // below): its metallic/roughness edits are harmless there (PBRMaterial.unlit skips
+          // the specular/reflection response those drive), but its glass alpha (forces 20%
+          // transparency) and emissive glow (windows/lamps) are NOT skipped by unlit - both
+          // are applied straight to the final pixel regardless of the lighting model - so
+          // they'd still visibly punch through/glow on top of a texture that already has
+          // that exact glass and practical lighting baked in from Blender, which is a real
+          // reported cause of a bake looking wrong here specifically at windows/lamps versus
+          // Blender's viewport. Also checks authoredUnlitFound directly, not just the
+          // enableBakedLightingMode state above - setEnableBakedLightingMode(true) a few
+          // lines up won't be visible on this closure's enableBakedLightingMode until the
+          // next render, so relying on that alone would still run enhancement once, on
+          // exactly the first load of a freshly-detected authored-unlit model.
+          const materialEnhancementResult = enableAutoMaterialEnhancement && !enableBakedLightingMode && !authoredUnlitFound
             ? enhanceImportedMaterials(newMeshes)
             : { enhancedCount: 0, missingMaterialMeshes: [] };
           // Surface meshes whose source file assigned them no material at all (Babylon's
@@ -1530,7 +1569,15 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
     if (!scene) return;
     for (const mesh of scene.meshes) {
       if (mesh.material instanceof PBRMaterial) {
-        mesh.material.unlit = enableBakedLightingMode;
+        // Toggle ON forces every material unlit (manual full override, e.g. a bake that
+        // was exported straight to Base Color rather than via KHR_materials_unlit and so
+        // has no authored unlit flag of its own to fall back on). Toggle OFF restores each
+        // material to whatever the file itself authored (see the KHR_materials_unlit
+        // detection above) rather than hard-forcing lit - a model exported with real
+        // KHR_materials_unlit materials must stay unlit even if this toggle is off/never
+        // touched, otherwise this effect silently re-lights a bake the file explicitly
+        // marked as already-lit.
+        mesh.material.unlit = enableBakedLightingMode || !!mesh.material.metadata?.authoredUnlit;
       }
     }
   }, [enableBakedLightingMode, currentModelId]);
@@ -1890,6 +1937,23 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
             m.isVisible = true;
             if (m.getTotalVertices() > 0) m.checkCollisions = true;
           });
+          // Same glTF-authored-unlit detection as the main selected-model load path above
+          // (see its own comment for why) - an ad-hoc local file drop should get the same
+          // "don't re-light a Blender bake exported via KHR_materials_unlit" treatment.
+          let authoredUnlitFound = false;
+          for (const mesh of newMeshes) {
+            if (mesh.material instanceof PBRMaterial) {
+              mesh.material.metadata = { ...(mesh.material.metadata || {}), authoredUnlit: mesh.material.unlit };
+              if (mesh.material.unlit) authoredUnlitFound = true;
+            }
+          }
+          if (authoredUnlitFound && !enableBakedLightingMode) {
+            setEnableBakedLightingMode(true);
+            showToast.info(
+              'Baked Lighting Mode turned on automatically',
+              "This model's materials are already marked unlit in the file (glTF KHR_materials_unlit) - typically a Blender/Cycles bake. Turned on Baked Lighting Mode to match."
+            );
+          }
           removePlaceholderGeometry(sceneRef.current!);
           showToast.dismiss(toastId);
           showToast.success(`Model loaded: ${file.name}`);
@@ -3411,8 +3475,14 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
   useEffect(() => {
     const ssao = ssaoPipelineRef.current;
     if (!ssao) return;
-    ssao.totalStrength = ssaoIntensity;
-  }, [enableSSAO, ssaoIntensity]);
+    // Neutralized under Baked Lighting Mode for the same reason tone mapping/bloom are
+    // above: SSAO is a screen-space post-process that darkens corners/crevices from the
+    // FINAL rendered depth+normal buffer, completely independent of PBRMaterial.unlit - it
+    // still runs and still darkens an unlit/baked surface. A Blender/Cycles bake already has
+    // its own ambient occlusion baked into the texture, so leaving real-time SSAO on here
+    // double-darkens exactly those corners on top of it.
+    ssao.totalStrength = enableBakedLightingMode ? 0 : ssaoIntensity;
+  }, [enableSSAO, ssaoIntensity, enableBakedLightingMode]);
 
   // Live-apply the selected graphics quality (from the Graphics Quality panel) any time
   // it changes, or the auto-detected recommendation changes ('auto' tracks that). This is

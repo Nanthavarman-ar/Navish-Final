@@ -230,8 +230,11 @@ const GraphicsQualityPanel: React.FC<GraphicsQualityPanelProps> = ({ value, onCh
           </button>
           <p className="text-xs text-slate-400 mt-1.5">
             Turn this on if your model already has lighting baked into its textures (e.g. a
-            Blender/Cycles bake). Skips this app's own real-time lighting so the baked look
-            isn't double-lit and washed out. Takes effect immediately, no reload needed.
+            Blender/Cycles bake). Skips this app's own real-time lighting, tone mapping and
+            ambient occlusion so the baked look isn't double-lit and washed out. The lighting
+            response updates immediately, no reload needed - but Auto Material Detection above
+            is also skipped for models loaded while this is on, so reload the model after
+            turning this on if it was loaded with that setting still applied.
           </p>
         </div>
       )}
