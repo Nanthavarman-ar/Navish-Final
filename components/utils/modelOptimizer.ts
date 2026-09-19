@@ -38,6 +38,25 @@ export interface ModelOptimizationResult {
   optimizations: string[];
   originalSize: number;
   optimizedSize: number;
+  /**
+   * True when the GLB is a lighting bake (KHR_materials_unlit / "__BABYLON_BAKED" materials,
+   * see scripts/blender/02_BAKE_FINAL_BABYLON_STATIC_FAST_v4.py). Such a model skips geometry
+   * simplification here and the server-side KTX2 upgrade (the caller checks this flag).
+   */
+  isBakedLightmapModel: boolean;
+}
+
+/**
+ * A lightmap bake stores its lighting in one texture per object, sampled through a UV layout
+ * whose island seams are exactly where a positions-only simplifier would collapse vertices and
+ * smear the baked lighting, and whose smooth gradients are what lossy KTX2 (ETC1S) turns into
+ * visible blocks. Recognised by the unlit extension the v4 bake script exports, or by the
+ * material-name suffix older bake scripts used.
+ */
+export function isBakedLightmapDocument(document: Document): boolean {
+  return document.getRoot().listMaterials().some((material) =>
+    !!material.getExtension('KHR_materials_unlit') || /__BABYLON_BAKED/i.test(material.getName())
+  );
 }
 
 let ioPromise: Promise<WebIO> | null = null;
@@ -116,17 +135,26 @@ export async function optimizeGlbFile(
     // the 0.5 ratio target - an already-simple primitive (a wall's 4-vertex quad) has
     // nothing to gain from simplification and stays untouched, while a genuinely dense
     // one gets thinned out, both without visibly changing shape.
-    const vertsBefore = totalVertexCount(document);
-    onStage?.('Simplifying geometry...');
-    await yieldToBrowser();
-    await document.transform(
-      weld(),
-      simplify({ simplifier: MeshoptSimplifier, ratio: 0.5, error: 0.001 })
-    );
-    const vertsAfter = totalVertexCount(document);
-    if (vertsBefore > 0 && vertsAfter < vertsBefore) {
-      const reducedPct = Math.round((1 - vertsAfter / vertsBefore) * 100);
-      optimizations.push(`Simplified geometry (${reducedPct}% fewer vertices)`);
+    const isBakedLightmapModel = isBakedLightmapDocument(document);
+    if (isBakedLightmapModel) {
+      // Still reports a stage so the caller's fixed 5-stage progress bar (UploadPage's
+      // OPTIMIZE_STAGE_COUNT) stays accurate.
+      onStage?.('Baked lighting model - skipping geometry simplification...');
+      await yieldToBrowser();
+      optimizations.push('Baked lighting model detected - geometry simplification and KTX2 skipped');
+    } else {
+      const vertsBefore = totalVertexCount(document);
+      onStage?.('Simplifying geometry...');
+      await yieldToBrowser();
+      await document.transform(
+        weld(),
+        simplify({ simplifier: MeshoptSimplifier, ratio: 0.5, error: 0.001 })
+      );
+      const vertsAfter = totalVertexCount(document);
+      if (vertsBefore > 0 && vertsAfter < vertsBefore) {
+        const reducedPct = Math.round((1 - vertsAfter / vertsBefore) * 100);
+        optimizations.push(`Simplified geometry (${reducedPct}% fewer vertices)`);
+      }
     }
 
     onStage?.('Compressing textures...');
@@ -161,6 +189,7 @@ export async function optimizeGlbFile(
       optimizations,
       originalSize: file.size,
       optimizedSize: optimizedFile.size,
+      isBakedLightmapModel,
     };
   } catch (error) {
     console.warn('Model optimization failed - uploading original file unoptimized:', error);

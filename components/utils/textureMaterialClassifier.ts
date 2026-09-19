@@ -137,6 +137,10 @@ export async function classifyMaterialsByTexture(meshes: AbstractMesh[]): Promis
     if (!material || processed.has(material)) continue;
     processed.add(material);
     if (!(material instanceof PBRMaterial)) continue;
+    // A baked/unlit material's albedo IS the finished bake (lighting already in the pixels) -
+    // classifying it as "glass"/"metal"/etc. and giving it alpha or a metallic response would
+    // corrupt the bake (e.g. alpha 0.2 + ALPHABLEND on a window's baked image).
+    if (material.unlit) continue;
     if (!material.albedoTexture || !(material.albedoTexture instanceof Texture)) continue;
     // Already has a deliberate metallic/roughness texture or non-default transparency - a
     // real authored PBR material materialEnhancement.ts also leaves alone for the same

@@ -210,6 +210,7 @@ export function UploadPage() {
         // upload unchanged, same as before this existed.
         let fileToUpload = uploadFile.file;
         let optimizations: string[] | undefined;
+        let isBakedLightmapModel = false;
         const canOptimize = uploadFile.originalFormat === '.glb' || uploadFile.originalFormat === '.gltf';
 
         if (canOptimize) {
@@ -227,6 +228,7 @@ export function UploadPage() {
           if (optimized) {
             fileToUpload = optimized.file;
             optimizations = optimized.optimizations;
+            isBakedLightmapModel = optimized.isBakedLightmapModel;
           }
           // A null result (optimization failed) just means fileToUpload stays the
           // original - optimization is a bonus, never a reason an upload fails.
@@ -277,7 +279,10 @@ export function UploadPage() {
           // awaited: the upload is already complete and correct on WebP at this point,
           // this queues a later quality upgrade rather than gating "upload finished" on
           // it. Only glb/gltf models have real textures worth re-encoding.
-          if (canOptimize && result?.model?.id) {
+          // Skipped for a lighting-bake GLB (KHR_materials_unlit / lightmap textures): ETC1S at
+          // this quality turns a bake's smooth gradients into visible blocks, and KTX2 has a
+          // history of missing/black textures in this app - see modelOptimizer.ts.
+          if (canOptimize && !isBakedLightmapModel && result?.model?.id) {
             void queueKtx2Optimize(functionsBaseUrl, result.model.id, r2Key);
           }
 
