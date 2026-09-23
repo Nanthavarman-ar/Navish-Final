@@ -1740,81 +1740,73 @@ export class XRManager {
     // runtime-chosen origin (typically near world (0,0,0)) with no awareness of where the
     // actual model is - entering VR/AR previously just accepted wherever that landed, which
     // could put the player facing empty space with nothing but the background visible if
-    // the model wasn't already sitting right at the origin. Nudging the X/Z to match
-    // wherever the desktop camera (originalCamera, captured in enterVR/enterAR) was already
-    // looking AT - which is itself wherever Fit/the saved Home view left it - means VR/AR
-    // starts at the same "zero position" the desktop view uses, not a runtime-arbitrary
-    // spot. Y is left alone: it's the headset's own tracked real-world height above the
-    // physical floor, not something to override.
+    // the model wasn't already sitting right at the origin. Seeding the XR camera's X/Z
+    // (and now also facing direction - see below) from wherever the desktop camera
+    // (originalCamera, captured in enterVR/enterAR) was already looking AT - which is
+    // itself wherever Fit/the saved Home view left it - means VR/AR starts at the same
+    // "zero position" the desktop view uses, not a runtime-arbitrary spot. Y is left at
+    // ground level: WebXRCamera fills in the headset's own tracked real-world height above
+    // the physical floor on top of it, not something to override.
     //
-    // FIX: this used to read originalCamera.POSITION (the orbit camera's own eye, i.e.
+    // FIX 1: this used to read originalCamera.POSITION (the orbit camera's own eye, i.e.
     // model center + radius in whatever direction alpha/beta pointed), not where it was
     // LOOKING. For the default ArcRotateCamera, "Fit to view"/auto-zoom sets a radius
     // proportional to the model's size specifically so the whole model fits in frame -
     // for a real building that radius is commonly tens of metres, so the XR player was
-    // being spawned tens of metres off to the side of/above the model, not at it -
-    // reproduced live in a headless WebXR emulation this session (Playwright + iwer):
-    // the desktop view (radius ~1500 after an auto-zoom on a wide scene) correctly
-    // showed the model, but entering VR placed the camera at that same ~1500-unit
-    // offset, rendering nothing but sky/ground on every device orientation tested.
-    // Reported by the user as "VR-la sky mattum therithu, model therila" (VR/AR show
-    // only sky, never the model) for every model, not just one - consistent with a
-    // spawn-position bug rather than anything model-specific. ArcRotateCamera.target
-    // (the point it orbits/looks at, unaffected by radius) is the correct reference
-    // point; other camera modes (Walkable/Clickable - FreeCamera/UniversalCamera) are
-    // already positioned close to the model on creation, so their own .position is
-    // already the right reference and is kept as the fallback.
+    // being spawned tens of metres off to the side of/above the model, not at it.
+    // ArcRotateCamera.target (the point it orbits/looks at, unaffected by radius) is the
+    // correct reference point; other camera modes (Walkable/Clickable - FreeCamera/
+    // UniversalCamera) are already positioned close to the model on creation, so their own
+    // .position is already the right reference and is kept as the fallback.
+    //
+    // FIX 2: a manual one-time (or even repeated, over ~1s - both tried live this session)
+    // position.x/z write relies on WebXRCamera's own _updateReferenceSpace() noticing the
+    // external change and re-anchoring the WebXR reference space to it on a LATER frame.
+    // Confirmed unreliable two independent ways this session: in a headless WebXR
+    // emulation (Playwright + iwer, logging camera.position every frame) the write applied
+    // for one frame and was then silently overwritten back to the raw (untracked, near-
+    // origin) device pose; separately reported by the user as still showing only sky in VR
+    // and a partially-clipped/"transparent" model in AR after that fix alone - consistent
+    // with the player still starting at local-floor's own raw origin, not at the model, in
+    // both cases (AR is worse specifically because local-floor's origin can be UNDER/INSIDE
+    // the building's own footprint, so standing there without ever being moved to the
+    // model's actual centre means standing inside walls - backface-culled from the inside,
+    // reading as "half see-through"). Switched to WebXRCamera's own OFFICIAL, purpose-built
+    // API for this exact case - setTransformationFromNonVRCamera() - instead of poking
+    // .position directly: it resets to a clean base reference space first (discarding any
+    // half-applied previous offset) and marks the internal first-frame flag itself, which
+    // is the same path Babylon uses when e.g. handing off from a desktop VR-preview camera,
+    // rather than an ad-hoc external write racing the camera's own per-frame update order.
+    // A transient camera (not attached to the canvas/render loop, disposed immediately
+    // after) is passed in so its position AND yaw seed the XR camera together - the
+    // headset's own initial facing direction is otherwise arbitrary (whichever way the
+    // player physically happened to be facing when the session started, unrelated to the
+    // model), so this also fixes VR/AR starting the player facing away from the model.
     const deskLookAt = this.originalCamera instanceof ArcRotateCamera
       ? this.originalCamera.target
       : this.originalCamera?.position;
-    const wantsNudge = !!deskLookAt && (Math.abs(deskLookAt.x) > 0.001 || Math.abs(deskLookAt.z) > 0.001);
     const sessionManager = this.xrExperience.baseExperience.sessionManager;
 
-    // FIX: a single one-time position.x/z write (the previous approach, matching how
-    // Babylon's own WebXRControllerTeleportation moves the player) relies on WebXRCamera's
-    // internal _updateReferenceSpace() noticing the external change and re-anchoring the
-    // WebXR reference space to it on the NEXT frame. Confirmed live this session (headless
-    // WebXR emulation via Playwright + iwer, logging camera.position every frame): the
-    // nudge DOES apply for that one frame, but is silently overwritten back to the raw
-    // (untracked, near-origin) device pose on a subsequent frame rather than sticking - so
-    // the player ends up back at local-floor's own origin regardless of this nudge, which
-    // is a second, independent way to reproduce "VR/AR shows only sky, never the model"
-    // even with the correct target above. Re-applying the nudge every frame for a short
-    // window, instead of once, gives whatever reference-space re-anchoring the runtime
-    // does multiple chances to actually take, and keeps winning against a stray raw pose
-    // update even if it doesn't. Bounded to ~1s (not held forever) so it stops fighting
-    // real head/device movement almost immediately rather than "rubber-banding" the view.
-    const NUDGE_DURATION_MS = 1000;
-    let nudgeObserver: (() => void) | null = null;
-    let nudgeStart = -1;
+    if (deskLookAt && this.xrCamera) {
+      const desktopForward = this.originalCamera?.getDirection
+        ? this.originalCamera.getDirection(Vector3.Forward())
+        : Vector3.Forward();
 
-    const finishNudge = () => {
-      if (nudgeObserver) {
-        sessionManager.onXRFrameObservable.removeCallback(nudgeObserver);
-        nudgeObserver = null;
-      }
-      // Capture the reset-position gesture's target once the headset has actually
-      // reported a real pose and the nudge window has finished - camera.position right
-      // after enterXRAsync resolves can still be whatever it was before entering, and
-      // capturing mid-nudge risks resetting the player into a transitional spot instead
-      // of where they actually ended up.
-      if (this.xrCamera) this.vrSpawnPosition = this.xrCamera.position.clone();
-    };
+      const seedCamera = new FreeCamera('xrSpawnSeed', new Vector3(deskLookAt.x, 0, deskLookAt.z), this.scene);
+      seedCamera.setTarget(new Vector3(deskLookAt.x + desktopForward.x, 0, deskLookAt.z + desktopForward.z));
 
-    if (!wantsNudge) {
-      sessionManager.onXRFrameObservable.addOnce(finishNudge);
-    } else {
-      nudgeObserver = () => {
-        if (!this.xrCamera) return;
-        if (nudgeStart < 0) nudgeStart = performance.now();
-        this.xrCamera.position.x = deskLookAt!.x;
-        this.xrCamera.position.z = deskLookAt!.z;
-        if (performance.now() - nudgeStart >= NUDGE_DURATION_MS) {
-          finishNudge();
-        }
-      };
-      sessionManager.onXRFrameObservable.add(nudgeObserver);
+      this.xrCamera.setTransformationFromNonVRCamera(seedCamera, true);
+      seedCamera.dispose();
     }
+
+    // Capture the reset-position gesture's target once the headset has actually reported a
+    // real pose - camera.position right after setTransformationFromNonVRCamera can still be
+    // mid-transition (the first real device pose only lands on the session's first XR
+    // frame after that call), so grabbing it immediately here risks resetting the player
+    // into a stale/transitional spot instead of where they actually ended up.
+    sessionManager.onXRFrameObservable.addOnce(() => {
+      if (this.xrCamera) this.vrSpawnPosition = this.xrCamera.position.clone();
+    });
   }
 
   // Continuous floor-following ("grounding"). Fully replaces Babylon's own
