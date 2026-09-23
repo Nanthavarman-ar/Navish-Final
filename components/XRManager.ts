@@ -1060,12 +1060,33 @@ export class XRManager {
   // see the auto-call to ensurePlacementRoot() in setupARPlacement() below, which had the
   // same underlying bug (only ever placing the model on the FIRST scale/rotate/mirror
   // button press, never automatically at session start) fixed the same session.
+  //
+  // FIX 2 (this bug survived the fix above): this used to shift the model to a hard-coded
+  // world (0, 0) instead of to wherever the camera actually is - i.e. it just moved the
+  // "am I near the camera" guesswork from the camera side to the model side without
+  // removing the guess itself. 'local-floor' only pins Y to the real floor; the runtime
+  // picks the X/Z origin (headset room-setup/Guardian centre, wherever tracking booted),
+  // which has no relation to this scene's (0,0,0) - so "shift the model to (0,0)" only
+  // worked if the camera's raw tracked X/Z also happened to land near (0,0), which is not
+  // guaranteed (the same real-Quest test above once read the camera 14m from the model's
+  // centre - i.e. also nowhere near this scene's origin). Reading this.xrCamera.position
+  // directly - called from configureXRFeatures' onXRFrameObservable.addOnce callback, i.e.
+  // after the FIRST REAL XR FRAME following the camera-seed above, not synchronously right
+  // after it (a synchronous read can still be mid-transition - see that call site's own
+  // comment) - and shifting the model to THAT point instead removes the assumption
+  // entirely: the model ends up under the camera regardless of where in the scene's
+  // coordinate space the camera's raw tracked position turned out to be, and regardless of
+  // whether the seed itself actually stuck.
   private applyVRWorldShift(): void {
+    if (!this.xrCamera) return;
     const center = this.computeRoughModelBounds();
-    // Nothing useful to do without a real bounds reading, and no point moving anything
-    // that's already essentially at the origin (small models authored near world zero,
-    // the common case for hand-built scenes rather than SketchUp/BIM exports).
-    if (!center || (Math.abs(center.x) < 0.5 && Math.abs(center.z) < 0.5)) return;
+    if (!center) return;
+
+    const offsetX = this.xrCamera.position.x - center.x;
+    const offsetZ = this.xrCamera.position.z - center.z;
+    // No point moving anything that's already essentially where the camera is standing
+    // (small models authored right at the player's own spawn point).
+    if (Math.abs(offsetX) < 0.5 && Math.abs(offsetZ) < 0.5) return;
 
     const root = new TransformNode('xrVRWorldShiftRoot', this.scene);
 
@@ -1089,7 +1110,7 @@ export class XRManager {
     // (matches "Y is left alone" for the camera-seed above: real tracked height, not
     // something to override) so the player's real-world floor still meets the model's
     // floor at the same relative height it would on desktop.
-    root.position.set(-center.x, 0, -center.z);
+    root.position.set(offsetX, 0, offsetZ);
 
     this.vrWorldShiftRoot = root;
   }
@@ -2038,24 +2059,25 @@ export class XRManager {
       seedCamera.dispose();
     }
 
-    // VR only - see applyVRWorldShift's own comment for the full reasoning (AR doesn't use
-    // this; it has its own, better-suited placement system, auto-triggered in
-    // setupARPlacement below instead). A GUI/reparent failure on some constrained device
-    // must never take down the rest of VR functionality with it.
-    if (this.currentSessionMode === 'immersive-vr') {
-      try {
-        this.applyVRWorldShift();
-      } catch (error) {
-        console.warn('[XRManager] Could not auto-centre the model for VR:', error);
-      }
-    }
-
-    // Capture the reset-position gesture's target once the headset has actually reported a
-    // real pose - camera.position right after setTransformationFromNonVRCamera can still be
+    // Both of the below need the camera's REAL settled tracked position, not whatever it
+    // reads immediately after setTransformationFromNonVRCamera - that can still be
     // mid-transition (the first real device pose only lands on the session's first XR
-    // frame after that call), so grabbing it immediately here risks resetting the player
-    // into a stale/transitional spot instead of where they actually ended up.
+    // frame after that call; see applyVRWorldShift's own updated comment for why a stale/
+    // transitional read there silently reproduces the exact bug it was written to fix).
+    // Deferring both to the same first-real-frame callback is what makes applyVRWorldShift
+    // actually shift the model to where the camera ends up, not where it was mid-seed.
     sessionManager.onXRFrameObservable.addOnce(() => {
+      // VR only - see applyVRWorldShift's own comment for the full reasoning (AR doesn't
+      // use this; it has its own, better-suited placement system, auto-triggered in
+      // setupARPlacement below instead). A GUI/reparent failure on some constrained device
+      // must never take down the rest of VR functionality with it.
+      if (this.currentSessionMode === 'immersive-vr') {
+        try {
+          this.applyVRWorldShift();
+        } catch (error) {
+          console.warn('[XRManager] Could not auto-centre the model for VR:', error);
+        }
+      }
       if (this.xrCamera) this.vrSpawnPosition = this.xrCamera.position.clone();
     });
   }
