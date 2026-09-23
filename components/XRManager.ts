@@ -1,4 +1,4 @@
-import { Scene, Camera, ArcRotateCamera, FreeCamera, WebXRDefaultExperience, WebXRState, WebXRCamera, WebXRFeaturesManager, WebXRFeatureName, WebXRControllerComponent, WebXRInputSource, Vector3, Quaternion, AbstractMesh, TransformNode, Mesh, LinesMesh, MeshBuilder, StandardMaterial, Color3, Color4, Ray } from '@babylonjs/core';
+import { Scene, Camera, ArcRotateCamera, FreeCamera, WebXRDefaultExperience, WebXRState, WebXRCamera, WebXRFeaturesManager, WebXRFeatureName, WebXRControllerComponent, WebXRInputSource, Vector3, Quaternion, AbstractMesh, TransformNode, Mesh, LinesMesh, MeshBuilder, StandardMaterial, Color3, Color4, Ray, Node } from '@babylonjs/core';
 import { AdvancedDynamicTexture, StackPanel, TextBlock, Button, Rectangle } from '@babylonjs/gui';
 
 // One toggleable thing this app knows how to show in the in-headset menu (a placed
@@ -65,6 +65,12 @@ export class XRManager {
   private teleportationEnabled: boolean = true;
   private currentSessionMode: 'none' | 'immersive-vr' | 'immersive-ar' = 'none';
   private audioManager: any = null; // AudioManager instance
+
+  // VR world-shift (see applyVRWorldShift) - brings the model to wherever the XR camera's
+  // own raw tracked position naturally is, instead of trying to move the camera to the
+  // model. Independent of AR's placementRoot below (different session, different purpose).
+  private vrWorldShiftRoot: TransformNode | null = null;
+  private vrWorldShiftOriginalParents: Map<AbstractMesh, Node | null> = new Map();
 
   // AR manual placement/scale (mobile "tap to place near me, then resize" flow) -
   // the model stays wherever the user last placed/scaled it for the rest of this XR
@@ -1025,6 +1031,88 @@ export class XRManager {
     });
   }
 
+  // FIX (confirmed both in headless WebXR emulation AND on a real Quest this session): a
+  // WebXR session's 'local-floor' reference space starts the player at its own runtime
+  // origin, with no relation to wherever the LOADED MODEL happens to be authored. The
+  // previous fix (setTransformationFromNonVRCamera, in configureXRFeatures below) tries to
+  // move the CAMERA to the model by seeding the XR camera's tracked position - this is
+  // Babylon's own official, documented API for exactly this, but was confirmed NOT
+  // reliably taking effect: in headless emulation the seeded position was silently
+  // overwritten back to the raw origin within a frame or two, and a real Quest AR test
+  // this session read the camera about 14m from the model's actual centre despite the
+  // seed having run - explaining both "VR shows only sky/ground, never the model" and AR's
+  // "model only partially visible" (standing near-but-not-at raw local-floor origin, which
+  // for a real building can easily be inside/right next to its own walls).
+  //
+  // This takes the opposite, more robust approach: instead of moving the CAMERA to the
+  // model (dependent on that WebXR reference-space mechanism), it moves the MODEL to
+  // wherever the camera's raw tracked position already, unavoidably, is. Reparents every
+  // real model mesh (reusing the exact placeable-mesh set/exclusions AR's own tap-to-place
+  // placement already uses) under a dedicated root, and offsets that root so the model's
+  // own bounds-centre sits at world (0, its own floor height, 0) - the same neighbourhood
+  // 'local-floor' defines its own origin to be, on every device, with no dependency on
+  // reference-space rebasing working at all. The camera-seed above is left in place as a
+  // best-effort extra (its YAW/facing-direction half has no reason to share this same
+  // failure mode), not removed - this is additive, not a replacement.
+  //
+  // AR does NOT use this: it already has its own, better-suited placement system (tap-to-
+  // place + pinch-to-scale, designed for a shrink-to-tabletop-size viewing experience) -
+  // see the auto-call to ensurePlacementRoot() in setupARPlacement() below, which had the
+  // same underlying bug (only ever placing the model on the FIRST scale/rotate/mirror
+  // button press, never automatically at session start) fixed the same session.
+  private applyVRWorldShift(): void {
+    const center = this.computeRoughModelBounds();
+    // Nothing useful to do without a real bounds reading, and no point moving anything
+    // that's already essentially at the origin (small models authored near world zero,
+    // the common case for hand-built scenes rather than SketchUp/BIM exports).
+    if (!center || (Math.abs(center.x) < 0.5 && Math.abs(center.z) < 0.5)) return;
+
+    const root = new TransformNode('xrVRWorldShiftRoot', this.scene);
+
+    // FIX: setParent() preserves each mesh's CURRENT world position at the moment it's
+    // called (recomputing local coordinates against the parent's CURRENT world matrix) -
+    // confirmed live this session by reading a mesh's absolute world position immediately
+    // before and after this ran: identical. Setting root.position to the offset BEFORE
+    // reparenting (the original order here) therefore reparented everything WITHOUT
+    // actually moving it at all - a real, silent no-op bug in this exact fix. Reparenting
+    // while the root is still at its default identity position makes each mesh's new
+    // LOCAL position equal to its original WORLD position; the offset is applied
+    // afterward, once, so it actually displaces every child's effective world position
+    // for the first time on the very next render - the same "move the parent after its
+    // children exist" ordering, not "move the parent, then reparent into it".
+    for (const mesh of this.getPlaceableMeshes()) {
+      this.vrWorldShiftOriginalParents.set(mesh, mesh.parent);
+      mesh.setParent(root);
+    }
+
+    // Horizontal re-centre only - the model's own authored floor height is left alone
+    // (matches "Y is left alone" for the camera-seed above: real tracked height, not
+    // something to override) so the player's real-world floor still meets the model's
+    // floor at the same relative height it would on desktop.
+    root.position.set(-center.x, 0, -center.z);
+
+    this.vrWorldShiftRoot = root;
+  }
+
+  private removeVRWorldShift(): void {
+    if (!this.vrWorldShiftRoot) return;
+    // FIX: same setParent()-preserves-CURRENT-world-position behaviour as
+    // applyVRWorldShift above, in reverse - reparenting straight back to each mesh's
+    // original parent while the root still holds the offset would preserve the SHIFTED
+    // position under the original (unshifted) parent, permanently leaving the desktop
+    // view shifted after exiting VR. Zeroing the root's own offset FIRST snaps every
+    // child back to its true pre-shift world position (still parented under root, which
+    // is now back at identity); only THEN does reparenting to the original parent
+    // preserve the CORRECT, original position.
+    this.vrWorldShiftRoot.position.setAll(0);
+    this.vrWorldShiftOriginalParents.forEach((originalParent, mesh) => {
+      if (!mesh.isDisposed()) mesh.setParent(originalParent);
+    });
+    this.vrWorldShiftOriginalParents.clear();
+    this.vrWorldShiftRoot.dispose();
+    this.vrWorldShiftRoot = null;
+  }
+
   // Lazily creates (or returns the existing) TransformNode that placement/scale acts
   // on, reparenting every real model mesh under it. setParent() (not just assigning
   // .parent) is what keeps each mesh visually exactly where it already is during this
@@ -1338,6 +1426,26 @@ export class XRManager {
     session?.addEventListener('select', this.arSelectListener);
 
     this.setupPinchToZoom();
+
+    // FIX: ensurePlacementRoot()'s own "2m in front of the user, floor-probed" fallback
+    // (see its comment) was written specifically so there's always something reasonable
+    // on screen "to see the very first button press affect" - but it was only ever
+    // actually CALLED from inside the scale/rotate/mirror/nudge button handlers
+    // themselves, never automatically at session start. That's a real chicken-and-egg gap:
+    // a user has no reason to press any of those buttons if they can't see the model well
+    // enough to want to interact with it yet, which is exactly what was reported this
+    // session ("AR-la model paathi therinji theriyaama" - the model is only partially/
+    // confusingly visible in AR) - without this, the model just sits wherever it was
+    // originally authored, which for a real building/site export is essentially never
+    // right in front of wherever the user happened to start the session. Calling it here
+    // makes the fallback actually fire immediately, matching what its own comment already
+    // says it's supposed to do; a later successful hit-test tap still repositions it onto
+    // the real surface exactly as before, unaffected by this.
+    try {
+      this.ensurePlacementRoot();
+    } catch (error) {
+      console.warn('[XRManager] Could not auto-place the model for AR:', error);
+    }
   }
 
   // See the field comments above for why this listens at the document level instead of
@@ -1750,6 +1858,10 @@ export class XRManager {
     // a no-op if AR placement was never set up (e.g. exiting a VR session).
     this.disposeVRMenu();
     this.disposeXRDebugOverlay();
+    // Restore every reparented mesh to its exact original parent - a no-op if VR's
+    // world-shift was never applied (e.g. exiting an AR session, or a VR session whose
+    // model was already near the origin).
+    this.removeVRWorldShift();
     this.teardownARPlacement();
     this.teardownCustomTeleportation();
     this.teardownCustomMovement();
@@ -1924,6 +2036,18 @@ export class XRManager {
 
       this.xrCamera.setTransformationFromNonVRCamera(seedCamera, true);
       seedCamera.dispose();
+    }
+
+    // VR only - see applyVRWorldShift's own comment for the full reasoning (AR doesn't use
+    // this; it has its own, better-suited placement system, auto-triggered in
+    // setupARPlacement below instead). A GUI/reparent failure on some constrained device
+    // must never take down the rest of VR functionality with it.
+    if (this.currentSessionMode === 'immersive-vr') {
+      try {
+        this.applyVRWorldShift();
+      } catch (error) {
+        console.warn('[XRManager] Could not auto-centre the model for VR:', error);
+      }
     }
 
     // Capture the reset-position gesture's target once the headset has actually reported a
