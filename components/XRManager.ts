@@ -72,6 +72,11 @@ export class XRManager {
   private vrWorldShiftRoot: TransformNode | null = null;
   private vrWorldShiftOriginalParents: Map<AbstractMesh, Node | null> = new Map();
 
+  // Meshes this class had to unfreeze (see unfreezeMeshesForXR) so VR's world-shift /
+  // AR's placement root can actually move them - remembered so the VR path can put back
+  // the freeze BabylonWorkspace applied after load (see refreezeMeshesAfterVR).
+  private xrUnfrozenMeshes: Set<AbstractMesh> = new Set();
+
   // AR manual placement/scale (mobile "tap to place near me, then resize" flow) -
   // the model stays wherever the user last placed/scaled it for the rest of this XR
   // session; re-entering AR (or a fresh page load) starts fresh.
@@ -817,6 +822,35 @@ export class XRManager {
       this.scene.getEngine().setHardwareScalingLevel(this.preXRScalingLevel);
       this.preXRScalingLevel = null;
     }
+    this.restoreReverseDepthAfterXR();
+  }
+
+  // ROOT CAUSE #1 of "model shows in the desktop viewport but VR/AR shows only the sky"
+  // (reproduced with Meta's Immersive Web Emulator, Quest 3 profile, on a real baked GLB:
+  // reverse-depth ON -> only the sky and no controllers/model at all; OFF -> the model,
+  // road and controllers all render). BabylonWorkspace turns engine.useReverseDepthBuffer
+  // on for the desktop view (z-fighting on large architectural models), which also flips
+  // the depth test to GEQUAL and the depth clear to 0 - but a WebXR session hands Babylon
+  // its own STANDARD-Z projection matrices per eye, so every depth-tested draw (the whole
+  // model, the controller meshes) fails the depth test and only the depth-less skybox
+  // survives. Must be off BEFORE the session starts and is put back when it ends.
+  // The desktop camera's cached projection is recomputed on restore so it goes back to
+  // the reverse-Z form the flag change alone doesn't invalidate.
+  private preXRReverseDepth = false;
+
+  private disableReverseDepthForXR(): void {
+    const engine = this.scene.getEngine();
+    if (!engine.useReverseDepthBuffer) return;
+    this.preXRReverseDepth = true;
+    engine.useReverseDepthBuffer = false;
+    this.scene.cameras.forEach((camera) => camera.getProjectionMatrix(true));
+  }
+
+  private restoreReverseDepthAfterXR(): void {
+    if (!this.preXRReverseDepth) return;
+    this.preXRReverseDepth = false;
+    this.scene.getEngine().useReverseDepthBuffer = true;
+    this.scene.cameras.forEach((camera) => camera.getProjectionMatrix(true));
   }
 
   // Hides the skybox mesh(es) for the duration of an AR session - see hiddenSkyboxMeshes
@@ -848,6 +882,7 @@ export class XRManager {
     try {
       // Store original camera
       this.originalCamera = this.scene.activeCamera;
+      this.disableReverseDepthForXR();
 
       const floorMeshes = this.teleportationEnabled ? this.getFloorMeshes() : [];
 
@@ -919,6 +954,7 @@ export class XRManager {
     this.xrExperience = null;
     this.xrCamera = null;
     this.currentSessionMode = 'none';
+    this.restoreReverseDepthAfterXR();
     if (this.originalCamera) {
       this.scene.activeCamera = this.originalCamera;
     }
@@ -935,6 +971,7 @@ export class XRManager {
     try {
       // Store original camera
       this.originalCamera = this.scene.activeCamera;
+      this.disableReverseDepthForXR();
 
       const floorMeshes = this.teleportationEnabled ? this.getFloorMeshes() : [];
 
@@ -1100,6 +1137,44 @@ export class XRManager {
   // entirely: the model ends up under the camera regardless of where in the scene's
   // coordinate space the camera's raw tracked position turned out to be, and regardless of
   // whether the seed itself actually stuck.
+  // ROOT CAUSE of "model shows in the desktop viewport but not in VR/AR" (verified against
+  // Babylon's own source + a NullEngine repro): BabylonWorkspace freezes every loaded mesh
+  // after load (freezeWorldMatrix() + doNotSyncBoundingInfo = true, purely a desktop
+  // performance optimisation). A frozen mesh keeps returning its cached world matrix
+  // while `_isDirty` is false, and a PARENT moving/scaling never marks it dirty - so
+  // reparenting the model under a root and then moving/scaling that root (VR world-shift,
+  // AR placement/scale/nudge/rotate) left the frozen meshes exactly where they were.
+  // doNotSyncBoundingInfo additionally leaves the bounding sphere/box at the OLD location,
+  // so even a mesh that did get a fresh matrix is frustum-culled against stale bounds.
+  // Net effect: the camera moved to the model's new spot, the model itself never moved,
+  // and only the (unfrozen, infiniteDistance) sky drew in VR; in AR whichever meshes
+  // happened to recompute at different moments ended up in different places.
+  // Must run BEFORE any setParent()/root transform below. Order matters: clear
+  // doNotSyncBoundingInfo first so the forced recompute inside unfreezeWorldMatrix()
+  // also marks the bounding info dirty.
+  private unfreezeMeshesForXR(meshes: AbstractMesh[]): void {
+    for (const mesh of meshes) {
+      if (!mesh.isWorldMatrixFrozen && !mesh.doNotSyncBoundingInfo) continue;
+      this.xrUnfrozenMeshes.add(mesh);
+      mesh.doNotSyncBoundingInfo = false;
+      mesh.unfreezeWorldMatrix();
+    }
+  }
+
+  // Restores BabylonWorkspace's post-load freeze once VR's temporary reparent is undone.
+  // Skips anything still parented to AR's placementRoot: that root stays alive after the
+  // AR session (and is driven by the desktop ARScalePanel too), so its children must stay
+  // unfrozen to keep following it.
+  private refreezeMeshesAfterVR(): void {
+    this.xrUnfrozenMeshes.forEach((mesh) => {
+      if (mesh.isDisposed()) return;
+      if (this.placementRoot && mesh.parent === this.placementRoot) return;
+      mesh.freezeWorldMatrix();
+      mesh.doNotSyncBoundingInfo = true;
+      this.xrUnfrozenMeshes.delete(mesh);
+    });
+  }
+
   private applyVRWorldShift(): void {
     if (!this.xrCamera) return;
     const center = this.computeRoughModelBounds();
@@ -1124,7 +1199,9 @@ export class XRManager {
     // afterward, once, so it actually displaces every child's effective world position
     // for the first time on the very next render - the same "move the parent after its
     // children exist" ordering, not "move the parent, then reparent into it".
-    for (const mesh of this.getPlaceableMeshes()) {
+    const shiftMeshes = this.getPlaceableMeshes();
+    this.unfreezeMeshesForXR(shiftMeshes);
+    for (const mesh of shiftMeshes) {
       this.vrWorldShiftOriginalParents.set(mesh, mesh.parent);
       mesh.setParent(root);
     }
@@ -1155,6 +1232,7 @@ export class XRManager {
     this.vrWorldShiftOriginalParents.clear();
     this.vrWorldShiftRoot.dispose();
     this.vrWorldShiftRoot = null;
+    this.refreezeMeshesAfterVR();
   }
 
   // Lazily creates (or returns the existing) TransformNode that placement/scale acts
@@ -1162,16 +1240,22 @@ export class XRManager {
   // .parent) is what keeps each mesh visually exactly where it already is during this
   // reparent - only the *next* placement/scale actually moves anything.
   private getOrCreatePlacementRoot(): TransformNode {
+    // Frozen meshes ignore their parent moving/scaling - see unfreezeMeshesForXR. Meshes
+    // stay unfrozen for as long as they live under this root (it outlives the AR session).
     if (this.placementRoot && !this.placementRoot.isDisposed()) {
       // A model loaded/changed after the root was first created - pick up any meshes
       // that aren't parented yet.
-      this.getPlaceableMeshes().forEach((m) => {
+      const placeable = this.getPlaceableMeshes();
+      this.unfreezeMeshesForXR(placeable);
+      placeable.forEach((m) => {
         if (m.parent !== this.placementRoot) m.setParent(this.placementRoot);
       });
       return this.placementRoot;
     }
     const root = new TransformNode('ar_placement_root', this.scene);
-    this.getPlaceableMeshes().forEach((m) => m.setParent(root));
+    const placeable = this.getPlaceableMeshes();
+    this.unfreezeMeshesForXR(placeable);
+    placeable.forEach((m) => m.setParent(root));
     this.placementRoot = root;
 
     // FIX: AR is designed as a shrink-to-tabletop-size viewing experience (see
