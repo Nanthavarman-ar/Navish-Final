@@ -3142,7 +3142,6 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
             { id: 'flood', label: 'Flood', isOn: floodOnRef.current, toggle: () => onFloodToggle(!floodOnRef.current) },
           ]);
           console.log("XRManager initialized");
-          (window as any).__TEMP_VERIFY_scene = scene; // TEMP_VERIFY - reverted after testing
         } catch (error) {
           console.error("Failed to initialize XRManager:", error);
           showToast.error("XR features unavailable");
