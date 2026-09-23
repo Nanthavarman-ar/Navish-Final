@@ -1758,7 +1758,20 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
       return;
     }
 
-    const alwaysExclude = (m: AbstractMesh) => m.name && (m.name.startsWith('measure_') || m.name.startsWith('preview_') || m.name.startsWith('measurement_'));
+    // infiniteDistance marks skybox meshes (procedural sky dome, HDRI skybox) - the same
+    // exclusion computePrecipitationBounds/buildPrecipitationHeightmap already apply, for
+    // the same reason: without it, the sky dome's own ~1000-unit box (which Babylon
+    // recentres on the CAMERA every frame, since infiniteDistance meshes always follow the
+    // camera) gets folded into "the model's bounds" here. Confirmed live this session: on
+    // a real model whose true footprint was about -35..10 x, -14.7..12 z, the computed
+    // center came out near world (0,0) instead - and worse, feeds back into a fresh camera
+    // position that's still far away, so a second fit (or VR/AR's own use of this camera's
+    // resulting target as its spawn point) works from an equally-wrong bounds scan next
+    // time. This is why "Fit to view"/auto-zoom could leave the camera absurdly far away
+    // (radius in the hundreds/thousands instead of a sane multiple of the model size), and
+    // why entering VR/AR from that state span the player far outside the building, seeing
+    // nothing but sky - reported as "VR/AR-la model therila, sky mattum therithu".
+    const alwaysExclude = (m: AbstractMesh) => (m.name && (m.name.startsWith('measure_') || m.name.startsWith('preview_') || m.name.startsWith('measurement_'))) || m.infiniteDistance;
     const defaultScene = (m: AbstractMesh) => m.name && (/^ground$/i.test(m.name) || /^defaultBox$/i.test(m.name));
     const getBounds = (skipDefault: boolean) => {
       let minX = Infinity, minY = Infinity, minZ = Infinity;
@@ -2059,8 +2072,10 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
     // Walk/Dollhouse/Orbit all used to spawn at fixed coordinates regardless of where the
     // uploaded model actually sits or how big it is, so Walk could drop the camera outside
     // the building entirely and Dollhouse/Orbit showed an arbitrary empty view for any
-    // model not centered near (0,0,0). Mirrors the same exclusion list as runAutoZoom/Fit.
-    const exclude = (m: AbstractMesh) => m.name && (m.name.startsWith('measure_') || m.name.startsWith('preview_') || m.name.startsWith('measurement_') || /^ground$/i.test(m.name) || /^defaultBox$/i.test(m.name));
+    // model not centered near (0,0,0). Mirrors the same exclusion list as runAutoZoom/Fit
+    // - including the infiniteDistance (skybox) exclusion; see runAutoZoom's own comment
+    // for why leaving that out corrupts modelCenter/modelSpan the same way it corrupted Fit.
+    const exclude = (m: AbstractMesh) => (m.name && (m.name.startsWith('measure_') || m.name.startsWith('preview_') || m.name.startsWith('measurement_') || /^ground$/i.test(m.name) || /^defaultBox$/i.test(m.name))) || m.infiniteDistance;
     let minX = Infinity, minY = Infinity, minZ = Infinity;
     let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
     let meshCount = 0;
@@ -5829,7 +5844,9 @@ const getCategoryDescription = (categoryName: string): string => {
               const camera = cameraRef.current;
               if (!scene || !camera || !(camera as any).setTarget) return;
               const arcCam = camera as ArcRotateCamera;
-              const exclude = (m: AbstractMesh) => m.name && (m.name.startsWith('measure_') || m.name.startsWith('preview_') || m.name.startsWith('measurement_'));
+              // Same infiniteDistance (skybox) exclusion as runAutoZoom/switchCamera above -
+              // see runAutoZoom's own comment for why omitting it corrupts the computed center.
+              const exclude = (m: AbstractMesh) => (m.name && (m.name.startsWith('measure_') || m.name.startsWith('preview_') || m.name.startsWith('measurement_'))) || m.infiniteDistance;
               let minX = Infinity, minY = Infinity, minZ = Infinity;
               let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
               let count = 0;
