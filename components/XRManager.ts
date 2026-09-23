@@ -152,6 +152,18 @@ export class XRManager {
   private vrMenuPanel: StackPanel | null = null;
   private vrMenuRefreshTimer: ReturnType<typeof setInterval> | null = null;
   private vrMenuControllerObserver: ((controller: WebXRInputSource) => void) | null = null;
+
+  // TEMPORARY DIAGNOSTIC OVERLAY - see the call site in configureXRFeatures for why this
+  // exists (real-device VR/AR spawn-position verification with no cable/ADB needed). Flip
+  // to false (or delete this whole feature) once that's resolved.
+  private static readonly XR_DEBUG_OVERLAY = true;
+  private xrDebugMesh: Mesh | null = null;
+  private xrDebugAdt: AdvancedDynamicTexture | null = null;
+  private xrDebugText: TextBlock | null = null;
+  private xrDebugTimer: ReturnType<typeof setInterval> | null = null;
+  private xrDebugModelCenter: Vector3 | null = null;
+  private xrDebugStartTime: number = 0;
+
   private teleportAiming: boolean = false;
   private teleportTargetPoint: Vector3 | null = null;
   private teleportRotationArmed: boolean = true;
@@ -442,6 +454,98 @@ export class XRManager {
     this.vrMenuAdt = null;
     this.vrMenuMesh?.dispose();
     this.vrMenuMesh = null;
+  }
+
+  // TEMPORARY DIAGNOSTIC OVERLAY - see configureXRFeatures' call site. A small HUD panel
+  // parented directly to the XR camera (always in view, unlike the wrist-attached VR
+  // feature menu above) showing live camera position and distance to the model's centre -
+  // works in both VR and AR, no external tooling needed to read it.
+  private computeRoughModelBounds(): Vector3 | null {
+    let min: Vector3 | null = null;
+    let max: Vector3 | null = null;
+
+    for (const mesh of this.scene.meshes) {
+      if (!mesh.isEnabled() || !mesh.isVisible || mesh.getTotalVertices() === 0) continue;
+      // Same exclusions as BabylonWorkspace.tsx's runAutoZoom/switchCamera/onAutoZoom -
+      // skip the skybox (infiniteDistance, follows the camera - would corrupt this the
+      // same way it corrupted those) and this app's own generated helper/tool meshes.
+      if (mesh.infiniteDistance) continue;
+      if (/^(ground|xr_|ar_|measure_|preview_|measurement_|annotation_|cursor_|collab_|sound_privacy_marker_|mood_light_|__root__|vrFeatureMenu|xrDebug)/i.test(mesh.name || '')) continue;
+
+      const bb = mesh.getBoundingInfo().boundingBox;
+      min = min ? Vector3.Minimize(min, bb.minimumWorld) : bb.minimumWorld.clone();
+      max = max ? Vector3.Maximize(max, bb.maximumWorld) : bb.maximumWorld.clone();
+    }
+
+    return min && max ? min.add(max).scale(0.5) : null;
+  }
+
+  private createXRDebugOverlay(): void {
+    if (!this.xrCamera || !this.scene) return;
+    this.disposeXRDebugOverlay();
+
+    this.xrDebugModelCenter = this.computeRoughModelBounds();
+    this.xrDebugStartTime = performance.now();
+
+    const plane = MeshBuilder.CreatePlane('xrDebugOverlay', { width: 0.5, height: 0.32 }, this.scene);
+    plane.isPickable = false;
+    plane.renderingGroupId = 1;
+    // Parented directly to the camera (not the controller, unlike the feature menu) so it
+    // is always readable regardless of hand tracking/controllers being present at all -
+    // needed for phone-based AR, which has neither.
+    plane.parent = this.xrCamera;
+    plane.position = new Vector3(0, 0, 0.8);
+
+    const adt = AdvancedDynamicTexture.CreateForMesh(plane, 512, 320);
+    adt.background = 'rgba(0, 0, 0, 0.85)';
+
+    const text = new TextBlock('xrDebugText', 'XR DEBUG\nstarting...');
+    text.color = '#00ff88';
+    text.fontSize = 26;
+    text.textWrapping = true;
+    text.textHorizontalAlignment = 0; // left
+    text.paddingLeft = '16px';
+    adt.addControl(text);
+
+    this.xrDebugMesh = plane;
+    this.xrDebugAdt = adt;
+    this.xrDebugText = text;
+
+    this.updateXRDebugOverlay();
+    this.xrDebugTimer = setInterval(() => this.updateXRDebugOverlay(), 300);
+  }
+
+  private updateXRDebugOverlay(): void {
+    if (!this.xrDebugText || !this.xrCamera) return;
+
+    const p = this.xrCamera.position;
+    const center = this.xrDebugModelCenter;
+    const dist = center ? Vector3.Distance(p, center) : -1;
+    const seconds = ((performance.now() - this.xrDebugStartTime) / 1000).toFixed(1);
+
+    const lines = [
+      `MODE: ${this.currentSessionMode}`,
+      `time: ${seconds}s`,
+      `cam:  ${p.x.toFixed(2)}, ${p.y.toFixed(2)}, ${p.z.toFixed(2)}`,
+      center
+        ? `model: ${center.x.toFixed(2)}, ${center.y.toFixed(2)}, ${center.z.toFixed(2)}`
+        : 'model: (not found)',
+      `DIST TO MODEL: ${dist < 0 ? 'n/a' : dist.toFixed(1) + 'm'}`,
+    ];
+    this.xrDebugText.text = lines.join('\n');
+  }
+
+  private disposeXRDebugOverlay(): void {
+    if (this.xrDebugTimer) {
+      clearInterval(this.xrDebugTimer);
+      this.xrDebugTimer = null;
+    }
+    this.xrDebugText = null;
+    this.xrDebugAdt?.dispose();
+    this.xrDebugAdt = null;
+    this.xrDebugMesh?.dispose();
+    this.xrDebugMesh = null;
+    this.xrDebugModelCenter = null;
   }
 
   // Invisible fallback ground created lazily if the loaded model has nothing
@@ -1645,6 +1749,7 @@ export class XRManager {
     // Remove the AR reticle/overlay/select-listener while the session is still live -
     // a no-op if AR placement was never set up (e.g. exiting a VR session).
     this.disposeVRMenu();
+    this.disposeXRDebugOverlay();
     this.teardownARPlacement();
     this.teardownCustomTeleportation();
     this.teardownCustomMovement();
@@ -1733,6 +1838,28 @@ export class XRManager {
         this.createVRMenu();
       } catch (error) {
         console.warn('[XRManager] Could not create the in-headset feature menu:', error);
+      }
+    }
+
+    // TEMPORARY DIAGNOSTIC OVERLAY - see XR_DEBUG_OVERLAY. Reported this session: the
+    // model isn't visible in VR, or shows only partially/see-through in AR, on real
+    // hardware, even after fixing two confirmed causes (the desktop camera's target vs its
+    // orbit-eye position, and the auto-zoom skybox-pollution bug - both in
+    // BabylonWorkspace.tsx). The remaining suspect is the VR/AR spawn-position seed itself
+    // (setTransformationFromNonVRCamera, below) not actually taking effect - confirmed
+    // unreliable in headless WebXR emulation, but not verifiable there on REAL hardware
+    // (no Quest/phone available to this environment). This shows the live numbers directly
+    // in the headset/phone view - no cable, no ADB, no devtools needed - so a real-device
+    // test can just be read off and reported back: if "dist to model" stays large (tens of
+    // metres) instead of settling to a few metres, the spawn seed is confirmed not
+    // sticking on real hardware either, which is the next real lead to chase. Safe to
+    // delete this whole block (and XR_DEBUG_OVERLAY/createXRDebugOverlay/
+    // updateXRDebugOverlay/disposeXRDebugOverlay) once that's resolved.
+    if (XRManager.XR_DEBUG_OVERLAY) {
+      try {
+        this.createXRDebugOverlay();
+      } catch (error) {
+        console.warn('[XRManager] Could not create the XR debug overlay:', error);
       }
     }
 
