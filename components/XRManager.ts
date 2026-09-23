@@ -85,6 +85,9 @@ export class XRManager {
   private arHintTimeout: ReturnType<typeof setTimeout> | null = null;
   private arSelectListener: (() => void) | null = null;
   private placementScale: number = 1;
+  // First-placement auto-fit target (see getOrCreatePlacementRoot's FIX comment) - keep in
+  // sync with ARScalePanel.tsx's own TABLETOP_TARGET_METERS, which this mirrors exactly.
+  private static readonly AR_AUTO_FIT_TARGET_METERS = 0.5;
   // Locked true right after the model's first placement - without this, EVERY tap on the
   // screen for the rest of the AR session re-placed and re-oriented the model (see
   // arSelectListener below), including a stray tap while trying to walk around, zoom, or
@@ -476,7 +479,18 @@ export class XRManager {
       // skip the skybox (infiniteDistance, follows the camera - would corrupt this the
       // same way it corrupted those) and this app's own generated helper/tool meshes.
       if (mesh.infiniteDistance) continue;
-      if (/^(ground|xr_|ar_|measure_|preview_|measurement_|annotation_|cursor_|collab_|sound_privacy_marker_|mood_light_|__root__|vrFeatureMenu|xrDebug)/i.test(mesh.name || '')) continue;
+      const meshName = mesh.name || '';
+      // FIX: "ground" used to be matched as a PREFIX here (`^(ground|...)`), which also
+      // excluded any real building mesh whose name merely STARTS WITH "ground" - e.g.
+      // "GroundFloor"/"Ground_Slab", an extremely common SketchUp/BIM naming choice. That
+      // silently dropped part of the actual model out of the bounds calculation (and, via
+      // getPlaceableMeshes' identical bug, out of the VR/AR reposition entirely - see that
+      // function's own note), reported as the model showing "torn apart"/only half visible.
+      // This app's own synthetic placeholder ground is always named exactly "ground" (see
+      // BabylonWorkspace.tsx's defaultScene() check, which already matches it exactly) - so
+      // match that exactly here too, instead of by prefix.
+      if (/^ground$/i.test(meshName)) continue;
+      if (/^(xr_|ar_|measure_|preview_|measurement_|annotation_|cursor_|collab_|sound_privacy_marker_|mood_light_|__root__|vrFeatureMenu|xrDebug)/i.test(meshName)) continue;
 
       const bb = mesh.getBoundingInfo().boundingBox;
       min = min ? Vector3.Minimize(min, bb.minimumWorld) : bb.minimumWorld.clone();
@@ -1027,7 +1041,16 @@ export class XRManager {
       const name = m.name || '';
       if (!m.isEnabled()) return false;
       if (/skybox/i.test(name)) return false;
-      return !/^(ground|measure_|preview_|measurement_|annotation_|swatch_marker_|swatch_popup_panel_|hotspot_marker_|fixture_marker_|fixture_person_|fixture_pet_|fixture_rain_plane_|ambient_zone_|cursor_|collab_|sound_privacy_marker_|mood_light_|ar_reticle|ar_placement_root|__root__)/i.test(name);
+      // FIX: "ground" used to be matched as a PREFIX below (`^(ground|...)`), which also
+      // excluded any real building mesh merely STARTING WITH "ground" - e.g.
+      // "GroundFloor"/"Ground_Slab", a common SketchUp/BIM naming choice. That part of the
+      // model was silently never reparented/shifted along with the rest here (used by both
+      // applyVRWorldShift and AR's placement root) - reported as the model tearing into
+      // disconnected pieces in VR, and as only half the building showing up in AR. Matched
+      // exactly instead, same as BabylonWorkspace.tsx's own defaultScene() check for this
+      // app's synthetic placeholder ground, which is always named exactly "ground".
+      if (/^ground$/i.test(name)) return false;
+      return !/^(measure_|preview_|measurement_|annotation_|swatch_marker_|swatch_popup_panel_|hotspot_marker_|fixture_marker_|fixture_person_|fixture_pet_|fixture_rain_plane_|ambient_zone_|cursor_|collab_|sound_privacy_marker_|mood_light_|ar_reticle|ar_placement_root|__root__)/i.test(name);
     });
   }
 
@@ -1150,6 +1173,32 @@ export class XRManager {
     const root = new TransformNode('ar_placement_root', this.scene);
     this.getPlaceableMeshes().forEach((m) => m.setParent(root));
     this.placementRoot = root;
+
+    // FIX: AR is designed as a shrink-to-tabletop-size viewing experience (see
+    // applyVRWorldShift's own comment: AR "has its own, better-suited placement system
+    // ... designed for a shrink-to-tabletop-size viewing experience") - but nothing
+    // actually applied that shrink on first placement, from EITHER path that creates this
+    // root: ensurePlacementRoot()'s "2m in front of the camera" fallback, or a real
+    // hit-test tap in arSelectListener. placementScale defaults to 1 (full authored
+    // size), so a real building-sized model got planted at full scale right where the
+    // viewer was standing/tapped - for anything bigger than a small room, that puts the
+    // viewer's own head inside solid wall/floor geometry, which backface-culls the
+    // interior surfaces around them and reads as "the model is barely visible/
+    // see-through", exactly as reported ("AR-la model paathi therinji theriyaama").
+    // Auto-fitting here, once, the first time this root is ever created (re-entering AR
+    // later in the same session reuses the existing root via the branch above, so this
+    // never overwrites a scale the user has since dialled in manually), means the first
+    // thing shown is a small, complete model viewed from outside it - the experience
+    // this app is actually designed around - instead of standing inside an unscaled one.
+    // Mirrors ARScalePanel's own "Tabletop" auto-fit formula (TABLETOP_TARGET_METERS)
+    // exactly, so this matches what that button would already produce.
+    const restSize = this.getPlacedModelRestSize();
+    const footprint = restSize ? Math.max(restSize.x, restSize.z) : 0;
+    if (footprint > 0) {
+      this.placementScale = Math.min(1, Math.max(0.01, XRManager.AR_AUTO_FIT_TARGET_METERS / footprint));
+      this.applyPlacementScale(root);
+    }
+
     return root;
   }
 
