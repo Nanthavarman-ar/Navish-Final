@@ -2025,6 +2025,7 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
   const ssaoPipelineRef = useRef<SSAO2RenderingPipeline | null>(null);
   const fsrPipelineRef = useRef<FSR1RenderingPipeline | null>(null);
   const dirLightRef = useRef<DirectionalLight | null>(null);
+  const hemiLightRef = useRef<HemisphericLight | null>(null);
   const girsmManagerRef = useRef<GIRSMManager | null>(null);
   const reflectionProbeRef = useRef<ReflectionProbe | null>(null);
   const ssrPipelineRef = useRef<SSRRenderingPipeline | null>(null);
@@ -2495,6 +2496,7 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
         // Create basic lighting (HemisphericLight for ambient)
         const hemiLight = new HemisphericLight("hemiLight", new Vector3(1, 1, 0), scene);
         hemiLight.intensity = 0.4;
+        hemiLightRef.current = hemiLight;
         // Add DirectionalLight (sun) for LightingPresets to control
         const dirLight = new DirectionalLight("sun", new Vector3(-1, -2, -1), scene);
         dirLight.position = new Vector3(10, 20, 10);
@@ -3388,7 +3390,20 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
     const scene = sceneRef.current;
     const camera = cameraRef.current;
     if (!scene || !camera) return;
-    if (enableSSR && !ssrPipelineRef.current) {
+    // FIX: reported this session as the desktop view of a baked model showing a hazy,
+    // sky-tinted wash across the whole building (worst along the roofline/silhouette
+    // against open sky) - correct in VR/AR (which never gets this pipeline at all - see
+    // XRManager). Root cause: SSR was never gated by Baked Lighting Mode, unlike every
+    // other post-process here (bloom/tone mapping/color curves just above, SSAO further
+    // below) which all explicitly turn off while it's on. environmentTexture=null (see
+    // its own comment below) only stops the OFF-SCREEN fallback case - it does nothing
+    // for a ray that hits the sky WITHIN the visible frame, which is exactly a building
+    // silhouetted against open sky, and is real, on-screen screen-space data as far as
+    // SSR is concerned. A Cycles bake already has its own baked reflections; live SSR on
+    // top double-applies fake ones, the same double-processing bloom/SSAO were already
+    // fixed for. Baked Lighting Mode now wins outright, the same as those.
+    const shouldEnable = enableSSR && !enableBakedLightingMode;
+    if (shouldEnable && !ssrPipelineRef.current) {
       // forceGeometryBuffer=true keeps SSR on Babylon's older GeometryBufferRenderer path
       // instead of switching the whole scene into PrePassRenderer mode (SSR2's default) -
       // nothing else in this scene (DefaultRenderingPipeline's tonemapping/bloom, the
@@ -3417,11 +3432,11 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
       // still work fine since those rays DO hit geometry.
       ssr.environmentTexture = null;
       ssrPipelineRef.current = ssr;
-    } else if (!enableSSR && ssrPipelineRef.current) {
+    } else if (!shouldEnable && ssrPipelineRef.current) {
       ssrPipelineRef.current.dispose();
       ssrPipelineRef.current = null;
     }
-  }, [enableSSR]);
+  }, [enableSSR, enableBakedLightingMode]);
 
   // Reactively create/dispose IBL Shadows (Babylon 9.x's voxel-traced ambient shadowing
   // from the scene's environment texture) - same Ultra-only/overridable treatment as SSR
@@ -3522,6 +3537,68 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
     // double-darkens exactly those corners on top of it.
     ssao.totalStrength = enableBakedLightingMode ? 0 : ssaoIntensity;
   }, [enableSSAO, ssaoIntensity, enableBakedLightingMode]);
+
+  // ROOT CAUSE (found and verified this session) of the actual biggest Baked Lighting
+  // Mode gap: a baked model still showed a hazy, sky/light-tinted wash over every
+  // surface on desktop (VR/AR looked correct, since they never get this app's own
+  // scene lights added the same way - see below). Bloom/tone mapping/color curves/SSAO/
+  // SSR are all POST-PROCESS effects and are already correctly neutralized above and in
+  // the SSR effect - but disabling every post-process still left the wash, because the
+  // real cause lives one level deeper, in the material shader itself: confirmed by
+  // reading Babylon's own PBR shader source (pbrBlockFinalColorComposition.fx) that
+  // `PBRMaterial.unlit` only skips the REFLECTION/specular/sheen/clearcoat terms - it
+  // does NOT gate `finalDiffuse`, which keeps accumulating full contribution from every
+  // real scene light (lightFragment.fx's per-light loop has no UNLIT guard at all).
+  // This app's own sun/hemispheric light (see hemiLightRef/dirLightRef, and every preset
+  // in LightingPresets.tsx that adjusts their intensity/colour - Day/Night/real-world-
+  // time/HDRI toggle, too many call sites to gate individually and safely) were still
+  // fully lighting an "unlit" baked material on top of its already-baked texture - a
+  // Cycles bake already has its own complete lighting baked in, so this was
+  // double-lighting it, tinted toward whatever colour those lights currently are
+  // (typically sky-ish for a Day preset), exactly the reported wash.
+  //
+  // hemiLight is zeroed via .intensity - confirmed safe: LightingPresets sets
+  // hemi.intensity on every single one of its own code paths (presets, real-world-time,
+  // HDRI toggle), so it's never left stuck once this stops overwriting it.
+  //
+  // dirLight (the sun) is handled differently and MUST be - .intensity = 0 was tried
+  // first and rejected: it visibly broke the sky (SkyMaterial's own sunPosition/luminance
+  // don't reference the light's intensity at all, confirmed by reading its source, but
+  // zeroing the sun's intensity blacked the sky out anyway on real testing here; the
+  // exact shared mechanism wasn't worth chasing further once a working alternative was
+  // found). Zeroing .diffuse/.specular instead - light stays "on" at its usual intensity,
+  // just contributing black - fixed the wash AND left the sky untouched. That still can't
+  // just get turned off with no restore, though: unlike intensity, LightingPresets only
+  // sets dir.diffuse on SOME of its own paths (a couple of presets) and NEVER sets
+  // dir.specular anywhere at all - so simply stopping this observer once Baked Lighting
+  // Mode turns off would leave the sun's specular (and, on most paths, its diffuse too)
+  // permanently black for the rest of the session, breaking real-time lighting for every
+  // model opened afterwards. Explicitly saved once on the rising edge and restored on the
+  // falling edge, unlike hemiLight's intensity, precisely because nothing else in this
+  // app can be trusted to put it back.
+  const dirLightColorBackupRef = useRef<{ diffuse: Color3; specular: Color3 } | null>(null);
+  useEffect(() => {
+    const scene = sceneRef.current;
+    if (!scene) return;
+    const observer = scene.onBeforeRenderObservable.add(() => {
+      const dir = dirLightRef.current;
+      if (bakedLightingModeRef.current) {
+        if (hemiLightRef.current) hemiLightRef.current.intensity = 0;
+        if (dir) {
+          if (!dirLightColorBackupRef.current) {
+            dirLightColorBackupRef.current = { diffuse: dir.diffuse.clone(), specular: dir.specular.clone() };
+          }
+          dir.diffuse = Color3.Black();
+          dir.specular = Color3.Black();
+        }
+      } else if (dirLightColorBackupRef.current && dir) {
+        dir.diffuse = dirLightColorBackupRef.current.diffuse;
+        dir.specular = dirLightColorBackupRef.current.specular;
+        dirLightColorBackupRef.current = null;
+      }
+    });
+    return () => { scene.onBeforeRenderObservable.remove(observer); };
+  }, []);
 
   // Live-apply the selected graphics quality (from the Graphics Quality panel) any time
   // it changes, or the auto-detected recommendation changes ('auto' tracks that). This is
