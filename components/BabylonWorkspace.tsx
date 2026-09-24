@@ -1445,7 +1445,7 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
     }
     const toastId = showToast.loading('Exporting scene...', 'Preparing GLB file');
     import('@babylonjs/serializers/glTF/2.0/glTFSerializer').then(({ GLTF2Export }) => {
-      GLTF2Export.GLBAsync(scene, `naviz-scene-${new Date().toISOString().slice(0, 10)}`)
+      GLTF2Export.GLBAsync(scene, `navish-scene-${new Date().toISOString().slice(0, 10)}`)
         .then((glb) => {
           showToast.dismiss(toastId);
           glb.downloadFiles();
@@ -5069,7 +5069,7 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
           } else {
             const toastId = showToast.loading('Exporting scene...', 'Preparing GLB file');
             import('@babylonjs/serializers/glTF/2.0/glTFSerializer').then(({ GLTF2Export }) => {
-              GLTF2Export.GLBAsync(scene, `naviz-scene-${new Date().toISOString().slice(0, 10)}`)
+              GLTF2Export.GLBAsync(scene, `navish-scene-${new Date().toISOString().slice(0, 10)}`)
                 .then((glb) => {
                   showToast.dismiss(toastId);
                   glb.downloadFiles();

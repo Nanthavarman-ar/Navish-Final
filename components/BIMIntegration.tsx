@@ -197,7 +197,7 @@ const BIMIntegration: React.FC<BIMIntegrationProps> = ({
                 />
               </div>
               <p className="text-xs text-muted-foreground">
-                Supports Naviz JSON BIM exports and IFC (.ifc). Native Revit (.rvt) and
+                Supports Navish JSON BIM exports and IFC (.ifc). Native Revit (.rvt) and
                 AutoCAD (.dwg) import aren't supported - both are proprietary formats with no
                 local parser; the only real path is a paid Autodesk cloud conversion service.
               </p>

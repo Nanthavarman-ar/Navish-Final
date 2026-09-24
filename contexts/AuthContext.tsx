@@ -38,7 +38,7 @@ const mapSupabaseUser = (supabaseUser: SupabaseUser | null): User | null => {
     metadata?.full_name ||
     supabaseUser.email ||
     supabaseUser.id ||
-    'Naviz User';
+    'Navish User';
 
   return {
     id: supabaseUser.id,

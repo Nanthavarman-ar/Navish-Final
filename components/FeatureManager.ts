@@ -312,7 +312,7 @@ export class FeatureManager {
         requiresCapability: ['webrtc', 'webxr'],
         performanceImpact: 'medium',
         settings: {
-          voiceActivation: 'hey_naviz',
+          voiceActivation: 'hey_navish',
           gestureCommands: ['point', 'wave', 'grab'],
           multiModal: true
         }

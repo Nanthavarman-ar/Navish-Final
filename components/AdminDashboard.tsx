@@ -93,7 +93,7 @@ export function AdminDashboard() {
             {!sidebarCollapsed && (
               <div>
                 <h1 className="text-white font-bold text-lg">Admin Panel</h1>
-                <p className="text-gray-400 text-sm">NAVIZ Studio</p>
+                <p className="text-gray-400 text-sm">Navish Studio</p>
               </div>
             )}
             <Button

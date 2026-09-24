@@ -16,7 +16,7 @@
 export const toolPageDefinitions: Record<string, ToolPageDefinition> = {
   'flood-simulation': {
     title: 'Flood Simulation',
-    description: 'Model floodplains, rainfall, and water build-up inside NAVIZ to test resilience strategies.',
+    description: 'Model floodplains, rainfall, and water build-up inside Navish to test resilience strategies.',
     focus: 'Use this tool while the Babylon workspace is active to compare barrier placements and drainage fixes.',
     status: 'Workspace-only feature',
     workspaceFeature: 'showFloodSimulation',
@@ -165,7 +165,7 @@ export const toolPageDefinitions: Record<string, ToolPageDefinition> = {
   },
   'ai-voice-assistant': {
     title: 'AI Voice Assistant',
-    description: 'Interact with NAVIZ by voice to toggle features, ask for stats, or play back walkthroughs.',
+    description: 'Interact with Navish by voice to toggle features, ask for stats, or play back walkthroughs.',
     focus: 'Say “Show energy usage” or “Toggle flood sim” to control the workspace hands-free.',
     status: 'Conversational control',
     workspaceFeature: 'showVoiceAssistant',
@@ -178,7 +178,7 @@ export const toolPageDefinitions: Record<string, ToolPageDefinition> = {
   'auto-furnish': {
     title: 'Auto-Furnish',
     description: 'Populate rooms with context-aware furniture layouts.',
-    focus: 'Set program criteria and let NAVIZ rapidly furnish the space.',
+    focus: 'Set program criteria and let Navish rapidly furnish the space.',
     status: 'AI-powered utility',
     workspaceFeature: 'showAutoFurnish',
     highlights: [
@@ -202,7 +202,7 @@ export const toolPageDefinitions: Record<string, ToolPageDefinition> = {
   'site-context-generator': {
     title: 'Site Context Generator',
     description: 'Bring surrounding buildings, streets, and topography into your canvas.',
-    focus: 'Sketch site boundaries and watch NAVIZ populate context massing.',
+    focus: 'Sketch site boundaries and watch Navish populate context massing.',
     status: 'Urban integration',
     workspaceFeature: 'showSiteContextGenerator',
     highlights: [
@@ -249,7 +249,7 @@ export const toolPageDefinitions: Record<string, ToolPageDefinition> = {
   },
   'bim-integration': {
     title: 'BIM Integration',
-    description: 'Bring NAVIZ into the BIM workflow with federated model coordination.',
+    description: 'Bring Navish into the BIM workflow with federated model coordination.',
     focus: 'Sync geometry, metadata, and clash checks with Revit/IFC sources.',
     status: 'Federated modeling',
     workspaceFeature: 'showBIMIntegration',
@@ -311,7 +311,7 @@ export const toolPageDefinitions: Record<string, ToolPageDefinition> = {
   },
   'voice-chat': {
     title: 'Voice Chat',
-    description: 'Communicate with teammates without leaving NAVIZ.',
+    description: 'Communicate with teammates without leaving Navish.',
     focus: 'Activate push-to-talk or permanent mic for stand-ups.',
     status: 'Communication',
     workspaceFeature: 'showVoiceChat',
@@ -336,7 +336,7 @@ export const toolPageDefinitions: Record<string, ToolPageDefinition> = {
   'annotations': {
     title: 'Annotations',
     description: 'Pin notes, markups, and issue tags to any object.',
-    focus: 'Assign actions to teammates directly from within NAVIZ.',
+    focus: 'Assign actions to teammates directly from within Navish.',
     status: 'Design feedback',
     workspaceFeature: 'showAnnotations',
     highlights: [

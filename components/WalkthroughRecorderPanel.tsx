@@ -89,7 +89,7 @@ const WalkthroughRecorderPanel: React.FC<WalkthroughRecorderPanelProps> = ({ eng
     if (!downloadUrl) return;
     const a = document.createElement('a');
     a.href = downloadUrl;
-    a.download = `naviz-walkthrough-${Date.now()}.webm`;
+    a.download = `navish-walkthrough-${Date.now()}.webm`;
     a.click();
   };
 

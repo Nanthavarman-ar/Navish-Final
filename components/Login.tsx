@@ -1,11 +1,9 @@
 import React, { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase, projectId } from '../supabase/client';
-import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { PasswordInput } from './ui/password-input';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
 import { Label } from './ui/label';
 import {
   Dialog,
@@ -15,7 +13,9 @@ import {
   DialogTitle,
   DialogFooter,
 } from './ui/dialog';
-import { ChevronLeft } from 'lucide-react';
+import { SiteShell } from './site/SiteShell';
+import { LabelCard, SiteImage } from './site/brand';
+import { loginImage } from './site/content';
 
 const functionsBaseUrl = `https://${projectId}.supabase.co/functions/v1/make-server-cf230d31`;
 
@@ -200,64 +200,56 @@ export function Login() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-4 relative">
-      <div className="ambient-glow" aria-hidden><span className="ambient-glow-blob" /></div>
-      <Link
-        to="/"
-        className="fixed top-6 left-6 flex items-center gap-2 text-gray-400 hover:text-white transition-colors z-10"
-      >
-        <ChevronLeft className="w-5 h-5" />
-        Back to Home
-      </Link>
-      <Card className="relative z-10 w-full max-w-md bg-slate-800/50 border-slate-700">
-        <CardHeader>
-          <CardTitle className="text-white text-center">Login to NAVIZ</CardTitle>
-          <CardDescription className="text-gray-400 text-center">
-            Enter your credentials to access the workspace
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <Label htmlFor="username" className="text-white">Username</Label>
+    <SiteShell page="login" footer={false}>
+      <section className="nv-split">
+        <div className="nv-media nv-split__media" data-nv-clip>
+          <SiteImage src={loginImage} alt="Navish workspace" eager />
+          <LabelCard title="Navish workspace" sub="Your projects in 3D and VR" />
+        </div>
+        <div className="nv-split__panel nv-split__panel--center">
+          <div>
+            <p className="nv-eyebrow" style={{ marginBottom: '1rem' }}>
+              Client studio
+            </p>
+            <h1 className="nv-caps" data-nv-lines="now">
+              Login to Navish
+            </h1>
+          </div>
+          <p className="nv-p">Enter your credentials to access the workspace.</p>
+
+          <form onSubmit={handleSubmit} className="nv-form">
+            <div className="nv-field">
+              <label htmlFor="username">Username</label>
               <Input
                 id="username"
                 name="username"
                 type="text"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                className="bg-slate-700 border-slate-600 text-white"
+                className="nv-input"
                 placeholder="client1, admin, etc."
               />
             </div>
-            <div>
-              <Label htmlFor="email" className="text-white">Email</Label>
+            <div className="nv-field">
+              <label htmlFor="email">Email</label>
               <Input
                 id="email"
                 name="email"
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="bg-slate-700 border-slate-600 text-white"
+                className="nv-input"
                 placeholder="user@example.com"
               />
             </div>
-            <div>
-              <div className="flex justify-between items-center">
-                <Label htmlFor="password" className="text-white">Password</Label>
-                <div className="flex gap-3 text-xs">
-                  <button
-                    type="button"
-                    onClick={() => setForgotOpen(true)}
-                    className="text-cyan-400 hover:text-cyan-300"
-                  >
+            <div className="nv-field">
+              <div className="nv-field__head">
+                <label htmlFor="password">Password</label>
+                <div className="nv-textbtn-row">
+                  <button type="button" onClick={() => setForgotOpen(true)} className="nv-textbtn">
                     Forgot password?
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => setChangeOpen(true)}
-                    className="text-cyan-400 hover:text-cyan-300"
-                  >
+                  <button type="button" onClick={() => setChangeOpen(true)} className="nv-textbtn">
                     Change password
                   </button>
                 </div>
@@ -268,70 +260,66 @@ export function Login() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
-                className="bg-slate-700 border-slate-600 text-white"
+                className="nv-input"
               />
             </div>
-            <Button
-              type="submit"
-              className="w-full bg-cyan-600 hover:bg-cyan-700"
-              disabled={loading}
-            >
+            <button type="submit" className="nv-btn nv-btn--red nv-btn--block" disabled={loading}>
               {loading ? 'Logging in...' : 'Login'}
-            </Button>
+            </button>
             {error && (
-              <p className="text-center text-sm text-red-400 mt-2">{error}</p>
+              <p className="nv-msg nv-msg--err" style={{ textAlign: 'center' }}>{error}</p>
             )}
           </form>
-          <div className="mt-4 text-sm text-gray-400 space-y-2">
-            <p>Sign in with your registered account.</p>
+          <div className="nv-textbtn-row" style={{ alignItems: 'baseline' }}>
+            <span className="nv-p" style={{ fontSize: '0.875rem' }}>Sign in with your registered account.</span>
             <button
               type="button"
               onClick={() => {
                 resetCreateForm();
                 setCreateOpen(true);
               }}
-              className="text-cyan-400 hover:text-cyan-300 transition-colors"
+              className="nv-textbtn"
             >
               Create a new user account
             </button>
           </div>
-        </CardContent>
-      </Card>
+        </div>
+      </section>
 
       {/* Forgot Password Dialog */}
       <Dialog open={forgotOpen} onOpenChange={setForgotOpen}>
-        <DialogContent className="bg-slate-800 border-slate-700 text-white">
+        <DialogContent className="nv-dialog" data-lenis-prevent>
           <DialogHeader>
             <DialogTitle>Forgot Password</DialogTitle>
-            <DialogDescription className="text-gray-400">
+            <DialogDescription>
               Enter your email and we&apos;ll send you a link to reset your password.
             </DialogDescription>
           </DialogHeader>
           {forgotSent ? (
-            <p className="text-green-400 py-4">
+            <p className="nv-msg nv-msg--ok" style={{ padding: '1rem 0' }}>
               If an account exists for {forgotEmail || 'that email'}, a password reset link has been sent.
             </p>
           ) : (
-            <form onSubmit={handleForgotSubmit} className="space-y-4">
-              <div>
-                <Label htmlFor="forgot-email" className="text-white">Email</Label>
+            <form onSubmit={handleForgotSubmit} className="nv-form">
+              <div className="nv-field">
+                <Label htmlFor="forgot-email" className="nv-eyebrow">Email</Label>
                 <Input
                   id="forgot-email"
                   type="email"
                   value={forgotEmail}
                   onChange={(e) => setForgotEmail(e.target.value)}
                   required
-                  className="bg-slate-700 border-slate-600 text-white"
+                  className="nv-input"
                   placeholder="user@example.com"
                 />
               </div>
               <DialogFooter>
-                <Button type="button" variant="outline" onClick={() => setForgotOpen(false)}>
+                <button type="button" className="nv-btn nv-btn--ghost" onClick={() => setForgotOpen(false)}>
                   Cancel
-                </Button>
-                <Button type="submit" className="bg-cyan-600 hover:bg-cyan-700">
+                </button>
+                <button type="submit" className="nv-btn nv-btn--red">
                   Send reset link
-                </Button>
+                </button>
               </DialogFooter>
             </form>
           )}
@@ -353,67 +341,67 @@ export function Login() {
           }
         }}
       >
-        <DialogContent className="bg-slate-800 border-slate-700 text-white">
+        <DialogContent className="nv-dialog" data-lenis-prevent>
           <DialogHeader>
             <DialogTitle>Change Password</DialogTitle>
-            <DialogDescription className="text-gray-400">
+            <DialogDescription>
               Enter your email, current password, and new password.
             </DialogDescription>
           </DialogHeader>
           {changeSuccess ? (
-            <p className="text-green-400 py-4">Password changed successfully. You can now log in with your new password.</p>
+            <p className="nv-msg nv-msg--ok" style={{ padding: '1rem 0' }}>Password changed successfully. You can now log in with your new password.</p>
           ) : (
-            <form onSubmit={handleChangeSubmit} className="space-y-4">
-              <div>
-                <Label htmlFor="change-email" className="text-white">Email</Label>
+            <form onSubmit={handleChangeSubmit} className="nv-form">
+              <div className="nv-field">
+                <Label htmlFor="change-email" className="nv-eyebrow">Email</Label>
                 <Input
                   id="change-email"
                   type="email"
                   value={changeEmail}
                   onChange={(e) => setChangeEmail(e.target.value)}
                   required
-                  className="bg-slate-700 border-slate-600 text-white"
+                  className="nv-input"
                   placeholder="user@example.com"
                 />
               </div>
-              <div>
-                <Label htmlFor="current-password" className="text-white">Current Password</Label>
+              <div className="nv-field">
+                <Label htmlFor="current-password" className="nv-eyebrow">Current Password</Label>
                 <PasswordInput
                   id="current-password"
                   value={currentPassword}
                   onChange={(e) => setCurrentPassword(e.target.value)}
                   required
-                  className="bg-slate-700 border-slate-600 text-white"
+                  className="nv-input"
                 />
               </div>
-              <div>
-                <Label htmlFor="new-password" className="text-white">New Password</Label>
+              <div className="nv-field">
+                <Label htmlFor="new-password" className="nv-eyebrow">New Password</Label>
                 <PasswordInput
                   id="new-password"
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
                   required
-                  className="bg-slate-700 border-slate-600 text-white"
+                  className="nv-input"
                 />
               </div>
-              <div>
-                <Label htmlFor="confirm-password" className="text-white">Confirm New Password</Label>
+              <div className="nv-field">
+                <Label htmlFor="confirm-password" className="nv-eyebrow">Confirm New Password</Label>
                 <PasswordInput
                   id="confirm-password"
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
                   required
-                  className="bg-slate-700 border-slate-600 text-white"
+                  className="nv-input"
                 />
               </div>
-              {changeError && <p className="text-sm text-red-400">{changeError}</p>}
+              {changeError && <p className="nv-msg nv-msg--err">{changeError}</p>}
               <DialogFooter>
-                <Button type="button" variant="outline" onClick={() => setChangeOpen(false)}>
+                <button type="button" className="nv-btn nv-btn--ghost" onClick={() => setChangeOpen(false)}>
                   Cancel
-                </Button>
-                <Button type="submit" className="bg-cyan-600 hover:bg-cyan-700" disabled={changeLoading}>
+                </button>
+                <button type="submit" className="nv-btn nv-btn--red" disabled={changeLoading}>
                   {changeLoading ? 'Changing...' : 'Change Password'}
-                </Button>
+                </button>
               </DialogFooter>
             </form>
           )}
@@ -428,73 +416,73 @@ export function Login() {
           if (!open) resetCreateForm();
         }}
       >
-        <DialogContent className="bg-slate-800 border-slate-700 text-white">
+        <DialogContent className="nv-dialog" data-lenis-prevent>
           <DialogHeader>
             <DialogTitle>Create User Account</DialogTitle>
-            <DialogDescription className="text-gray-400">
+            <DialogDescription>
               Create a new client account for login and model uploads.
             </DialogDescription>
           </DialogHeader>
-          <form onSubmit={handleCreateSubmit} className="space-y-4">
-            <div>
-              <Label htmlFor="create-name" className="text-white">Name</Label>
+          <form onSubmit={handleCreateSubmit} className="nv-form">
+            <div className="nv-field">
+              <Label htmlFor="create-name" className="nv-eyebrow">Name</Label>
               <Input
                 id="create-name"
                 type="text"
                 value={createName}
                 onChange={(e) => setCreateName(e.target.value)}
-                className="bg-slate-700 border-slate-600 text-white"
+                className="nv-input"
                 placeholder="Demo User"
               />
             </div>
-            <div>
-              <Label htmlFor="create-username" className="text-white">Username</Label>
+            <div className="nv-field">
+              <Label htmlFor="create-username" className="nv-eyebrow">Username</Label>
               <Input
                 id="create-username"
                 type="text"
                 value={createUsername}
                 onChange={(e) => setCreateUsername(e.target.value)}
                 required
-                className="bg-slate-700 border-slate-600 text-white"
+                className="nv-input"
                 placeholder="demo"
               />
             </div>
-            <div>
-              <Label htmlFor="create-email" className="text-white">Email</Label>
+            <div className="nv-field">
+              <Label htmlFor="create-email" className="nv-eyebrow">Email</Label>
               <Input
                 id="create-email"
                 type="email"
                 value={createEmail}
                 onChange={(e) => setCreateEmail(e.target.value)}
                 required
-                className="bg-slate-700 border-slate-600 text-white"
+                className="nv-input"
                 placeholder="demo@navishstudio.com"
               />
             </div>
-            <div>
-              <Label htmlFor="create-password" className="text-white">Password</Label>
+            <div className="nv-field">
+              <Label htmlFor="create-password" className="nv-eyebrow">Password</Label>
               <PasswordInput
                 id="create-password"
                 value={createPassword}
                 onChange={(e) => setCreatePassword(e.target.value)}
                 required
-                className="bg-slate-700 border-slate-600 text-white"
+                className="nv-input"
                 placeholder="Enter password"
               />
             </div>
-            {createError && <p className="text-sm text-red-400">{createError}</p>}
-            {createSuccess && <p className="text-sm text-green-400">{createSuccess}</p>}
+            {createError && <p className="nv-msg nv-msg--err">{createError}</p>}
+            {createSuccess && <p className="nv-msg nv-msg--ok">{createSuccess}</p>}
             <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setCreateOpen(false)}>
-                Cancel
-              </Button>
-              <Button type="submit" className="bg-cyan-600 hover:bg-cyan-700" disabled={createLoading}>
+              <button type="button" className="nv-btn nv-btn--ghost" onClick={() => setCreateOpen(false)}>
+                  Cancel
+                </button>
+              <button type="submit" className="nv-btn nv-btn--red" disabled={createLoading}>
                 {createLoading ? 'Creating...' : 'Create Account'}
-              </Button>
+              </button>
             </DialogFooter>
           </form>
         </DialogContent>
       </Dialog>
-    </div>
+    </SiteShell>
   );
 }

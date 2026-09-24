@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 108 93" fill="none">
+  <defs>
+    <g id="na">
+      <path d="M37 27V65.5"/>
+      <path d="M37 40C37 31.5 42.5 26.5 49 26.5C56 26.5 60.5 31.5 60.5 38.5V78.5H71"/>
+      <ellipse cx="85.5" cy="44" rx="12.25" ry="17.25"/>
+      <path d="M97.75 27V55.5Q97.75 61.5 104.5 61.5"/>
+    </g>
+  </defs>
+  <rect x="0" y="0" width="100" height="92" rx="16" fill="#FF4D4F"/>
+  <use href="#na" stroke="#1A1A1A" stroke-opacity=".45" stroke-width="5.9"/>
+  <use href="#na" stroke="#FFFFFF" stroke-width="5"/>
+</svg>

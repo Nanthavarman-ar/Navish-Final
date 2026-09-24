@@ -6,6 +6,10 @@ import ToolPage from '../components/ToolPage';
 import { toolPageDefinitions, ToolPageId } from '../components/toolPageDefinitions';
 import { Home } from '../components/Home';
 import { Login } from '../components/Login';
+import { ProjectsPage } from '../components/site/ProjectsPage';
+import { FeaturesPage } from '../components/site/FeaturesPage';
+import { ProcessPage } from '../components/site/ProcessPage';
+import { ContactPage } from '../components/site/ContactPage';
 import { AdminLogin } from '../components/AdminLogin';
 import { ClientLogin } from '../components/ClientLogin';
 import { AdminDashboard } from '../components/AdminDashboard';
@@ -76,6 +80,10 @@ const mapPathToPage = (path: string): string => {
   const normalized = normalizePath(path).toLowerCase();
   if (normalized === '/' || normalized === '/home') return 'home';
   if (normalized === '/login') return 'login';
+  if (normalized === '/projects') return 'projects';
+  if (normalized === '/features') return 'features';
+  if (normalized === '/process') return 'process';
+  if (normalized === '/contact') return 'contact';
   if (normalized.startsWith('/admin/login')) return 'admin-login';
   if (normalized.startsWith('/client/login')) return 'client-login';
   if (normalized.startsWith('/admin/clients')) return 'admin-clients';
@@ -103,6 +111,10 @@ const mapPathToPage = (path: string): string => {
 const mapPageToPath = (page: string): string => {
   if (page === 'home') return '/';
   if (page === 'login') return '/login';
+  if (page === 'projects') return '/projects';
+  if (page === 'features') return '/features';
+  if (page === 'process') return '/process';
+  if (page === 'contact') return '/contact';
   if (page === 'admin-login') return '/admin/login';
   if (page === 'client-login') return '/client/login';
   if (page === 'admin-clients') return '/admin/clients';
@@ -427,7 +439,7 @@ export default function AppLayout() {
     <div className="min-h-screen flex items-center justify-center">
       <div className="text-center">
         <div className="animate-spin w-12 h-12 border-2 border-cyan-500 border-t-transparent rounded-full mx-auto mb-4"></div>
-        <p className="text-white text-lg">Loading NAVIZ...</p>
+        <p className="text-white text-lg">Loading Navish...</p>
       </div>
     </div>
   ) : (
@@ -435,6 +447,10 @@ export default function AppLayout() {
       <Route path="/" element={<Home />} />
       <Route path="/home" element={<Home />} />
       <Route path="/login" element={<Login />} />
+      <Route path="/projects" element={<ProjectsPage />} />
+      <Route path="/features" element={<FeaturesPage />} />
+      <Route path="/process" element={<ProcessPage />} />
+      <Route path="/contact" element={<ContactPage />} />
       <Route path="/admin/login" element={<AdminLogin />} />
       <Route path="/client/login" element={<ClientLogin />} />
       <Route path="/client/upload" element={user?.role === 'client' ? <UserUploadPage /> : <Home />} />
