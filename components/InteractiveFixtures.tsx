@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Scene, Mesh, AbstractMesh, TransformNode, MeshBuilder, StandardMaterial, Material, VideoTexture, DynamicTexture, Texture, ParticleSystem, Color3, Color4, Vector3, Quaternion, Scalar, VertexBuffer, PointerEventTypes, PointLight, ArcRotateCamera, Space } from '@babylonjs/core';
-import { X, Fan, Lightbulb, Tv, Trash2, Upload, DoorOpen, Flame, Droplets, FlipHorizontal, Wind, CloudRain, User, PawPrint, ArrowUpDown, Warehouse } from 'lucide-react';
+import { X, Fan, Lightbulb, Tv, Trash2, Upload, DoorOpen, Flame, Droplets, FlipHorizontal, Wind, Blinds, Trees, CloudRain, User, PawPrint, ArrowUpDown, Warehouse } from 'lucide-react';
 import { Button } from './ui/button';
 import { showToast } from './utils/toast';
 import { usePanelStack } from '../hooks/usePanelStack';
@@ -43,13 +43,30 @@ const FIXTURE_TYPES: { id: FixtureType; label: string; icon: typeof Fan; color: 
   { id: 'door', label: 'Door / Cabinet', icon: DoorOpen, color: new Color3(0.75, 0.55, 0.3), instruction: 'Click directly on the door/cabinet panel mesh' },
   { id: 'fire', label: 'Fireplace / Candle', icon: Flame, color: new Color3(1, 0.5, 0.15), instruction: 'Click the fireplace/candle (or any spot to place the flame there)' },
   { id: 'water', label: 'Running Water', icon: Droplets, color: new Color3(0.35, 0.65, 0.95), instruction: 'Click the tap/sink (or any spot to place the stream there)' },
-  { id: 'curtain', label: 'Curtain Flutter', icon: Wind, color: new Color3(0.85, 0.85, 0.9), instruction: 'Click directly on the curtain mesh' },
-  { id: 'wind', label: 'Wind Sway', icon: Wind, color: new Color3(0.4, 0.7, 0.35), instruction: 'Click directly on the tree/plant mesh' },
+  // FIX: Curtain Flutter and Wind Sway shared the exact same Wind icon, so the type
+  // picker grid showed two visually identical tiles a metre apart, told apart only by
+  // reading the small text label - the opposite of "easy to identify at a glance" for a
+  // general, non-technical user. Blinds/Trees are each distinct AND already closer to
+  // what the fixture actually looks like (a window covering vs a tree/plant).
+  { id: 'curtain', label: 'Curtain Flutter', icon: Blinds, color: new Color3(0.85, 0.85, 0.9), instruction: 'Click directly on the curtain mesh' },
+  { id: 'wind', label: 'Wind Sway', icon: Trees, color: new Color3(0.4, 0.7, 0.35), instruction: 'Click directly on the tree/plant mesh' },
   { id: 'rain', label: 'Window Rain', icon: CloudRain, color: new Color3(0.5, 0.6, 0.75), instruction: 'Click directly on the window glass mesh' },
   { id: 'person', label: 'Person Prop', icon: User, color: new Color3(0.8, 0.7, 0.55), instruction: 'Click the floor spot to stand the figure on' },
   { id: 'pet', label: 'Pet Prop', icon: PawPrint, color: new Color3(0.75, 0.55, 0.35), instruction: 'Click the floor spot to lay the figure on' },
   { id: 'elevator', label: 'Elevator', icon: ArrowUpDown, color: new Color3(0.6, 0.6, 0.65), instruction: 'Click directly on the elevator cabin mesh' },
   { id: 'shutter', label: 'Garage Shutter / Gate', icon: Warehouse, color: new Color3(0.55, 0.55, 0.6), instruction: 'Click directly on the shutter/gate panel mesh' },
+];
+
+// Groups the 13 fixture types into short, plain-language sections for the type-picker
+// grid below - a flat 13-icon grid with no structure made it harder for a general,
+// non-technical user to scan and identify the right tile ("simplify so normal people can
+// use and identify it easily" - reported this session). FIXTURE_TYPES itself stays flat
+// (looked up by id all over this file) - only the picker's rendering groups them.
+const FIXTURE_CATEGORIES: { label: string; ids: FixtureType[] }[] = [
+  { label: 'Electrical', ids: ['fan', 'light', 'tv'] },
+  { label: 'Movable', ids: ['door', 'elevator', 'shutter'] },
+  { label: 'Ambience', ids: ['fire', 'water', 'curtain', 'wind', 'rain'] },
+  { label: 'People & Pets', ids: ['person', 'pet'] },
 ];
 
 // A door/cabinet has no reliable way to detect its true hinge edge or which way it should
@@ -99,6 +116,11 @@ interface VertexWaveState {
   minY: number;
   maxY: number;
   anchorAtTop: boolean; // true for curtain (anchored at top), false for wind/tree (anchored at base)
+  // Tracks whether the mesh's vertex buffer is CURRENTLY sitting at originalPositions -
+  // see the render loop's curtain/wind branch for why this exists (turning the fixture
+  // off used to just stop calling applyVertexWave, freezing the mesh at whatever mid-wave
+  // shape it happened to be displaced to that exact frame, instead of settling back flat).
+  atRest: boolean;
 }
 
 function setupVertexWave(mesh: AbstractMesh, anchorAtTop: boolean): VertexWaveState | null {
@@ -109,7 +131,7 @@ function setupVertexWave(mesh: AbstractMesh, anchorAtTop: boolean): VertexWaveSt
     if (positions[i] < minY) minY = positions[i];
     if (positions[i] > maxY) maxY = positions[i];
   }
-  return { mesh, originalPositions: Float32Array.from(positions), minY, maxY, anchorAtTop };
+  return { mesh, originalPositions: Float32Array.from(positions), minY, maxY, anchorAtTop, atRest: true };
 }
 
 function applyVertexWave(state: VertexWaveState, time: number, amplitude: number, frequency: number, speed: number): void {
@@ -996,9 +1018,23 @@ const InteractiveFixtures: React.FC<InteractiveFixturesProps> = ({ scene, roomId
           return;
         }
         if (fixture.type === 'curtain' || fixture.type === 'wind') {
-          if (!fixture.isOn) return;
           const state = vertexWavesRef.current.get(fixture.id);
           if (!state) return;
+          if (!fixture.isOn) {
+            // FIX: this used to just stop here, leaving the mesh's vertex buffer at
+            // whatever mid-sway shape it last had the instant isOn went false - a
+            // curtain switched off didn't return to hanging flat, it froze wavy/bent
+            // forever (same bug for a tree/plant left mid-sway). Only write once, on the
+            // frame it actually turns off (guarded by atRest), not every frame while
+            // off - the mesh has thousands of vertices and there's no reason to keep
+            // re-uploading an unchanging buffer for a fixture that isn't animating.
+            if (!state.atRest) {
+              state.mesh.updateVerticesData(VertexBuffer.PositionKind, state.originalPositions, true);
+              state.atRest = true;
+            }
+            return;
+          }
+          state.atRest = false;
           // Curtains flutter faster/smaller (a light breeze through a window); trees/
           // plants sway slower/wider (whole branches, not just fabric).
           if (fixture.type === 'curtain') applyVertexWave(state, waveTimeRef.current, 0.04, 3, 2.2);
@@ -1365,12 +1401,24 @@ const InteractiveFixtures: React.FC<InteractiveFixturesProps> = ({ scene, roomId
             <button onClick={() => setPlacingType(null)} className="block mx-auto mt-1 text-slate-400 hover:text-white underline">Cancel</button>
           </div>
         ) : (
-          <div className="grid grid-cols-3 gap-1.5">
-            {FIXTURE_TYPES.map((t) => (
-              <Button key={t.id} size="sm" variant="outline" className="text-xs flex-col h-auto py-2" onClick={() => setPlacingType(t.id)}>
-                <t.icon className="w-4 h-4 mb-1" style={{ color: `rgb(${t.color.r * 255}, ${t.color.g * 255}, ${t.color.b * 255})` }} />
-                {t.label}
-              </Button>
+          <div className="space-y-2">
+            {FIXTURE_CATEGORIES.map((category) => (
+              <div key={category.label}>
+                <div className="px-0.5 pb-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                  {category.label}
+                </div>
+                <div className="grid grid-cols-3 gap-1.5">
+                  {category.ids.map((id) => {
+                    const t = FIXTURE_TYPES.find((type) => type.id === id)!;
+                    return (
+                      <Button key={t.id} size="sm" variant="outline" className="text-xs flex-col h-auto py-2" onClick={() => setPlacingType(t.id)}>
+                        <t.icon className="w-4 h-4 mb-1" style={{ color: `rgb(${t.color.r * 255}, ${t.color.g * 255}, ${t.color.b * 255})` }} />
+                        {t.label}
+                      </Button>
+                    );
+                  })}
+                </div>
+              </div>
             ))}
           </div>
         )}

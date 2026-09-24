@@ -461,7 +461,15 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
     // show the shortcuts overlay initially to help users discover controls
     showKeyboardShortcuts: true,
     showDomainSelector: false,
-    showLighting: true,
+    // FIX: defaulted to true with no comment ever explaining why (every sibling panel
+    // here - showGraphicsQuality, showMoodLighting, etc - correctly defaults false).
+    // The Lighting panel is a real ~24rem-wide floating panel (see uiSegments.tsx), not
+    // a small badge - it popped open covering a chunk of the viewport on every single
+    // page load, before the user had asked for it, unlike showKeyboardShortcuts just
+    // below (which DOES have a deliberate reason to start open - a one-time
+    // discoverability hint, not a persistent panel). A dedicated "Lighting" button
+    // already exists in the Tools panel for opening it on purpose.
+    showLighting: false,
     showGraphicsQuality: false,
     // Real components that existed in the codebase but had no way to reach them from
     // the UI (see the site audit) - now reachable via the Tools & Features catalog's
