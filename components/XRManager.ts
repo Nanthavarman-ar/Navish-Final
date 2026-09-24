@@ -693,10 +693,8 @@ export class XRManager {
   // motionController - and everything gated behind onMotionControllerInitObservable,
   // which is all of movement/teleportation/pointer-selection/the exit gesture - just
   // never fires, with no visible error. disableOnlineControllerRepository skips that
-  // network request entirely and uses Babylon's own bundled generic controller
-  // profiles instead, which still fully support standard trigger/squeeze/thumbstick
-  // input - only the fancy branded 3D controller model is lost, which is a fine trade
-  // for input actually working.
+  // network request entirely and uses only Babylon's own small set of bundled,
+  // no-network controller classes instead.
   //
   // forceInputProfile: 'oculus-touch' additionally sidesteps a second failure mode seen
   // after the above fix, ON REAL QUEST HARDWARE specifically - squeeze (the exit gesture)
@@ -710,31 +708,42 @@ export class XRManager {
   // contradicts what was actually observed on that device - so forcing the profile
   // removed that ambiguity for Quest.
   //
-  // FIX: this used to force 'oculus-touch' UNCONDITIONALLY, for every headset. Verified
-  // against Babylon's own bundled fallback table (webXRMotionControllerManager.pure.js)
-  // that this was actively WRONG for every non-Quest controller-based headset: Babylon
-  // already registers full local (no-network) profiles/fallback chains with proper
-  // trigger+squeeze+thumbstick/touchpad support for "htc-vive", "windows-mixed-reality"
-  // (covers WMR headsets and, via its own fallback, "samsung-odyssey"), and "valve-index" -
-  // none of those fall back to bare "generic-trigger" the way the old comment worried
-  // about. Forcing 'oculus-touch' on top of THOSE devices instead made Babylon read a
-  // Vive/Index/WMR/Odyssey controller's real trigger/squeeze/thumbstick signals through
-  // Quest Touch's component layout, which has no reason to line up - a real, likely cause
-  // of "works on Quest, broken controllers on other headsets" if this site was ever
-  // opened on one. Only force it for the browser this was actually diagnosed and fixed
-  // on (Quest's own Oculus Browser); every other headset now gets Babylon's normal,
-  // already-correct local profile resolution. Only affects gamepad/controller input -
-  // hand-tracking (Vision Pro etc) goes through a separate feature entirely, so this
-  // never affected that.
+  // FIX: both of the above used to be forced UNCONDITIONALLY, for every headset - and
+  // BOTH were verified this session (against Babylon's own bundled fallback table,
+  // webXRMotionControllerManager.pure.js, and confirmed live by calling
+  // WebXRMotionControllerManager.GetMotionControllerWithXRInput() directly with a real
+  // Valve Index gamepad shape) to actively break non-Quest controllers:
+  //
+  // - forceInputProfile made Babylon read a Vive/WMR/Odyssey controller's real
+  //   trigger/squeeze/thumbstick signals through Quest Touch's component layout, which
+  //   has no reason to line up with the real controller's own layout.
+  // - disableOnlineControllerRepository is worse for a headset Babylon has no bundled
+  //   class for: "htc-vive" and "windows-mixed-reality" (which also covers
+  //   "microsoft-mixed-reality"/Samsung Odyssey, via its own fallback chain) ARE
+  //   registered locally, so those still resolve fully offline - but "valve-index" is
+  //   NOT, and its own registered fallback ("generic-trigger-squeeze-touchpad-thumbstick")
+  //   isn't registered locally either. With the online repository disabled, resolving a
+  //   real Valve Index controller doesn't degrade to a trigger-only generic controller
+  //   (what the comment above used to assume) - it throws ("no controller requested was
+  //   found in the available controllers list") and the controller gets no
+  //   motionController at all: no trigger, no squeeze (the only way to exit VR in this
+  //   app), no thumbstick. Confirmed live: the exact same resolution call that throws
+  //   with the repository disabled resolves cleanly (trigger+squeeze+touchpad+thumbstick)
+  //   the moment it's allowed to hit the real, reachable immersive-web.github.io CDN.
+  //
+  // Both are now only forced for the browser this was actually diagnosed and fixed on
+  // (Quest's own Oculus Browser); every other headset gets Babylon's normal, online-
+  // capable resolution, which is what correctly supports every registered WebXR
+  // controller profile - not just the handful Babylon happens to bundle locally. Only
+  // affects gamepad/controller input - hand-tracking (Vision Pro etc) goes through a
+  // separate feature entirely, so this never affected that.
   private isQuestBrowser(): boolean {
     return typeof navigator !== 'undefined' && /OculusBrowser|Quest/i.test(navigator.userAgent || '');
   }
 
-  private getInputOptions(): { disableOnlineControllerRepository: boolean; forceInputProfile?: string } {
-    return {
-      disableOnlineControllerRepository: true,
-      ...(this.isQuestBrowser() ? { forceInputProfile: 'oculus-touch' } : {})
-    };
+  private getInputOptions(): { disableOnlineControllerRepository?: boolean; forceInputProfile?: string } {
+    if (!this.isQuestBrowser()) return {};
+    return { disableOnlineControllerRepository: true, forceInputProfile: 'oculus-touch' };
   }
 
   // Makes the headset camera actually stop at walls/furniture instead of the thumbstick
