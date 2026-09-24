@@ -416,8 +416,9 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
     showMeshMaterialSwatches: false,
     showInteractiveFixtures: false,
     showBIMIntegration: false,
-    // helpful overlay showing available input methods
-    showMovementControlChecker: true,
+    // FIX: defaulted to true (auto-popup on every load) - user asked for these removed
+    // alongside showLighting. A dedicated toolbar entry still opens it on purpose.
+    showMovementControlChecker: false,
     showTeleportManager: false,
     showSwimMode: false,
     showMultiSensoryPreview: false,
@@ -458,8 +459,10 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
     showGestureDetection: false,
     showGestureInspector: false,
     showImport: true,
-    // show the shortcuts overlay initially to help users discover controls
-    showKeyboardShortcuts: true,
+    // FIX: defaulted to true (auto-popup on every load) - user asked for these removed
+    // alongside showLighting/showMovementControlChecker. '?' hotkey (see the keydown
+    // handler below) and a dedicated toolbar entry still open it on purpose.
+    showKeyboardShortcuts: false,
     showDomainSelector: false,
     // FIX: defaulted to true with no comment ever explaining why (every sibling panel
     // here - showGraphicsQuality, showMoodLighting, etc - correctly defaults false).
