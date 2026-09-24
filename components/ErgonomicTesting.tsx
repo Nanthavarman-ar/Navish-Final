@@ -346,10 +346,10 @@ const ErgonomicTesting: React.FC<ErgonomicTestingProps> = ({ scene, onAvatarChan
   return (
     <div style={{
       padding: '16px',
-      background: '#1e293b',
-      border: '1px solid #334155',
+      background: '#2d2d2e',
+      border: '1px solid #4a4a4b',
       borderRadius: '8px',
-      color: '#f1f5f9'
+      color: '#eceaea'
     }}>
       <h3 style={{ margin: '0 0 16px 0', fontSize: '16px' }}>Ergonomic Testing</h3>
 
@@ -381,10 +381,10 @@ const ErgonomicTesting: React.FC<ErgonomicTestingProps> = ({ scene, onAvatarChan
               onClick={() => setSelectedAvatar(type as AvatarData['type'])}
               style={{
                 padding: '6px',
-                background: selectedAvatar === type ? '#3b82f6' : '#334155',
-                border: '1px solid #475569',
+                background: selectedAvatar === type ? '#ff4d4f' : '#4a4a4b',
+                border: '1px solid #5e5e5f',
                 borderRadius: '4px',
-                color: '#f1f5f9',
+                color: '#eceaea',
                 fontSize: '12px',
                 cursor: 'pointer'
               }}
@@ -396,7 +396,7 @@ const ErgonomicTesting: React.FC<ErgonomicTestingProps> = ({ scene, onAvatarChan
       </div>
 
       {/* Visualization Options */}
-      <div style={{ borderTop: '1px solid #334155', paddingTop: '16px', marginBottom: '16px' }}>
+      <div style={{ borderTop: '1px solid #4a4a4b', paddingTop: '16px', marginBottom: '16px' }}>
         <h4 style={{ margin: '0 0 12px 0', fontSize: '14px' }}>Visualization</h4>
 
         <div style={{ marginBottom: '8px' }}>
@@ -423,9 +423,9 @@ const ErgonomicTesting: React.FC<ErgonomicTestingProps> = ({ scene, onAvatarChan
       </div>
 
       {/* Avatar Specifications */}
-      <div style={{ borderTop: '1px solid #334155', paddingTop: '16px', marginBottom: '16px' }}>
+      <div style={{ borderTop: '1px solid #4a4a4b', paddingTop: '16px', marginBottom: '16px' }}>
         <h4 style={{ margin: '0 0 8px 0', fontSize: '14px' }}>Specifications</h4>
-        <div style={{ fontSize: '12px', color: '#94a3b8' }}>
+        <div style={{ fontSize: '12px', color: '#a3a2a2' }}>
           <div>Height: {spec.height.toFixed(2)}m</div>
           <div>Reach: {spec.reach.toFixed(2)}m</div>
           <div>Eye Height: {spec.eyeHeight.toFixed(2)}m</div>
@@ -434,12 +434,12 @@ const ErgonomicTesting: React.FC<ErgonomicTestingProps> = ({ scene, onAvatarChan
       </div>
 
       {/* Instructions */}
-      <div style={{ borderTop: '1px solid #334155', paddingTop: '16px' }}>
+      <div style={{ borderTop: '1px solid #4a4a4b', paddingTop: '16px' }}>
         <h4 style={{ margin: '0 0 8px 0', fontSize: '14px' }}>Instructions</h4>
-        <div style={{ fontSize: '12px', color: '#94a3b8', marginBottom: '8px' }}>
+        <div style={{ fontSize: '12px', color: '#a3a2a2', marginBottom: '8px' }}>
           {isActive ? 'Click on the floor to position the avatar.' : 'Start testing to place avatars.'}
         </div>
-        <div style={{ fontSize: '12px', color: '#94a3b8' }}>
+        <div style={{ fontSize: '12px', color: '#a3a2a2' }}>
           Red spheres indicate conflicts, yellow for warnings, green for optimal conditions.
         </div>
       </div>

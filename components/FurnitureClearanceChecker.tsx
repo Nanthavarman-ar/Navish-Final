@@ -422,10 +422,10 @@ const FurnitureClearanceChecker: React.FC<FurnitureClearanceCheckerProps> = ({ s
   return (
     <div style={{
       padding: '16px',
-      background: '#1e293b',
-      border: '1px solid #334155',
+      background: '#2d2d2e',
+      border: '1px solid #4a4a4b',
       borderRadius: '8px',
-      color: '#f1f5f9'
+      color: '#eceaea'
     }}>
       <h3 style={{ margin: '0 0 16px 0', fontSize: '16px' }}>Furniture Clearance Checker</h3>
 
@@ -457,10 +457,10 @@ const FurnitureClearanceChecker: React.FC<FurnitureClearanceCheckerProps> = ({ s
               onClick={() => setSelectedStandard(standard)}
               style={{
                 padding: '6px',
-                background: selectedStandard === standard ? '#3b82f6' : '#334155',
-                border: '1px solid #475569',
+                background: selectedStandard === standard ? '#ff4d4f' : '#4a4a4b',
+                border: '1px solid #5e5e5f',
                 borderRadius: '4px',
-                color: '#f1f5f9',
+                color: '#eceaea',
                 fontSize: '12px',
                 cursor: 'pointer'
               }}
@@ -472,7 +472,7 @@ const FurnitureClearanceChecker: React.FC<FurnitureClearanceCheckerProps> = ({ s
       </div>
 
       {/* Visualization Options */}
-      <div style={{ borderTop: '1px solid #334155', paddingTop: '16px', marginBottom: '16px' }}>
+      <div style={{ borderTop: '1px solid #4a4a4b', paddingTop: '16px', marginBottom: '16px' }}>
         <h4 style={{ margin: '0 0 12px 0', fontSize: '14px' }}>Visualization</h4>
 
         <div style={{ marginBottom: '8px' }}>
@@ -510,9 +510,9 @@ const FurnitureClearanceChecker: React.FC<FurnitureClearanceCheckerProps> = ({ s
       </div>
 
       {/* Standards Info */}
-      <div style={{ borderTop: '1px solid #334155', paddingTop: '16px', marginBottom: '16px' }}>
+      <div style={{ borderTop: '1px solid #4a4a4b', paddingTop: '16px', marginBottom: '16px' }}>
         <h4 style={{ margin: '0 0 8px 0', fontSize: '14px' }}>Clearance Requirements ({selectedStandard})</h4>
-        <div style={{ fontSize: '12px', color: '#94a3b8' }}>
+        <div style={{ fontSize: '12px', color: '#a3a2a2' }}>
           <div>Doorways: {(standards[selectedStandard as keyof typeof standards].doorway * 100).toFixed(0)}cm</div>
           <div>Corridors: {(standards[selectedStandard as keyof typeof standards].corridor * 100).toFixed(0)}cm</div>
           <div>Workspaces: {(standards[selectedStandard as keyof typeof standards].workspace * 100).toFixed(0)}cm</div>
@@ -521,9 +521,9 @@ const FurnitureClearanceChecker: React.FC<FurnitureClearanceCheckerProps> = ({ s
       </div>
 
       {/* Legend */}
-      <div style={{ borderTop: '1px solid #334155', paddingTop: '16px' }}>
+      <div style={{ borderTop: '1px solid #4a4a4b', paddingTop: '16px' }}>
         <h4 style={{ margin: '0 0 8px 0', fontSize: '14px' }}>Legend</h4>
-        <div style={{ fontSize: '12px', color: '#94a3b8' }}>
+        <div style={{ fontSize: '12px', color: '#a3a2a2' }}>
           <div style={{ display: 'flex', alignItems: 'center', marginBottom: '4px' }}>
             <div style={{ width: '12px', height: '12px', background: '#ff0000', marginRight: '8px', borderRadius: '2px' }}></div>
             Critical Conflict

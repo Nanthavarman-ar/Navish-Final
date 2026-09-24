@@ -1,9 +1,9 @@
 .scene-browser-container {
   padding: 16px;
-  background: #1e293b;
-  border: 1px solid #334155;
+  background: #2d2d2e;
+  border: 1px solid #4a4a4b;
   border-radius: 8px;
-  color: #f1f5f9;
+  color: #eceaea;
   height: 100%;
   display: flex;
   flex-direction: column;
@@ -21,17 +21,17 @@
 .search-input {
   width: 100%;
   padding: 6px 8px;
-  background: #334155;
-  border: 1px solid #475569;
+  background: #4a4a4b;
+  border: 1px solid #5e5e5f;
   border-radius: 4px;
-  color: #f1f5f9;
+  color: #eceaea;
   font-size: 12px;
 }
 
 .object-list-container {
   flex: 1;
   overflow-y: auto;
-  border: 1px solid #334155;
+  border: 1px solid #4a4a4b;
   border-radius: 4px;
 }
 
@@ -39,15 +39,15 @@
   display: flex;
   align-items: center;
   padding: 4px 8px;
-  border-bottom: 1px solid #334155;
+  border-bottom: 1px solid #4a4a4b;
   cursor: pointer;
   font-size: 11px;
   background: transparent;
-  color: #f1f5f9;
+  color: #eceaea;
 }
 
 .object-item-selected {
-  background: #3b82f6;
+  background: #ff4d4f;
 }
 
 .expand-button {
@@ -108,20 +108,20 @@
   padding: 2px 8px 2px 40px;
   cursor: pointer;
   font-size: 10px;
-  border-bottom: 1px solid #475569;
+  border-bottom: 1px solid #5e5e5f;
   background: transparent;
-  color: #f1f5f9;
+  color: #eceaea;
 }
 
 .child-item-selected {
-  background: #3b82f6;
+  background: #ff4d4f;
 }
 
 .statistics-container {
   margin-top: 12px;
   padding: 8px;
-  background: #334155;
+  background: #4a4a4b;
   border-radius: 4px;
   font-size: 11px;
-  color: #f1f5f9;
+  color: #eceaea;
 }

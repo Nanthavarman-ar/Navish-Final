@@ -170,6 +170,11 @@ export function WorkspacePreviewDialog({
           width: `${modalSize.width}px`,
           height: `${modalSize.height}px`,
           transform: 'none',
+          // DialogContent centres itself with Tailwind v4's translate-x/y utilities, which
+          // set the separate `translate` property - `transform: none` alone doesn't undo it,
+          // so the window used to sit half off-screen to the top-left.
+          translate: 'none',
+          maxWidth: 'none',
           backgroundColor: '#1a1a1a',
           boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.45)',
         }}

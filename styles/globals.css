@@ -53,6 +53,143 @@
   --font-sans: var(--font-sans), ui-sans-serif, system-ui, sans-serif;
   --font-display: var(--font-display), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-mono), ui-monospace, SFMono-Regular, monospace;
+
+  /* Navish palette: Tailwind's cool slate/gray become the logo's neutral greys, the
+     cyan/blue accent family becomes the logo red, and the secondary purple/indigo
+     accents fall back to neutral so red stays the only accent. Semantic families
+     (red, green, emerald, amber, yellow, orange) keep Tailwind's defaults. */
+  --color-slate-50: #f5f4f4;
+  --color-slate-100: #eceaea;
+  --color-slate-200: #dcdada;
+  --color-slate-300: #c4c2c2;
+  --color-slate-400: #a3a2a2;
+  --color-slate-500: #8a8989;
+  --color-slate-600: #717272;
+  --color-slate-700: #4a4a4b;
+  --color-slate-800: #2d2d2e;
+  --color-slate-900: #1f1f20;
+  --color-slate-950: #141414;
+  --color-gray-50: #f5f4f4;
+  --color-gray-100: #eceaea;
+  --color-gray-200: #dcdada;
+  --color-gray-300: #c4c2c2;
+  --color-gray-400: #a3a2a2;
+  --color-gray-500: #8a8989;
+  --color-gray-600: #717272;
+  --color-gray-700: #4a4a4b;
+  --color-gray-800: #2d2d2e;
+  --color-gray-900: #1f1f20;
+  --color-gray-950: #141414;
+  --color-zinc-50: #f5f4f4;
+  --color-zinc-100: #eceaea;
+  --color-zinc-200: #dcdada;
+  --color-zinc-300: #c4c2c2;
+  --color-zinc-400: #a3a2a2;
+  --color-zinc-500: #8a8989;
+  --color-zinc-600: #717272;
+  --color-zinc-700: #4a4a4b;
+  --color-zinc-800: #2d2d2e;
+  --color-zinc-900: #1f1f20;
+  --color-zinc-950: #141414;
+  --color-indigo-50: #f5f4f4;
+  --color-indigo-100: #eceaea;
+  --color-indigo-200: #dcdada;
+  --color-indigo-300: #c4c2c2;
+  --color-indigo-400: #a3a2a2;
+  --color-indigo-500: #8a8989;
+  --color-indigo-600: #717272;
+  --color-indigo-700: #4a4a4b;
+  --color-indigo-800: #2d2d2e;
+  --color-indigo-900: #1f1f20;
+  --color-indigo-950: #141414;
+  --color-purple-50: #f5f4f4;
+  --color-purple-100: #eceaea;
+  --color-purple-200: #dcdada;
+  --color-purple-300: #c4c2c2;
+  --color-purple-400: #a3a2a2;
+  --color-purple-500: #8a8989;
+  --color-purple-600: #717272;
+  --color-purple-700: #4a4a4b;
+  --color-purple-800: #2d2d2e;
+  --color-purple-900: #1f1f20;
+  --color-purple-950: #141414;
+  --color-violet-50: #f5f4f4;
+  --color-violet-100: #eceaea;
+  --color-violet-200: #dcdada;
+  --color-violet-300: #c4c2c2;
+  --color-violet-400: #a3a2a2;
+  --color-violet-500: #8a8989;
+  --color-violet-600: #717272;
+  --color-violet-700: #4a4a4b;
+  --color-violet-800: #2d2d2e;
+  --color-violet-900: #1f1f20;
+  --color-violet-950: #141414;
+  --color-cyan-50: #fff1f1;
+  --color-cyan-100: #ffe0e0;
+  --color-cyan-200: #ffc5c6;
+  --color-cyan-300: #ff9d9e;
+  --color-cyan-400: #ff7072;
+  --color-cyan-500: #ff4d4f;
+  --color-cyan-600: #e8393c;
+  --color-cyan-700: #c2272a;
+  --color-cyan-800: #a01f22;
+  --color-cyan-900: #841e20;
+  --color-cyan-950: #480a0b;
+  --color-sky-50: #fff1f1;
+  --color-sky-100: #ffe0e0;
+  --color-sky-200: #ffc5c6;
+  --color-sky-300: #ff9d9e;
+  --color-sky-400: #ff7072;
+  --color-sky-500: #ff4d4f;
+  --color-sky-600: #e8393c;
+  --color-sky-700: #c2272a;
+  --color-sky-800: #a01f22;
+  --color-sky-900: #841e20;
+  --color-sky-950: #480a0b;
+  --color-blue-50: #fff1f1;
+  --color-blue-100: #ffe0e0;
+  --color-blue-200: #ffc5c6;
+  --color-blue-300: #ff9d9e;
+  --color-blue-400: #ff7072;
+  --color-blue-500: #ff4d4f;
+  --color-blue-600: #e8393c;
+  --color-blue-700: #c2272a;
+  --color-blue-800: #a01f22;
+  --color-blue-900: #841e20;
+  --color-blue-950: #480a0b;
+  --color-teal-50: #fff1f1;
+  --color-teal-100: #ffe0e0;
+  --color-teal-200: #ffc5c6;
+  --color-teal-300: #ff9d9e;
+  --color-teal-400: #ff7072;
+  --color-teal-500: #ff4d4f;
+  --color-teal-600: #e8393c;
+  --color-teal-700: #c2272a;
+  --color-teal-800: #a01f22;
+  --color-teal-900: #841e20;
+  --color-teal-950: #480a0b;
+  --color-pink-50: #fff1f1;
+  --color-pink-100: #ffe0e0;
+  --color-pink-200: #ffc5c6;
+  --color-pink-300: #ff9d9e;
+  --color-pink-400: #ff7072;
+  --color-pink-500: #ff4d4f;
+  --color-pink-600: #e8393c;
+  --color-pink-700: #c2272a;
+  --color-pink-800: #a01f22;
+  --color-pink-900: #841e20;
+  --color-pink-950: #480a0b;
+  --color-fuchsia-50: #fff1f1;
+  --color-fuchsia-100: #ffe0e0;
+  --color-fuchsia-200: #ffc5c6;
+  --color-fuchsia-300: #ff9d9e;
+  --color-fuchsia-400: #ff7072;
+  --color-fuchsia-500: #ff4d4f;
+  --color-fuchsia-600: #e8393c;
+  --color-fuchsia-700: #c2272a;
+  --color-fuchsia-800: #a01f22;
+  --color-fuchsia-900: #841e20;
+  --color-fuchsia-950: #480a0b;
 }
 
 /*
@@ -75,14 +212,14 @@
 
 @layer utilities {
   /*
- * Naviz design tokens - "blueprint" direction.
+ * Navish design tokens - matched to the Navish logo and marketing site.
  * Named palette:
- *   Graphite   #0B1120  - dark base surface
- *   Panel      #131B2E  - dark elevated surface
- *   Blueprint  #06B6D4  - primary accent (drafting-line cyan)
+ *   Graphite   #1A1A1A  - dark base surface
+ *   Panel      #2D2D2E  - dark elevated surface
+ *   Red        #FF4D4F  - primary accent (logo red)
  *   Signal     #F59E0B  - warm accent, used sparingly for emphasis/CTAs
- *   Paper      #FAFAF9  - light base surface
- *   Ink        #0F172A  - primary text on light surfaces
+ *   Paper      #F5F4F4  - light base surface
+ *   Ink        #1A1A1A  - primary text on light surfaces
  */
 
   :root {
@@ -92,80 +229,80 @@
       'Space Grotesk', ui-sans-serif, system-ui, -apple-system, sans-serif;
     --font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, monospace;
 
-    --background: #fafaf9;
-    --foreground: #0f172a;
+    --background: #f5f4f4;
+    --foreground: #1a1a1a;
     --card: #ffffff;
-    --card-foreground: #0f172a;
+    --card-foreground: #1a1a1a;
     --popover: #ffffff;
-    --popover-foreground: #0f172a;
-    --primary: #0891b2;
+    --popover-foreground: #1a1a1a;
+    --primary: #e8393c;
     --primary-foreground: #ffffff;
-    --secondary: #f1f5f9;
-    --secondary-foreground: #0f172a;
-    --muted: #f1f5f9;
-    --muted-foreground: #64748b;
-    --accent: #ecfeff;
-    --accent-foreground: #0e7490;
+    --secondary: #eceaea;
+    --secondary-foreground: #1a1a1a;
+    --muted: #eceaea;
+    --muted-foreground: #717272;
+    --accent: #fff1f1;
+    --accent-foreground: #c2272a;
     --destructive: #dc2626;
     --destructive-foreground: #ffffff;
-    --border: rgba(15, 23, 42, 0.1);
+    --border: rgba(26, 26, 26, 0.12);
     --input: transparent;
-    --input-background: #f1f5f9;
-    --switch-background: #cbd5e1;
+    --input-background: #eceaea;
+    --switch-background: #c4c2c2;
     --font-weight-medium: 500;
     --font-weight-normal: 400;
-    --ring: #06b6d4;
-    --chart-1: #06b6d4;
+    --ring: #ff4d4f;
+    --chart-1: #ff4d4f;
     --chart-2: #f59e0b;
-    --chart-3: #6366f1;
+    --chart-3: #717272;
     --chart-4: #22c55e;
     --chart-5: #ec4899;
     --radius: 0.5rem;
     --sidebar: #ffffff;
-    --sidebar-foreground: #0f172a;
-    --sidebar-primary: #0891b2;
+    --sidebar-foreground: #1a1a1a;
+    --sidebar-primary: #e8393c;
     --sidebar-primary-foreground: #ffffff;
-    --sidebar-accent: #f1f5f9;
-    --sidebar-accent-foreground: #0f172a;
-    --sidebar-border: rgba(15, 23, 42, 0.1);
-    --sidebar-ring: #06b6d4;
+    --sidebar-accent: #eceaea;
+    --sidebar-accent-foreground: #1a1a1a;
+    --sidebar-border: rgba(26, 26, 26, 0.12);
+    --sidebar-ring: #ff4d4f;
   }
 
   .dark {
-    --background: #0b1120;
-    --foreground: #e2e8f0;
-    --card: #131b2e;
-    --card-foreground: #e2e8f0;
-    --popover: #131b2e;
-    --popover-foreground: #e2e8f0;
-    --primary: #22d3ee;
-    --primary-foreground: #0b1120;
-    --secondary: #1b2438;
-    --secondary-foreground: #e2e8f0;
-    --muted: #1b2438;
-    --muted-foreground: #8b99af;
-    --accent: #17293a;
-    --accent-foreground: #67e8f9;
+    --background: #1a1a1a;
+    --foreground: #eceaea;
+    --card: #2d2d2e;
+    --card-foreground: #eceaea;
+    --popover: #2d2d2e;
+    --popover-foreground: #eceaea;
+    --primary: #ff4d4f;
+    --primary-foreground: #1a1a1a;
+    --secondary: #2d2d2e;
+    --secondary-foreground: #eceaea;
+    --muted: #2d2d2e;
+    --muted-foreground: #a3a2a2;
+    --accent: #3a2425;
+    --accent-foreground: #ff9d9e;
     --destructive: #f87171;
-    --destructive-foreground: #0b1120;
-    --border: rgba(226, 232, 240, 0.1);
-    --input: #1b2438;
-    --ring: #22d3ee;
+    --destructive-foreground: #1a1a1a;
+    --border: rgba(236, 234, 234, 0.1);
+    --input: #2d2d2e;
+    --ring: #ff4d4f;
     --font-weight-medium: 500;
     --font-weight-normal: 400;
-    --chart-1: #22d3ee;
+    --chart-1: #ff4d4f;
     --chart-2: #f59e0b;
-    --chart-3: #818cf8;
+    --chart-3: #a3a2a2;
     --chart-4: #4ade80;
     --chart-5: #f472b6;
-    --sidebar: #0e1524;
-    --sidebar-foreground: #e2e8f0;
-    --sidebar-primary: #22d3ee;
-    --sidebar-primary-foreground: #0b1120;
-    --sidebar-accent: #1b2438;
-    --sidebar-accent-foreground: #e2e8f0;
-    --sidebar-border: rgba(226, 232, 240, 0.1);
-    --sidebar-ring: #22d3ee;
+    --sidebar: #1f1f20;
+    --sidebar-foreground: #eceaea;
+    --sidebar-primary: #ff4d4f;
+    --sidebar-primary-foreground: #1a1a1a;
+    --sidebar-accent: #2d2d2e;
+    --sidebar-accent-foreground: #eceaea;
+    --sidebar-border: rgba(236, 234, 234, 0.1);
+    --sidebar-ring: #ff4d4f;
   }
 }
 
@@ -318,7 +455,7 @@ html {
   background: linear-gradient(180deg, rgba(34, 211, 238, 0.12) 0%, rgba(8, 145, 178, 0.08) 100%);
   border: 1px solid rgba(34, 211, 238, 0.55);
   box-shadow:
-    inset 0 2px 0 rgba(34, 211, 238, 0.25),
+    inset 0 2px 0 rgba(255, 77, 79, 0.25),
     inset 0 -4px 0 rgba(0, 0, 0, 0.15),
     0 5px 0 rgba(34, 211, 238, 0.3),
     0 8px 12px rgba(0, 0, 0, 0.25);
@@ -406,13 +543,13 @@ html {
 .ambient-glow::before {
   top: -12%;
   left: -12%;
-  background: radial-gradient(circle, #22d3ee, transparent 70%);
+  background: radial-gradient(circle, #ff4d4f, transparent 70%);
   animation: ambient-drift-a 16s ease-in-out infinite;
 }
 .ambient-glow::after {
   bottom: -18%;
   right: -12%;
-  background: radial-gradient(circle, #f59e0b, transparent 70%);
+  background: radial-gradient(circle, #a3a2a2, transparent 70%);
   animation: ambient-drift-b 19s ease-in-out infinite;
 }
 /* Third blob (violet) via a child element, since ::before/::after are already spoken for. */
@@ -426,7 +563,7 @@ html {
   border-radius: 50%;
   filter: blur(70px);
   opacity: 0.26;
-  background: radial-gradient(circle, #818cf8, transparent 70%);
+  background: radial-gradient(circle, #717272, transparent 70%);
   animation: ambient-drift-c 21s ease-in-out infinite;
   pointer-events: none;
 }
@@ -456,7 +593,7 @@ html {
   width: 3px;
   height: 3px;
   border-radius: 50%;
-  background: #67e8f9;
+  background: #eceaea;
   animation: star-twinkle 3.5s ease-in-out infinite;
 }
 @media (prefers-reduced-motion: reduce) {
@@ -476,9 +613,9 @@ html {
   height: 1px;
   background: linear-gradient(
     90deg,
-    rgba(34, 211, 238, 0) 0%,
-    rgba(34, 211, 238, 0.7) 50%,
-    rgba(34, 211, 238, 0) 100%
+    rgba(255, 77, 79, 0) 0%,
+    rgba(255, 77, 79, 0.7) 50%,
+    rgba(255, 77, 79, 0) 100%
   );
   background-size: 200% 100%;
   animation: shimmer-sweep 6s linear infinite;
@@ -486,7 +623,7 @@ html {
 @media (prefers-reduced-motion: reduce) {
   .shimmer-line {
     animation: none;
-    background: rgba(34, 211, 238, 0.25);
+    background: rgba(255, 77, 79, 0.25);
   }
 }
 

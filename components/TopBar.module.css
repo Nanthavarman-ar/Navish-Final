@@ -9,6 +9,6 @@
 .progressBarFill {
   height: 100%;
   width: var(--progress-width, 0%);
-  background-color: #3b82f6; /* Tailwind blue-500 */
+  background-color: #ff4d4f; /* Tailwind blue-500 */
   transition: width 0.3s ease-in-out;
 }

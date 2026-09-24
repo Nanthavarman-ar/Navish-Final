@@ -103,7 +103,7 @@ const HotspotNavigation: React.FC<HotspotNavigationProps> = ({ scene, roomId, on
       ctx.save();
       ctx.translate(64, 64);
       ctx.rotate(Math.PI / 4);
-      ctx.fillStyle = 'rgba(15, 23, 42, 0.82)';
+      ctx.fillStyle = 'rgba(31, 31, 32, 0.82)';
       ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)';
       ctx.lineWidth = 5;
       const half = 38;

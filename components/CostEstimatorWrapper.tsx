@@ -652,7 +652,7 @@ const CostEstimatorWrapper: React.FC<CostEstimatorWrapperProps> = ({
         <div className={styles.budgetSettingRow}>
           <label htmlFor="pdf-upload" className={styles.budgetSettingLabel}>Reference PDF:</label>
           <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-            <label htmlFor="pdf-upload" style={{ fontSize: 12, padding: '4px 8px', background: '#334155', borderRadius: 4, cursor: 'pointer' }}>
+            <label htmlFor="pdf-upload" style={{ fontSize: 12, padding: '4px 8px', background: '#4a4a4b', borderRadius: 4, cursor: 'pointer' }}>
               {pdfFileName ? 'Replace' : 'Upload'}
             </label>
             <input id="pdf-upload" type="file" accept="application/pdf" onChange={handlePdfUpload} style={{ display: 'none' }} />
@@ -660,7 +660,7 @@ const CostEstimatorWrapper: React.FC<CostEstimatorWrapperProps> = ({
               <button
                 type="button"
                 onClick={() => setShowPdfPreview(v => !v)}
-                style={{ fontSize: 12, padding: '4px 8px', background: showPdfPreview ? '#0ea5a5' : '#334155', borderRadius: 4, cursor: 'pointer', border: 'none', color: 'white' }}
+                style={{ fontSize: 12, padding: '4px 8px', background: showPdfPreview ? '#0ea5a5' : '#4a4a4b', borderRadius: 4, cursor: 'pointer', border: 'none', color: 'white' }}
               >
                 {showPdfPreview ? 'Hide' : 'View'} PDF
               </button>
@@ -741,7 +741,7 @@ const CostEstimatorWrapper: React.FC<CostEstimatorWrapperProps> = ({
               <button
                 type="button"
                 onClick={startEditingBreakdown}
-                style={{ fontSize: 11, padding: '3px 8px', background: '#334155', borderRadius: 4, cursor: 'pointer', border: 'none', color: 'white' }}
+                style={{ fontSize: 11, padding: '3px 8px', background: '#4a4a4b', borderRadius: 4, cursor: 'pointer', border: 'none', color: 'white' }}
               >
                 Edit
               </button>
@@ -788,7 +788,7 @@ const CostEstimatorWrapper: React.FC<CostEstimatorWrapperProps> = ({
                 <button
                   type="button"
                   onClick={cancelEditingBreakdown}
-                  style={{ fontSize: 11, padding: '4px 10px', background: '#334155', borderRadius: 4, cursor: 'pointer', border: 'none', color: 'white' }}
+                  style={{ fontSize: 11, padding: '4px 10px', background: '#4a4a4b', borderRadius: 4, cursor: 'pointer', border: 'none', color: 'white' }}
                 >
                   Cancel
                 </button>
@@ -835,19 +835,19 @@ const CostEstimatorWrapper: React.FC<CostEstimatorWrapperProps> = ({
         <div
           style={{
             position: 'fixed', top: 60, right: 340, width: 280, height: '70vh',
-            background: '#0f172a', border: '1px solid #334155', borderRadius: 8,
+            background: '#1f1f20', border: '1px solid #4a4a4b', borderRadius: 8,
             zIndex: 49, display: 'flex', flexDirection: 'column', overflow: 'hidden',
             boxShadow: '0 10px 30px rgba(0,0,0,0.5)'
           }}
         >
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 10px', borderBottom: '1px solid #334155' }}>
-            <span style={{ fontSize: 12, color: '#e2e8f0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={pdfFileName ?? undefined}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 10px', borderBottom: '1px solid #4a4a4b' }}>
+            <span style={{ fontSize: 12, color: '#dcdada', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={pdfFileName ?? undefined}>
               {pdfFileName}
             </span>
             <button
               type="button"
               onClick={() => setShowPdfPreview(false)}
-              style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: 14, lineHeight: 1 }}
+              style={{ background: 'none', border: 'none', color: '#a3a2a2', cursor: 'pointer', fontSize: 14, lineHeight: 1 }}
               aria-label="Close PDF preview"
             >
               ✕

@@ -133,10 +133,10 @@ const GeoWorkspaceArea: React.FC<GeoWorkspaceAreaProps> = ({
   return (
     <div style={{
       padding: '16px',
-      background: '#1e293b',
-      border: '1px solid #334155',
+      background: '#2d2d2e',
+      border: '1px solid #4a4a4b',
       borderRadius: '8px',
-      color: '#f1f5f9'
+      color: '#eceaea'
     }}>
       <h3 style={{ margin: '0 0 16px 0', fontSize: '16px' }}>Workspace Areas</h3>
 
@@ -148,7 +148,7 @@ const GeoWorkspaceArea: React.FC<GeoWorkspaceAreaProps> = ({
             onClick={startWorkspaceCreation}
             style={{
               padding: '6px 12px',
-              background: '#3b82f6',
+              background: '#ff4d4f',
               border: 'none',
               borderRadius: '4px',
               color: 'white',
@@ -161,7 +161,7 @@ const GeoWorkspaceArea: React.FC<GeoWorkspaceAreaProps> = ({
         </div>
 
         {workspaces.length === 0 ? (
-          <div style={{ fontSize: '12px', color: '#94a3b8', textAlign: 'center', padding: '16px' }}>
+          <div style={{ fontSize: '12px', color: '#a3a2a2', textAlign: 'center', padding: '16px' }}>
             No workspaces created yet
           </div>
         ) : (
@@ -171,8 +171,8 @@ const GeoWorkspaceArea: React.FC<GeoWorkspaceAreaProps> = ({
                 key={workspace.id}
                 style={{
                   padding: '12px',
-                  background: selectedWorkspace?.id === workspace.id ? '#334155' : '#0f172a',
-                  border: selectedWorkspace?.id === workspace.id ? '1px solid #3b82f6' : '1px solid #334155',
+                  background: selectedWorkspace?.id === workspace.id ? '#4a4a4b' : '#1f1f20',
+                  border: selectedWorkspace?.id === workspace.id ? '1px solid #ff4d4f' : '1px solid #4a4a4b',
                   borderRadius: '4px',
                   cursor: 'pointer'
                 }}
@@ -181,10 +181,10 @@ const GeoWorkspaceArea: React.FC<GeoWorkspaceAreaProps> = ({
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <div>
                     <div style={{ fontSize: '14px', fontWeight: 'bold' }}>{workspace.name}</div>
-                    <div style={{ fontSize: '12px', color: '#94a3b8' }}>
+                    <div style={{ fontSize: '12px', color: '#a3a2a2' }}>
                       Center: {workspace.center.latitude.toFixed(4)}, {workspace.center.longitude.toFixed(4)}
                     </div>
-                    <div style={{ fontSize: '12px', color: '#94a3b8' }}>
+                    <div style={{ fontSize: '12px', color: '#a3a2a2' }}>
                       Area: {(workspace.area / 1000000).toFixed(2)} km²
                     </div>
                   </div>
@@ -227,8 +227,8 @@ const GeoWorkspaceArea: React.FC<GeoWorkspaceAreaProps> = ({
           zIndex: 1000
         }}>
           <div style={{
-            background: '#1e293b',
-            border: '1px solid #334155',
+            background: '#2d2d2e',
+            border: '1px solid #4a4a4b',
             borderRadius: '8px',
             padding: '24px',
             width: '400px',
@@ -252,10 +252,10 @@ const GeoWorkspaceArea: React.FC<GeoWorkspaceAreaProps> = ({
                   style={{
                     width: '100%',
                     padding: '8px',
-                    background: '#334155',
-                    border: '1px solid #475569',
+                    background: '#4a4a4b',
+                    border: '1px solid #5e5e5f',
                     borderRadius: '4px',
-                    color: '#f1f5f9',
+                    color: '#eceaea',
                     fontSize: '14px',
                     marginBottom: '16px'
                   }}
@@ -281,10 +281,10 @@ const GeoWorkspaceArea: React.FC<GeoWorkspaceAreaProps> = ({
                       style={{
                         width: '100%',
                         padding: '6px',
-                        background: '#334155',
-                        border: '1px solid #475569',
+                        background: '#4a4a4b',
+                        border: '1px solid #5e5e5f',
                         borderRadius: '4px',
-                        color: '#f1f5f9',
+                        color: '#eceaea',
                         fontSize: '12px'
                       }}
                     />
@@ -300,10 +300,10 @@ const GeoWorkspaceArea: React.FC<GeoWorkspaceAreaProps> = ({
                       style={{
                         width: '100%',
                         padding: '6px',
-                        background: '#334155',
-                        border: '1px solid #475569',
+                        background: '#4a4a4b',
+                        border: '1px solid #5e5e5f',
                         borderRadius: '4px',
-                        color: '#f1f5f9',
+                        color: '#eceaea',
                         fontSize: '12px'
                       }}
                     />
@@ -319,10 +319,10 @@ const GeoWorkspaceArea: React.FC<GeoWorkspaceAreaProps> = ({
                       style={{
                         width: '100%',
                         padding: '6px',
-                        background: '#334155',
-                        border: '1px solid #475569',
+                        background: '#4a4a4b',
+                        border: '1px solid #5e5e5f',
                         borderRadius: '4px',
-                        color: '#f1f5f9',
+                        color: '#eceaea',
                         fontSize: '12px'
                       }}
                     />
@@ -338,10 +338,10 @@ const GeoWorkspaceArea: React.FC<GeoWorkspaceAreaProps> = ({
                       style={{
                         width: '100%',
                         padding: '6px',
-                        background: '#334155',
-                        border: '1px solid #475569',
+                        background: '#4a4a4b',
+                        border: '1px solid #5e5e5f',
                         borderRadius: '4px',
-                        color: '#f1f5f9',
+                        color: '#eceaea',
                         fontSize: '12px'
                       }}
                     />
@@ -358,10 +358,10 @@ const GeoWorkspaceArea: React.FC<GeoWorkspaceAreaProps> = ({
                     style={{
                       width: '100%',
                       padding: '6px',
-                      background: '#334155',
-                      border: '1px solid #475569',
+                      background: '#4a4a4b',
+                      border: '1px solid #5e5e5f',
                       borderRadius: '4px',
-                      color: '#f1f5f9',
+                      color: '#eceaea',
                       fontSize: '12px'
                     }}
                   />
@@ -373,7 +373,7 @@ const GeoWorkspaceArea: React.FC<GeoWorkspaceAreaProps> = ({
             {creationStep === 'confirm' && (
               <div>
                 <h4 style={{ margin: '0 0 12px 0', fontSize: '14px' }}>Confirm Workspace Details</h4>
-                <div style={{ fontSize: '12px', color: '#94a3b8', marginBottom: '16px' }}>
+                <div style={{ fontSize: '12px', color: '#a3a2a2', marginBottom: '16px' }}>
                   <div><strong>Name:</strong> {newWorkspaceName}</div>
                   <div><strong>Bounds:</strong> {boundsInput.north.toFixed(4)}N, {boundsInput.south.toFixed(4)}S, {boundsInput.east.toFixed(4)}E, {boundsInput.west.toFixed(4)}W</div>
                   <div><strong>Elevation:</strong> {elevation}m</div>
@@ -388,7 +388,7 @@ const GeoWorkspaceArea: React.FC<GeoWorkspaceAreaProps> = ({
                 onClick={cancelWorkspaceCreation}
                 style={{
                   padding: '8px 16px',
-                  background: '#6b7280',
+                  background: '#8a8989',
                   border: 'none',
                   borderRadius: '4px',
                   color: 'white',
@@ -405,7 +405,7 @@ const GeoWorkspaceArea: React.FC<GeoWorkspaceAreaProps> = ({
                     onClick={previousCreationStep}
                     style={{
                       padding: '8px 16px',
-                      background: '#6b7280',
+                      background: '#8a8989',
                       border: 'none',
                       borderRadius: '4px',
                       color: 'white',
@@ -440,7 +440,7 @@ const GeoWorkspaceArea: React.FC<GeoWorkspaceAreaProps> = ({
                     disabled={creationStep === 'name' && !newWorkspaceName.trim()}
                     style={{
                       padding: '8px 16px',
-                      background: '#3b82f6',
+                      background: '#ff4d4f',
                       border: 'none',
                       borderRadius: '4px',
                       color: 'white',
@@ -460,12 +460,12 @@ const GeoWorkspaceArea: React.FC<GeoWorkspaceAreaProps> = ({
 
       {/* Selected Workspace Details */}
       {selectedWorkspace && (
-        <div style={{ borderTop: '1px solid #334155', paddingTop: '16px' }}>
+        <div style={{ borderTop: '1px solid #4a4a4b', paddingTop: '16px' }}>
           <h4 style={{ margin: '0 0 12px 0', fontSize: '14px' }}>
             Workspace: {selectedWorkspace.name}
           </h4>
 
-          <div style={{ fontSize: '12px', color: '#94a3b8', marginBottom: '12px' }}>
+          <div style={{ fontSize: '12px', color: '#a3a2a2', marginBottom: '12px' }}>
             <div><strong>Center:</strong> {selectedWorkspace.center.latitude.toFixed(6)}, {selectedWorkspace.center.longitude.toFixed(6)}</div>
             <div><strong>Bounds:</strong> {selectedWorkspace.bounds.north.toFixed(4)}N to {selectedWorkspace.bounds.south.toFixed(4)}S, {selectedWorkspace.bounds.west.toFixed(4)}W to {selectedWorkspace.bounds.east.toFixed(4)}E</div>
             <div><strong>Area:</strong> {(selectedWorkspace.area / 1000000).toFixed(2)} km²</div>
@@ -478,7 +478,7 @@ const GeoWorkspaceArea: React.FC<GeoWorkspaceAreaProps> = ({
               onClick={() => setShowMapOverlay(!showMapOverlay)}
               style={{
                 padding: '6px 12px',
-                background: '#6b7280',
+                background: '#8a8989',
                 border: 'none',
                 borderRadius: '4px',
                 color: 'white',
@@ -499,10 +499,10 @@ const GeoWorkspaceArea: React.FC<GeoWorkspaceAreaProps> = ({
                   style={{
                     width: '100%',
                     padding: '6px',
-                    background: '#334155',
-                    border: '1px solid #475569',
+                    background: '#4a4a4b',
+                    border: '1px solid #5e5e5f',
                     borderRadius: '4px',
-                    color: '#f1f5f9',
+                    color: '#eceaea',
                     fontSize: '12px',
                     marginBottom: '8px'
                   }}

@@ -339,7 +339,7 @@ export class XRManager {
     this.positionVRMenu(plane);
 
     const adt = AdvancedDynamicTexture.CreateForMesh(plane, 512, 700);
-    adt.background = 'rgba(15, 23, 42, 0.92)'; // matches this app's own slate-900 panel chrome
+    adt.background = 'rgba(31, 31, 32, 0.92)'; // matches this app's own slate-900 panel chrome
 
     const panel = new StackPanel();
     panel.width = '100%';
@@ -410,7 +410,7 @@ export class XRManager {
 
     if (items.length === 0) {
       const empty = new TextBlock('vrMenuEmpty', 'No fixtures or simulations placed yet');
-      empty.color = '#94a3b8';
+      empty.color = '#a3a2a2';
       empty.fontSize = 18;
       empty.height = '50px';
       empty.textWrapping = true;
@@ -431,7 +431,7 @@ export class XRManager {
       button.color = 'white';
       button.fontSize = 22;
       button.cornerRadius = 10;
-      button.background = item.isOn ? '#16a34a' : '#334155';
+      button.background = item.isOn ? '#16a34a' : '#4a4a4b';
       button.thickness = 0;
       // onPointerUpObservable (not onPointerClickObservable) - fires on the same
       // trigger-release gesture Babylon's default WebXR controller pointer selection
@@ -1366,7 +1366,7 @@ export class XRManager {
     exitBtn.textContent = '✕';
     exitBtn.title = 'Exit AR';
     exitBtn.setAttribute('aria-label', 'Exit AR');
-    exitBtn.style.cssText = 'position:fixed;top:max(20px,env(safe-area-inset-top));right:20px;pointer-events:auto;width:52px;height:52px;border-radius:9999px;border:2px solid rgba(255,255,255,0.85);background:rgba(15,23,42,0.75);color:#fff;font-size:22px;font-weight:600;display:flex;align-items:center;justify-content:center;touch-action:manipulation;user-select:none;';
+    exitBtn.style.cssText = 'position:fixed;top:max(20px,env(safe-area-inset-top));right:20px;pointer-events:auto;width:52px;height:52px;border-radius:9999px;border:2px solid rgba(255,255,255,0.85);background:rgba(31, 31, 32,0.75);color:#fff;font-size:22px;font-weight:600;display:flex;align-items:center;justify-content:center;touch-action:manipulation;user-select:none;';
     const onExit = (e: Event) => {
       e.preventDefault();
       e.stopPropagation();
@@ -1381,13 +1381,13 @@ export class XRManager {
     // doesn't otherwise sit as empty chrome above the scale readout.
     const hint = document.createElement('div');
     hint.id = 'naviz-ar-hint';
-    hint.style.cssText = 'pointer-events:none;padding:6px 14px;border-radius:9999px;background:rgba(15,23,42,0.85);color:#fff;font-size:13px;font-weight:500;text-align:center;max-width:80vw;opacity:0;transition:opacity 0.2s ease;';
+    hint.style.cssText = 'pointer-events:none;padding:6px 14px;border-radius:9999px;background:rgba(31, 31, 32,0.85);color:#fff;font-size:13px;font-weight:500;text-align:center;max-width:80vw;opacity:0;transition:opacity 0.2s ease;';
     this.arHintElement = hint;
 
     const readout = document.createElement('div');
     readout.id = 'naviz-ar-scale-readout';
     readout.textContent = `${Math.round(this.placementScale * 100)}%`;
-    readout.style.cssText = 'pointer-events:none;padding:4px 12px;border-radius:9999px;background:rgba(15,23,42,0.75);color:#fff;font-size:14px;font-weight:600;font-variant-numeric:tabular-nums;';
+    readout.style.cssText = 'pointer-events:none;padding:4px 12px;border-radius:9999px;background:rgba(31, 31, 32,0.75);color:#fff;font-size:14px;font-weight:600;font-variant-numeric:tabular-nums;';
     this.arScaleReadoutElement = readout;
 
     const row = document.createElement('div');
@@ -1398,7 +1398,7 @@ export class XRManager {
       btn.textContent = label;
       btn.title = title;
       btn.setAttribute('aria-label', title);
-      btn.style.cssText = 'pointer-events:auto;width:72px;height:72px;border-radius:9999px;border:2px solid rgba(255,255,255,0.85);background:rgba(15,23,42,0.75);color:#fff;font-size:28px;font-weight:600;display:flex;align-items:center;justify-content:center;touch-action:manipulation;user-select:none;';
+      btn.style.cssText = 'pointer-events:auto;width:72px;height:72px;border-radius:9999px;border:2px solid rgba(255,255,255,0.85);background:rgba(31, 31, 32,0.75);color:#fff;font-size:28px;font-weight:600;display:flex;align-items:center;justify-content:center;touch-action:manipulation;user-select:none;';
 
       let holdInterval: ReturnType<typeof setInterval> | null = null;
       const stop = () => { if (holdInterval !== null) { clearInterval(holdInterval); holdInterval = null; } };
@@ -1453,7 +1453,7 @@ export class XRManager {
       btn.textContent = label;
       btn.title = title;
       btn.setAttribute('aria-label', title);
-      btn.style.cssText = 'pointer-events:auto;width:56px;height:56px;border-radius:9999px;border:2px solid rgba(255,255,255,0.85);background:rgba(15,23,42,0.75);color:#fff;font-size:20px;font-weight:600;display:flex;align-items:center;justify-content:center;touch-action:manipulation;user-select:none;';
+      btn.style.cssText = 'pointer-events:auto;width:56px;height:56px;border-radius:9999px;border:2px solid rgba(255,255,255,0.85);background:rgba(31, 31, 32,0.75);color:#fff;font-size:20px;font-weight:600;display:flex;align-items:center;justify-content:center;touch-action:manipulation;user-select:none;';
       const onPress = (e: Event) => {
         e.preventDefault();
         e.stopPropagation();

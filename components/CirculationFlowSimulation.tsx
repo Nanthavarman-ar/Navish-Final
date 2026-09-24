@@ -857,7 +857,7 @@ const CirculationFlowSimulation: React.FC<CirculationFlowSimulationProps> = ({
       case 'medium': return '#f59e0b';
       case 'low': return '#10b981';
     }
-    return '#94a3b8';
+    return '#a3a2a2';
   };
 
   return (

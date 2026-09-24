@@ -418,10 +418,10 @@ const LightingMoodBoards: React.FC<LightingMoodBoardsProps> = ({ scene, onLighti
   return (
     <div style={{
       padding: '16px',
-      background: '#1e293b',
-      border: '1px solid #334155',
+      background: '#2d2d2e',
+      border: '1px solid #4a4a4b',
       borderRadius: '8px',
-      color: '#f1f5f9'
+      color: '#eceaea'
     }}>
       <h3 style={{ margin: '0 0 16px 0', fontSize: '16px' }}>Lighting Mood Boards</h3>
 
@@ -460,10 +460,10 @@ const LightingMoodBoards: React.FC<LightingMoodBoardsProps> = ({ scene, onLighti
               onClick={() => setSelectedPreset(key)}
               style={{
                 padding: '8px',
-                background: selectedPreset === key ? '#3b82f6' : '#334155',
-                border: '1px solid #475569',
+                background: selectedPreset === key ? '#ff4d4f' : '#4a4a4b',
+                border: '1px solid #5e5e5f',
                 borderRadius: '4px',
-                color: '#f1f5f9',
+                color: '#eceaea',
                 fontSize: '12px',
                 cursor: 'pointer',
                 textAlign: 'left'
@@ -477,7 +477,7 @@ const LightingMoodBoards: React.FC<LightingMoodBoardsProps> = ({ scene, onLighti
       </div>
 
       {/* Custom Controls */}
-      <div style={{ borderTop: '1px solid #334155', paddingTop: '16px', marginBottom: '16px' }}>
+      <div style={{ borderTop: '1px solid #4a4a4b', paddingTop: '16px', marginBottom: '16px' }}>
         <h4 style={{ margin: '0 0 12px 0', fontSize: '14px' }}>Custom Adjustments</h4>
 
         {/* Intensity */}
@@ -572,16 +572,16 @@ const LightingMoodBoards: React.FC<LightingMoodBoardsProps> = ({ scene, onLighti
             />
             Real World Time Lighting
           </label>
-          <div style={{ fontSize: '10px', color: '#94a3b8', marginTop: '2px' }}>
+          <div style={{ fontSize: '10px', color: '#a3a2a2', marginTop: '2px' }}>
             Automatically adjusts lighting based on current time and location
           </div>
         </div>
       </div>
 
       {/* Current Preset Info */}
-      <div style={{ borderTop: '1px solid #334155', paddingTop: '16px', marginBottom: '16px' }}>
+      <div style={{ borderTop: '1px solid #4a4a4b', paddingTop: '16px', marginBottom: '16px' }}>
         <h4 style={{ margin: '0 0 8px 0', fontSize: '14px' }}>Current Settings</h4>
-          <div style={{ fontSize: '12px', color: '#94a3b8' }}>
+          <div style={{ fontSize: '12px', color: '#a3a2a2' }}>
             <div>Preset: {currentPreset.name}</div>
             <div>Intensity: {(currentPreset.intensity * customIntensity).toFixed(1)}x</div>
             <div>Temperature: {Math.round(currentPreset.temperature * (customTemperature / 5000))}K</div>
@@ -591,15 +591,15 @@ const LightingMoodBoards: React.FC<LightingMoodBoardsProps> = ({ scene, onLighti
         </div>
 
       {/* Reset Button */}
-      <div style={{ borderTop: '1px solid #334155', paddingTop: '16px' }}>
+      <div style={{ borderTop: '1px solid #4a4a4b', paddingTop: '16px' }}>
         <button
           onClick={resetLighting}
           style={{
             padding: '8px 16px',
-            background: '#6b7280',
-            border: '1px solid #9ca3af',
+            background: '#8a8989',
+            border: '1px solid #a3a2a2',
             borderRadius: '4px',
-            color: '#f1f5f9',
+            color: '#eceaea',
             cursor: 'pointer',
             fontSize: '14px'
           }}

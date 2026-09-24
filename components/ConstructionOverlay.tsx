@@ -99,10 +99,10 @@ const ConstructionOverlay: React.FC<ConstructionOverlayProps> = ({ scene, onOver
   return (
     <div style={{
       padding: '16px',
-      background: '#1e293b',
-      border: '1px solid #334155',
+      background: '#2d2d2e',
+      border: '1px solid #4a4a4b',
       borderRadius: '8px',
-      color: '#f1f5f9'
+      color: '#eceaea'
     }}>
       <h3 style={{ margin: '0 0 16px 0', fontSize: '16px' }}>Construction Overlay</h3>
 
@@ -117,10 +117,10 @@ const ConstructionOverlay: React.FC<ConstructionOverlayProps> = ({ scene, onOver
               onClick={() => handleSampleImageSelect(image.url)}
               style={{
                 padding: '8px',
-                background: '#334155',
-                border: '1px solid #475569',
+                background: '#4a4a4b',
+                border: '1px solid #5e5e5f',
                 borderRadius: '4px',
-                color: '#f1f5f9',
+                color: '#eceaea',
                 cursor: 'pointer',
                 fontSize: '12px',
                 textAlign: 'center'
@@ -147,10 +147,10 @@ const ConstructionOverlay: React.FC<ConstructionOverlayProps> = ({ scene, onOver
             display: 'block',
             width: '100%',
             padding: '8px',
-            background: '#8b5cf6',
+            background: '#c2272a',
             border: '1px solid #a78bfa',
             borderRadius: '4px',
-            color: '#f1f5f9',
+            color: '#eceaea',
             cursor: 'pointer',
             fontSize: '14px',
             textAlign: 'center'
@@ -162,7 +162,7 @@ const ConstructionOverlay: React.FC<ConstructionOverlayProps> = ({ scene, onOver
 
       {/* Overlay Controls */}
       {selectedImage && (
-        <div style={{ borderTop: '1px solid #334155', paddingTop: '16px' }}>
+        <div style={{ borderTop: '1px solid #4a4a4b', paddingTop: '16px' }}>
           <h4 style={{ margin: '0 0 12px 0', fontSize: '14px' }}>Overlay Controls</h4>
 
           {/* Opacity */}
@@ -281,7 +281,7 @@ const ConstructionOverlay: React.FC<ConstructionOverlayProps> = ({ scene, onOver
                 background: '#dc2626',
                 border: '1px solid #ef4444',
                 borderRadius: '4px',
-                color: '#f1f5f9',
+                color: '#eceaea',
                 cursor: 'pointer',
                 fontSize: '14px'
               }}
@@ -292,7 +292,7 @@ const ConstructionOverlay: React.FC<ConstructionOverlayProps> = ({ scene, onOver
         </div>
       )}
 
-      <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '8px' }}>
+      <div style={{ fontSize: '12px', color: '#a3a2a2', marginTop: '8px' }}>
         Blend real construction site photos with your 3D model for accurate visualization
       </div>
     </div>

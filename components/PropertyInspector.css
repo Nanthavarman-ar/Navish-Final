@@ -1,9 +1,9 @@
 .property-inspector {
   padding: 16px;
-  background: #1e293b;
-  border: 1px solid #334155;
+  background: #2d2d2e;
+  border: 1px solid #4a4a4b;
   border-radius: 8px;
-  color: #f1f5f9;
+  color: #eceaea;
   height: 100%;
   overflow-y: auto;
   font-family: Arial, sans-serif;
@@ -17,7 +17,7 @@
 .property-inspector h4 {
   margin: 0 0 8px 0;
   font-size: 12px;
-  color: #3b82f6;
+  color: #ff4d4f;
 }
 
 .basic-properties,
@@ -30,7 +30,7 @@
 .label {
   display: block;
   font-size: 11px;
-  color: #94a3b8;
+  color: #a3a2a2;
   margin-bottom: 4px;
 }
 
@@ -38,10 +38,10 @@
 .input-number,
 .input-range,
 .input-checkbox {
-  background: #334155;
-  border: 1px solid #475569;
+  background: #4a4a4b;
+  border: 1px solid #5e5e5f;
   border-radius: 3px;
-  color: #f1f5f9;
+  color: #eceaea;
   font-size: 11px;
   padding: 4px;
 }
@@ -71,17 +71,17 @@
 
 .type-display {
   padding: 4px;
-  background: #334155;
+  background: #4a4a4b;
   border-radius: 3px;
   font-size: 11px;
-  color: #f1f5f9;
+  color: #eceaea;
 }
 
 .checkbox-label {
   display: flex;
   align-items: center;
   font-size: 11px;
-  color: #94a3b8;
+  color: #a3a2a2;
   margin-right: 8px;
 }
 
@@ -97,14 +97,14 @@
 
 .dimension-box {
   padding: 4px;
-  background: #334155;
+  background: #4a4a4b;
   border-radius: 3px;
   text-align: center;
 }
 
 .dimension-label {
   font-size: 10px;
-  color: #94a3b8;
+  color: #a3a2a2;
 }
 
 .dimension-value {
@@ -133,10 +133,10 @@
 .color-component-input {
   width: 50px;
   padding: 4px;
-  background: #334155;
-  border: 1px solid #475569;
+  background: #4a4a4b;
+  border: 1px solid #5e5e5f;
   border-radius: 3px;
-  color: #f1f5f9;
+  color: #eceaea;
   font-size: 11px;
   text-align: center;
 }
@@ -147,7 +147,7 @@
 
 .alpha-value {
   font-size: 10px;
-  color: #94a3b8;
+  color: #a3a2a2;
   text-align: center;
   margin-top: 2px;
 }

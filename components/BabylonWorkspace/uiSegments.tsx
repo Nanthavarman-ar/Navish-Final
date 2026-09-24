@@ -1731,7 +1731,7 @@ const PresenceRoster: React.FC<{ collabManagerRef?: React.RefObject<any> }> = ({
         <li key={user.id} className="flex items-center gap-2 text-sm min-w-0">
           <span
             className="w-2.5 h-2.5 rounded-full shrink-0"
-            style={{ backgroundColor: user.color?.toHexString?.() ?? '#22d3ee' }}
+            style={{ backgroundColor: user.color?.toHexString?.() ?? '#ff4d4f' }}
             aria-hidden
           />
           <span className="text-slate-200 truncate">{user.name}{isYou ? ' (you)' : ''}</span>

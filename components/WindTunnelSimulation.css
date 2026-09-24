@@ -1,9 +1,9 @@
 .windTunnelContainer {
   padding: 16px;
-  background: #1e293b;
-  border: 1px solid #334155;
+  background: #2d2d2e;
+  border: 1px solid #4a4a4b;
   border-radius: 8px;
-  color: #f1f5f9;
+  color: #eceaea;
 }
 
 .heading {
@@ -49,16 +49,16 @@
 
 .presetButton {
   padding: 6px;
-  background: #334155;
-  border: 1px solid #475569;
+  background: #4a4a4b;
+  border: 1px solid #5e5e5f;
   border-radius: 4px;
-  color: #f1f5f9;
+  color: #eceaea;
   font-size: 11px;
   cursor: pointer;
 }
 
 .windControls {
-  border-top: 1px solid #334155;
+  border-top: 1px solid #4a4a4b;
   padding-top: 16px;
 }
 
@@ -83,6 +83,6 @@
 
 .footerNote {
   font-size: 12px;
-  color: #94a3b8;
+  color: #a3a2a2;
   margin-top: 8px;
 }

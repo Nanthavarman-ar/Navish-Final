@@ -1100,47 +1100,47 @@ const LightingPresets: React.FC<LightingPresetsProps> = ({ scene, onPresetChange
       </div>
 
       <style>{`
-        .lighting-panel { display: flex; flex-direction: column; height: 100%; min-height: 320px; color: #f1f5f9; }
+        .lighting-panel { display: flex; flex-direction: column; height: 100%; min-height: 320px; color: #eceaea; }
         .lighting-mode-tabs { display: flex; gap: 4px; margin-bottom: 12px; padding: 4px; background: rgba(0,0,0,0.2); border-radius: 8px; }
-        .lighting-mode-tabs button { flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px; padding: 8px 12px; border: none; border-radius: 6px; background: transparent; color: #94a3b8; cursor: pointer; font-size: 12px; font-weight: 500; transition: all 0.2s; }
-        .lighting-mode-tabs button:hover { color: #e2e8f0; background: rgba(255,255,255,0.05); }
-        .lighting-mode-tabs button.active { background: linear-gradient(135deg, #3b82f6, #8b5cf6); color: white; }
+        .lighting-mode-tabs button { flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px; padding: 8px 12px; border: none; border-radius: 6px; background: transparent; color: #a3a2a2; cursor: pointer; font-size: 12px; font-weight: 500; transition: all 0.2s; }
+        .lighting-mode-tabs button:hover { color: #dcdada; background: rgba(255,255,255,0.05); }
+        .lighting-mode-tabs button.active { background: linear-gradient(135deg, #ff4d4f, #c2272a); color: white; }
         .lighting-scroll { flex: 1; min-height: 0; overflow-y: auto; padding-right: 4px; }
         .lighting-scroll::-webkit-scrollbar { width: 6px; }
-        .lighting-scroll::-webkit-scrollbar-thumb { background: #475569; border-radius: 3px; }
+        .lighting-scroll::-webkit-scrollbar-thumb { background: #5e5e5f; border-radius: 3px; }
         .preset-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin-bottom: 16px; }
-        .preset-btn { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 12px 8px; background: rgba(51,65,85,0.8); border: 1px solid #475569; border-radius: 8px; color: #e2e8f0; font-size: 12px; cursor: pointer; transition: all 0.2s; }
-        .preset-btn:hover:not(:disabled) { background: rgba(59,130,246,0.2); border-color: #3b82f6; }
-        .preset-btn.selected { background: rgba(59,130,246,0.3); border-color: #3b82f6; box-shadow: 0 0 12px rgba(59,130,246,0.3); }
+        .preset-btn { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 12px 8px; background: rgba(51,65,85,0.8); border: 1px solid #5e5e5f; border-radius: 8px; color: #dcdada; font-size: 12px; cursor: pointer; transition: all 0.2s; }
+        .preset-btn:hover:not(:disabled) { background: rgba(255, 77, 79,0.2); border-color: #ff4d4f; }
+        .preset-btn.selected { background: rgba(255, 77, 79,0.3); border-color: #ff4d4f; box-shadow: 0 0 12px rgba(255, 77, 79,0.3); }
         .preset-btn:disabled { opacity: 0.6; cursor: not-allowed; }
         .preset-icon { font-size: 20px; }
         .section { margin-bottom: 16px; padding-top: 12px; border-top: 1px solid rgba(71,85,105,0.5); }
         .section:first-of-type { border-top: none; padding-top: 0; }
         .section-label { display: flex; align-items: center; justify-content: space-between; font-size: 12px; font-weight: 600; margin-bottom: 8px; }
-        .section-title { font-size: 12px; font-weight: 600; margin: 0 0 10px 0; color: #94a3b8; display: flex; align-items: center; gap: 6px; }
-        .toggle-btn { padding: 4px 10px; border-radius: 6px; border: 1px solid #475569; background: #334155; color: #94a3b8; font-size: 11px; cursor: pointer; transition: all 0.2s; }
+        .section-title { font-size: 12px; font-weight: 600; margin: 0 0 10px 0; color: #a3a2a2; display: flex; align-items: center; gap: 6px; }
+        .toggle-btn { padding: 4px 10px; border-radius: 6px; border: 1px solid #5e5e5f; background: #4a4a4b; color: #a3a2a2; font-size: 11px; cursor: pointer; transition: all 0.2s; }
         .toggle-btn.on { background: #10b981; border-color: #34d399; color: white; }
-        .hint { font-size: 11px; color: #64748b; margin: 6px 0 0 0; }
+        .hint { font-size: 11px; color: #8a8989; margin: 6px 0 0 0; }
         .add-light-row { display: flex; gap: 8px; margin-bottom: 12px; }
-        .add-btn { flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px; padding: 10px; background: linear-gradient(135deg, #334155, #1e293b); border: 1px solid #475569; border-radius: 8px; color: #e2e8f0; font-size: 12px; cursor: pointer; transition: all 0.2s; }
-        .add-btn:hover { background: linear-gradient(135deg, #3b82f6, #2563eb); border-color: #60a5fa; }
-        .add-btn.active-mode { background: linear-gradient(135deg, #3b82f6, #8b5cf6); border-color: #60a5fa; }
+        .add-btn { flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px; padding: 10px; background: linear-gradient(135deg, #4a4a4b, #2d2d2e); border: 1px solid #5e5e5f; border-radius: 8px; color: #dcdada; font-size: 12px; cursor: pointer; transition: all 0.2s; }
+        .add-btn:hover { background: linear-gradient(135deg, #ff4d4f, #e8393c); border-color: #ff7072; }
+        .add-btn.active-mode { background: linear-gradient(135deg, #ff4d4f, #c2272a); border-color: #ff7072; }
         .lights-list { display: flex; flex-direction: column; gap: 8px; }
         .light-item { display: flex; align-items: center; gap: 8px; padding: 8px; background: rgba(0,0,0,0.2); border-radius: 6px; font-size: 11px; }
         .light-item-full { padding: 10px; background: rgba(0,0,0,0.2); border-radius: 6px; font-size: 11px; margin-bottom: 8px; }
         .light-item-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; font-weight: 600; }
         .pos-row { margin-top: 8px; padding-top: 8px; border-top: 1px solid rgba(71,85,105,0.4); }
-        .pos-label { display: block; font-size: 10px; color: #64748b; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.03em; }
-        .light-item input { flex: 1; accent-color: #3b82f6; }
+        .pos-label { display: block; font-size: 10px; color: #8a8989; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.03em; }
+        .light-item input { flex: 1; accent-color: #ff4d4f; }
         .del-btn { padding: 2px 8px; background: #dc2626; border: none; border-radius: 4px; color: white; cursor: pointer; font-size: 10px; }
-        .analyze-btn { width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px; padding: 10px; background: linear-gradient(135deg, #7c3aed, #5b21b6); border: none; border-radius: 8px; color: white; font-size: 12px; cursor: pointer; transition: all 0.2s; }
+        .analyze-btn { width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px; padding: 10px; background: linear-gradient(135deg, #a01f22, #5b21b6); border: none; border-radius: 8px; color: white; font-size: 12px; cursor: pointer; transition: all 0.2s; }
         .analyze-btn:hover { filter: brightness(1.1); }
         .material-list { margin-top: 10px; display: flex; flex-direction: column; gap: 6px; }
         .material-item { display: flex; align-items: center; justify-content: space-between; padding: 6px 8px; background: rgba(0,0,0,0.2); border-radius: 6px; font-size: 11px; }
         .color-dots { display: flex; gap: 6px; }
         .dot { width: 14px; height: 14px; border-radius: 50%; border: 1px solid rgba(255,255,255,0.3); }
-        .ai-section { background: linear-gradient(135deg, rgba(59,130,246,0.08), rgba(139,92,246,0.08)); padding: 12px; border-radius: 8px; border: 1px solid rgba(139,92,246,0.3); }
-        .ai-btn { width: 100%; padding: 12px; background: linear-gradient(135deg, #3b82f6, #8b5cf6); border: none; border-radius: 8px; color: white; font-size: 13px; font-weight: 600; cursor: pointer; transition: all 0.2s; }
+        .ai-section { background: linear-gradient(135deg, rgba(255, 77, 79,0.08), rgba(194, 39, 42,0.08)); padding: 12px; border-radius: 8px; border: 1px solid rgba(194, 39, 42,0.3); }
+        .ai-btn { width: 100%; padding: 12px; background: linear-gradient(135deg, #ff4d4f, #c2272a); border: none; border-radius: 8px; color: white; font-size: 13px; font-weight: 600; cursor: pointer; transition: all 0.2s; }
         .ai-btn:hover:not(:disabled) { filter: brightness(1.15); transform: translateY(-1px); }
         .ai-btn:disabled { opacity: 0.7; cursor: wait; }
       `}</style>
@@ -1152,7 +1152,7 @@ function Slider({ label, value, min, max, step, onChange }: { label: string; val
   return (
     <div className="slider-row" style={{ marginBottom: 10 }}>
       <label style={{ display: 'block', fontSize: 11, marginBottom: 4 }}>{label}: {value.toFixed(2)}</label>
-      <input type="range" min={min} max={max} step={step} value={value} onChange={e => onChange(parseFloat(e.target.value))} style={{ width: '100%', accentColor: '#3b82f6' }} />
+      <input type="range" min={min} max={max} step={step} value={value} onChange={e => onChange(parseFloat(e.target.value))} style={{ width: '100%', accentColor: '#ff4d4f' }} />
     </div>
   );
 }

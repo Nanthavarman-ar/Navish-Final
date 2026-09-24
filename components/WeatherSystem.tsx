@@ -393,10 +393,10 @@ const WeatherSystem: React.FC<WeatherSystemProps> = ({ scene }) => {
   return (
     <div style={{
       padding: '16px',
-      background: '#1e293b',
-      border: '1px solid #334155',
+      background: '#2d2d2e',
+      border: '1px solid #4a4a4b',
       borderRadius: '8px',
-      color: '#f1f5f9',
+      color: '#eceaea',
       maxWidth: '320px'
     }}>
       <h3 style={{ margin: '0 0 16px 0', fontSize: '16px' }}>Weather System</h3>
@@ -444,10 +444,10 @@ const WeatherSystem: React.FC<WeatherSystemProps> = ({ scene }) => {
               disabled={useLiveWeather}
               style={{
                 padding: '8px',
-                background: selectedWeather === weather.id ? '#3b82f6' : '#334155',
-                border: '1px solid #475569',
+                background: selectedWeather === weather.id ? '#ff4d4f' : '#4a4a4b',
+                border: '1px solid #5e5e5f',
                 borderRadius: '4px',
-                color: '#f1f5f9',
+                color: '#eceaea',
                 fontSize: '12px',
                 cursor: useLiveWeather ? 'not-allowed' : 'pointer',
                 textAlign: 'left'
@@ -462,7 +462,7 @@ const WeatherSystem: React.FC<WeatherSystemProps> = ({ scene }) => {
       </div>
 
       {/* Controls */}
-      <div style={{ borderTop: '1px solid #334155', paddingTop: '16px', marginBottom: '16px' }}>
+      <div style={{ borderTop: '1px solid #4a4a4b', paddingTop: '16px', marginBottom: '16px' }}>
         <h4 style={{ margin: '0 0 12px 0', fontSize: '14px' }}>Weather Controls</h4>
 
         {/* Intensity */}
@@ -502,9 +502,9 @@ const WeatherSystem: React.FC<WeatherSystemProps> = ({ scene }) => {
       </div>
 
       {/* Current Settings */}
-      <div style={{ borderTop: '1px solid #334155', paddingTop: '16px', marginBottom: '16px' }}>
+      <div style={{ borderTop: '1px solid #4a4a4b', paddingTop: '16px', marginBottom: '16px' }}>
         <h4 style={{ margin: '0 0 8px 0', fontSize: '14px' }}>Current Settings</h4>
-        <div style={{ fontSize: '12px', color: '#94a3b8' }}>
+        <div style={{ fontSize: '12px', color: '#a3a2a2' }}>
           <div>Weather: {weatherConditions.find(w => w.id === selectedWeather)?.name || 'Sunny'}</div>
           <div>Intensity: {intensity.toFixed(1)}x</div>
           <div>Realtime: {isRealtimeEnabled ? 'Enabled' : 'Disabled'}</div>
@@ -513,15 +513,15 @@ const WeatherSystem: React.FC<WeatherSystemProps> = ({ scene }) => {
       </div>
 
       {/* Reset Button */}
-      <div style={{ borderTop: '1px solid #334155', paddingTop: '16px' }}>
+      <div style={{ borderTop: '1px solid #4a4a4b', paddingTop: '16px' }}>
         <button
           onClick={resetWeather}
           style={{
             padding: '8px 16px',
-            background: '#6b7280',
-            border: '1px solid #9ca3af',
+            background: '#8a8989',
+            border: '1px solid #a3a2a2',
             borderRadius: '4px',
-            color: '#f1f5f9',
+            color: '#eceaea',
             cursor: 'pointer',
             fontSize: '14px'
           }}

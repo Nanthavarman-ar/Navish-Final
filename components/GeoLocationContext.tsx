@@ -376,10 +376,10 @@ const GeoLocationContext: React.FC<GeoLocationContextProps> = ({
       maxWidth: 'calc(100vw - 32px)',
       zIndex: 50,
       padding: '16px',
-      background: '#1e293b',
-      border: '1px solid #334155',
+      background: '#2d2d2e',
+      border: '1px solid #4a4a4b',
       borderRadius: '8px',
-      color: '#f1f5f9',
+      color: '#eceaea',
       maxHeight: '80vh',
       overflowY: 'auto',
       boxShadow: '0 10px 25px rgba(0,0,0,0.5)'
@@ -393,7 +393,7 @@ const GeoLocationContext: React.FC<GeoLocationContextProps> = ({
             style={{
               background: 'transparent',
               border: 'none',
-              color: '#94a3b8',
+              color: '#a3a2a2',
               cursor: 'pointer',
               fontSize: '18px',
               lineHeight: 1,
@@ -417,10 +417,10 @@ const GeoLocationContext: React.FC<GeoLocationContextProps> = ({
           placeholder="Enter your API key"
           style={{
             padding: '6px',
-            background: '#334155',
-            border: '1px solid #475569',
+            background: '#4a4a4b',
+            border: '1px solid #5e5e5f',
             borderRadius: '4px',
-            color: '#f1f5f9',
+            color: '#eceaea',
             fontSize: '12px',
             width: '100%'
           }}
@@ -442,7 +442,7 @@ const GeoLocationContext: React.FC<GeoLocationContextProps> = ({
         </div>
 
         {currentLocation && (
-          <div style={{ fontSize: '12px', color: '#94a3b8' }}>
+          <div style={{ fontSize: '12px', color: '#a3a2a2' }}>
             <div>Lat: {currentLocation.latitude.toFixed(6)}</div>
             <div>Lng: {currentLocation.longitude.toFixed(6)}</div>
             {currentLocation.altitude && <div>Alt: {currentLocation.altitude.toFixed(1)}m</div>}
@@ -453,32 +453,32 @@ const GeoLocationContext: React.FC<GeoLocationContextProps> = ({
 
       {/* Weather Information */}
       {weatherData && (
-        <div style={{ borderTop: '1px solid #334155', paddingTop: '16px', marginBottom: '16px' }}>
+        <div style={{ borderTop: '1px solid #4a4a4b', paddingTop: '16px', marginBottom: '16px' }}>
           <h4 style={{ margin: '0 0 12px 0', fontSize: '14px' }}>Weather</h4>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '8px' }}>
             <div style={{ textAlign: 'center' }}>
-              <div style={{ fontSize: '18px', fontWeight: 'bold', color: '#3b82f6' }}>
+              <div style={{ fontSize: '18px', fontWeight: 'bold', color: '#ff4d4f' }}>
                 {weatherData.temperature.toFixed(1)}°C
               </div>
-              <div style={{ fontSize: '10px', color: '#94a3b8' }}>Temperature</div>
+              <div style={{ fontSize: '10px', color: '#a3a2a2' }}>Temperature</div>
             </div>
             <div style={{ textAlign: 'center' }}>
-              <div style={{ fontSize: '18px', fontWeight: 'bold', color: '#3b82f6' }}>
+              <div style={{ fontSize: '18px', fontWeight: 'bold', color: '#ff4d4f' }}>
                 {weatherData.humidity}%
               </div>
-              <div style={{ fontSize: '10px', color: '#94a3b8' }}>Humidity</div>
+              <div style={{ fontSize: '10px', color: '#a3a2a2' }}>Humidity</div>
             </div>
             <div style={{ textAlign: 'center' }}>
-              <div style={{ fontSize: '18px', fontWeight: 'bold', color: '#3b82f6' }}>
+              <div style={{ fontSize: '18px', fontWeight: 'bold', color: '#ff4d4f' }}>
                 {weatherData.windSpeed.toFixed(1)} m/s
               </div>
-              <div style={{ fontSize: '10px', color: '#94a3b8' }}>Wind Speed</div>
+              <div style={{ fontSize: '10px', color: '#a3a2a2' }}>Wind Speed</div>
             </div>
             <div style={{ textAlign: 'center' }}>
-              <div style={{ fontSize: '18px', fontWeight: 'bold', color: '#3b82f6' }}>
+              <div style={{ fontSize: '18px', fontWeight: 'bold', color: '#ff4d4f' }}>
                 {weatherData.description}
               </div>
-              <div style={{ fontSize: '10px', color: '#94a3b8' }}>Conditions</div>
+              <div style={{ fontSize: '10px', color: '#a3a2a2' }}>Conditions</div>
             </div>
           </div>
         </div>
@@ -491,7 +491,7 @@ const GeoLocationContext: React.FC<GeoLocationContextProps> = ({
           disabled={isTracking}
           style={{
             padding: '8px 16px',
-            background: '#3b82f6',
+            background: '#ff4d4f',
             border: 'none',
             borderRadius: '4px',
             color: 'white',
@@ -520,7 +520,7 @@ const GeoLocationContext: React.FC<GeoLocationContextProps> = ({
       </div>
 
       {/* Manual Location Input */}
-      <div style={{ borderTop: '1px solid #334155', paddingTop: '16px', marginBottom: '16px' }}>
+      <div style={{ borderTop: '1px solid #4a4a4b', paddingTop: '16px', marginBottom: '16px' }}>
         <h4 style={{ margin: '0 0 12px 0', fontSize: '14px' }}>Manual Location</h4>
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '8px' }}>
@@ -535,10 +535,10 @@ const GeoLocationContext: React.FC<GeoLocationContextProps> = ({
               step="0.000001"
               style={{
                 padding: '6px',
-                background: '#334155',
-                border: '1px solid #475569',
+                background: '#4a4a4b',
+                border: '1px solid #5e5e5f',
                 borderRadius: '4px',
-                color: '#f1f5f9',
+                color: '#eceaea',
                 fontSize: '12px',
                 width: '100%'
               }}
@@ -561,10 +561,10 @@ const GeoLocationContext: React.FC<GeoLocationContextProps> = ({
               step="0.000001"
               style={{
                 padding: '6px',
-                background: '#334155',
-                border: '1px solid #475569',
+                background: '#4a4a4b',
+                border: '1px solid #5e5e5f',
                 borderRadius: '4px',
-                color: '#f1f5f9',
+                color: '#eceaea',
                 fontSize: '12px',
                 width: '100%'
               }}
@@ -586,7 +586,7 @@ const GeoLocationContext: React.FC<GeoLocationContextProps> = ({
             }}
             style={{
               padding: '6px 12px',
-              background: '#6b7280',
+              background: '#8a8989',
               border: 'none',
               borderRadius: '4px',
               color: 'white',
@@ -618,7 +618,7 @@ const GeoLocationContext: React.FC<GeoLocationContextProps> = ({
 
       {/* Favorites */}
       {favoriteLocations.length > 0 && (
-        <div style={{ borderTop: '1px solid #334155', paddingTop: '16px', marginBottom: '16px' }}>
+        <div style={{ borderTop: '1px solid #4a4a4b', paddingTop: '16px', marginBottom: '16px' }}>
           <h4 style={{ margin: '0 0 12px 0', fontSize: '14px' }}>Favorite Locations</h4>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
             {favoriteLocations.map((location, index) => (
@@ -627,10 +627,10 @@ const GeoLocationContext: React.FC<GeoLocationContextProps> = ({
                   onClick={() => setManualLocation(location.latitude, location.longitude, location.altitude)}
                   style={{
                     padding: '4px 8px',
-                    background: '#475569',
+                    background: '#5e5e5f',
                     border: 'none',
                     borderRadius: '4px',
-                    color: '#f1f5f9',
+                    color: '#eceaea',
                     fontSize: '11px',
                     cursor: 'pointer',
                     flex: 1,
@@ -662,7 +662,7 @@ const GeoLocationContext: React.FC<GeoLocationContextProps> = ({
 
       {/* Sun Path Information */}
       {sunPath && (
-        <div style={{ borderTop: '1px solid #334155', paddingTop: '16px' }}>
+        <div style={{ borderTop: '1px solid #4a4a4b', paddingTop: '16px' }}>
           <h4 style={{ margin: '0 0 12px 0', fontSize: '14px' }}>Sun Path</h4>
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px', marginBottom: '8px' }}>
@@ -670,30 +670,30 @@ const GeoLocationContext: React.FC<GeoLocationContextProps> = ({
               <div style={{ fontSize: '18px', fontWeight: 'bold', color: '#f59e0b' }}>
                 {sunPath.azimuth.toFixed(1)}°
               </div>
-              <div style={{ fontSize: '10px', color: '#94a3b8' }}>Azimuth</div>
+              <div style={{ fontSize: '10px', color: '#a3a2a2' }}>Azimuth</div>
             </div>
             <div style={{ textAlign: 'center' }}>
               <div style={{ fontSize: '18px', fontWeight: 'bold', color: '#f59e0b' }}>
                 {sunPath.elevation.toFixed(1)}°
               </div>
-              <div style={{ fontSize: '10px', color: '#94a3b8' }}>Elevation</div>
+              <div style={{ fontSize: '10px', color: '#a3a2a2' }}>Elevation</div>
             </div>
             <div style={{ textAlign: 'center' }}>
               <div style={{ fontSize: '18px', fontWeight: 'bold', color: '#f59e0b' }}>
                 {(sunPath.intensity * 100).toFixed(0)}%
               </div>
-              <div style={{ fontSize: '10px', color: '#94a3b8' }}>Intensity</div>
+              <div style={{ fontSize: '10px', color: '#a3a2a2' }}>Intensity</div>
             </div>
           </div>
 
-          <div style={{ fontSize: '12px', color: '#94a3b8' }}>
+          <div style={{ fontSize: '12px', color: '#a3a2a2' }}>
             Sun position calculated for {currentTime.toLocaleTimeString()}
           </div>
         </div>
       )}
 
       {/* Time Controls */}
-      <div style={{ borderTop: '1px solid #334155', paddingTop: '16px', marginTop: '16px' }}>
+      <div style={{ borderTop: '1px solid #4a4a4b', paddingTop: '16px', marginTop: '16px' }}>
         <h4 style={{ margin: '0 0 12px 0', fontSize: '14px' }}>Time Controls</h4>
 
         <div style={{ marginBottom: '8px' }}>
@@ -719,10 +719,10 @@ const GeoLocationContext: React.FC<GeoLocationContextProps> = ({
               onChange={(e) => updateTime(new Date(e.target.value))}
               style={{
                 padding: '6px',
-                background: '#334155',
-                border: '1px solid #475569',
+                background: '#4a4a4b',
+                border: '1px solid #5e5e5f',
                 borderRadius: '4px',
-                color: '#f1f5f9',
+                color: '#eceaea',
                 fontSize: '12px',
                 width: '100%'
               }}

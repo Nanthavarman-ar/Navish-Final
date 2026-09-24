@@ -2,8 +2,8 @@
 .floatingMinimapContainer {
   position: fixed;
   z-index: 1000;
-  background: #1e293b;
-  border: 2px solid #334155;
+  background: #2d2d2e;
+  border: 2px solid #4a4a4b;
   border-radius: 10px;
   box-shadow: 0 2px 12px rgba(0,0,0,0.2);
   overflow: hidden;
@@ -33,10 +33,10 @@
 }
 .minimapContainer {
   padding: 16px;
-  background: #1e293b;
-  border: 1px solid #334155;
+  background: #2d2d2e;
+  border: 1px solid #4a4a4b;
   border-radius: 8px;
-  color: #f1f5f9;
+  color: #eceaea;
   position: relative;
 }
 
@@ -60,10 +60,10 @@
 
 .minimapButton {
   padding: 4px 8px;
-  background: #334155;
-  border: 1px solid #475569;
+  background: #4a4a4b;
+  border: 1px solid #5e5e5f;
   border-radius: 4px;
-  color: #f1f5f9;
+  color: #eceaea;
   font-size: 12px;
   cursor: pointer;
 }
@@ -77,17 +77,17 @@
 }
 
 .minimapCanvas {
-  border: 1px solid #475569;
+  border: 1px solid #5e5e5f;
   border-radius: 4px;
   cursor: crosshair;
-  background: #0f172a;
+  background: #1f1f20;
 }
 
 .minimapLegend {
   position: absolute;
   top: 4px;
   right: 4px;
-  background: rgba(15, 23, 42, 0.9);
+  background: rgba(31, 31, 32, 0.9);
   padding: 4px;
   border-radius: 4px;
   font-size: 10px;
@@ -109,15 +109,15 @@
 .minimapStatus {
   margin-top: 12px;
   font-size: 12px;
-  color: #94a3b8;
+  color: #a3a2a2;
 }
 
 .tourComposer {
   margin-top: 16px;
   padding: 8px;
-  background: #0f172a;
+  background: #1f1f20;
   border-radius: 6px;
-  color: #f1f5f9;
+  color: #eceaea;
 }
 
 .tourComposerTitle {
@@ -135,7 +135,7 @@
   background: #18181b;
   color: #fff;
   border-radius: 4px;
-  border: 1px solid #334155;
+  border: 1px solid #4a4a4b;
   font-size: 12px;
   padding: 2px 6px;
   width: 100px;
@@ -169,7 +169,7 @@
 
 .tourComposerGoButton {
   font-size: 10px;
-  background: #334155;
+  background: #4a4a4b;
   color: #fff;
   border-radius: 2px;
   border: none;

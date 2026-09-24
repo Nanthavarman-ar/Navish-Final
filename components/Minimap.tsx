@@ -95,9 +95,9 @@ const Minimap: React.FC<MinimapProps> = ({
       <div style={{
         marginTop: '8px',
         padding: '8px',
-        background: '#0f172a',
+        background: '#1f1f20',
         borderRadius: '6px',
-        color: '#f1f5f9'
+        color: '#eceaea'
       }}>
         <input
           ref={pdfInputRef}
@@ -122,8 +122,8 @@ const Minimap: React.FC<MinimapProps> = ({
           <ul style={{ maxHeight: '120px', overflowY: 'auto', margin: '8px 0 0', padding: 0, listStyle: 'none' }}>
             {savedPdfs.map((pdf) => (
               <li key={pdf.id} style={{
-                background: '#1e293b',
-                color: '#f1f5f9',
+                background: '#2d2d2e',
+                color: '#eceaea',
                 padding: '6px 8px',
                 borderRadius: '4px',
                 display: 'flex',
@@ -135,14 +135,14 @@ const Minimap: React.FC<MinimapProps> = ({
                 <span style={{ fontWeight: 500, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{pdf.name}</span>
                 <button
                   type="button"
-                  style={{ fontSize: '11px', background: '#3b82f6', color: '#fff', borderRadius: '4px', border: 'none', padding: '4px 10px', cursor: 'pointer' }}
+                  style={{ fontSize: '11px', background: '#ff4d4f', color: '#fff', borderRadius: '4px', border: 'none', padding: '4px 10px', cursor: 'pointer' }}
                   onClick={() => setOpenPdfId(openPdfId === pdf.id ? null : pdf.id)}
                 >
                   {openPdfId === pdf.id ? 'Hide' : 'Open'}
                 </button>
                 <button
                   type="button"
-                  style={{ fontSize: '11px', background: '#64748b', color: '#fff', borderRadius: '4px', border: 'none', padding: '4px 8px', cursor: 'pointer' }}
+                  style={{ fontSize: '11px', background: '#8a8989', color: '#fff', borderRadius: '4px', border: 'none', padding: '4px 8px', cursor: 'pointer' }}
                   onClick={() => removePdf(pdf.id)}
                 >
                   Delete
@@ -154,7 +154,7 @@ const Minimap: React.FC<MinimapProps> = ({
             <img
               src={openPdf.previewImage}
               alt={openPdf.name}
-              style={{ marginTop: '8px', width: '100%', borderRadius: '4px', border: '1px solid #334155' }}
+              style={{ marginTop: '8px', width: '100%', borderRadius: '4px', border: '1px solid #4a4a4b' }}
             />
           )}
         </div>

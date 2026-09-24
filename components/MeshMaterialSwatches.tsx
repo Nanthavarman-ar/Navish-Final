@@ -67,7 +67,7 @@ function materialPreviewColor(mat: Material): string {
   const c = anyMat.albedoColor || anyMat.diffuseColor;
   const alpha = typeof anyMat.alpha === 'number' ? anyMat.alpha : 1;
   if (c) return `rgba(${Math.round(c.r * 255)}, ${Math.round(c.g * 255)}, ${Math.round(c.b * 255)}, ${alpha})`;
-  return '#475569';
+  return '#5e5e5f';
 }
 
 function hexToRgba(hex: string, alpha: number): string {
@@ -156,7 +156,7 @@ const MeshMaterialSwatches: React.FC<MeshMaterialSwatchesProps> = ({ scene, mate
       ctx.save();
       ctx.translate(64, 64);
       ctx.rotate(Math.PI / 4);
-      ctx.fillStyle = 'rgba(15, 23, 42, 0.82)';
+      ctx.fillStyle = 'rgba(31, 31, 32, 0.82)';
       ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)';
       ctx.lineWidth = 5;
       const half = 38;
@@ -403,7 +403,7 @@ const MeshMaterialSwatches: React.FC<MeshMaterialSwatchesProps> = ({ scene, mate
       card.width = '100%';
       card.height = '100%';
       card.cornerRadius = 34;
-      card.color = '#22d3ee';
+      card.color = '#ff4d4f';
       card.thickness = 3;
       card.background = '#1c1917';
       card.alpha = 0.96;
@@ -422,7 +422,7 @@ const MeshMaterialSwatches: React.FC<MeshMaterialSwatchesProps> = ({ scene, mate
         swatch.thickness = 4;
         swatch.color = '#fff';
         swatch.clipChildren = true;
-        swatch.background = option.previewColor || '#334155';
+        swatch.background = option.previewColor || '#4a4a4b';
         if (option.kind === 'texture' && option.textureDataUrl) {
           const img = new GuiImage(`swatch_img_${option.id}`, option.textureDataUrl);
           img.stretch = GuiImage.STRETCH_UNIFORM;

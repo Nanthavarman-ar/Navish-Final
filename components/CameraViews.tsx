@@ -178,10 +178,10 @@ const CameraViews: React.FC<CameraViewsProps> = ({ camera, scene, onViewChange }
   return (
     <div style={{
       padding: '16px',
-      background: '#1e293b',
-      border: '1px solid #334155',
+      background: '#2d2d2e',
+      border: '1px solid #4a4a4b',
       borderRadius: '8px',
-      color: '#f1f5f9'
+      color: '#eceaea'
     }}>
       <h3 style={{ margin: '0 0 16px 0', fontSize: '16px' }}>Camera Views</h3>
 
@@ -193,10 +193,10 @@ const CameraViews: React.FC<CameraViewsProps> = ({ camera, scene, onViewChange }
             onClick={() => applyView(view)}
             style={{
               padding: '12px',
-              background: selectedView === view.id ? '#3b82f6' : '#334155',
-              border: '1px solid #475569',
+              background: selectedView === view.id ? '#ff4d4f' : '#4a4a4b',
+              border: '1px solid #5e5e5f',
               borderRadius: '6px',
-              color: '#f1f5f9',
+              color: '#eceaea',
               cursor: 'pointer',
               textAlign: 'center',
               transition: 'all 0.2s ease',
@@ -211,7 +211,7 @@ const CameraViews: React.FC<CameraViewsProps> = ({ camera, scene, onViewChange }
       </div>
 
       {/* Custom Controls */}
-      <div style={{ borderTop: '1px solid #334155', paddingTop: '16px' }}>
+      <div style={{ borderTop: '1px solid #4a4a4b', paddingTop: '16px' }}>
         <h4 style={{ margin: '0 0 12px 0', fontSize: '14px' }}>Custom Position</h4>
 
         <div style={{ marginBottom: '12px' }}>
@@ -325,7 +325,7 @@ const CameraViews: React.FC<CameraViewsProps> = ({ camera, scene, onViewChange }
               background: '#10b981',
               border: '1px solid #34d399',
               borderRadius: '4px',
-              color: '#f1f5f9',
+              color: '#eceaea',
               cursor: 'pointer',
               fontSize: '14px'
             }}
@@ -337,10 +337,10 @@ const CameraViews: React.FC<CameraViewsProps> = ({ camera, scene, onViewChange }
             style={{
               flex: 1,
               padding: '8px',
-              background: '#8b5cf6',
+              background: '#c2272a',
               border: '1px solid #a78bfa',
               borderRadius: '4px',
-              color: '#f1f5f9',
+              color: '#eceaea',
               cursor: 'pointer',
               fontSize: '14px'
             }}

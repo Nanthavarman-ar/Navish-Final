@@ -498,10 +498,10 @@ const MultiSensoryPreview: React.FC<MultiSensoryPreviewProps> = ({ scene, onSens
   return (
     <div style={{
       padding: '16px',
-      background: '#1e293b',
-      border: '1px solid #334155',
+      background: '#2d2d2e',
+      border: '1px solid #4a4a4b',
       borderRadius: '8px',
-      color: '#f1f5f9'
+      color: '#eceaea'
     }}>
       <h3 style={{ margin: '0 0 16px 0', fontSize: '16px' }}>Multi-Sensory Preview</h3>
 
@@ -533,10 +533,10 @@ const MultiSensoryPreview: React.FC<MultiSensoryPreviewProps> = ({ scene, onSens
               onClick={() => setSelectedLayer(layer as typeof selectedLayer)}
               style={{
                 padding: '6px',
-                background: selectedLayer === layer ? '#3b82f6' : '#334155',
-                border: '1px solid #475569',
+                background: selectedLayer === layer ? '#ff4d4f' : '#4a4a4b',
+                border: '1px solid #5e5e5f',
                 borderRadius: '4px',
-                color: '#f1f5f9',
+                color: '#eceaea',
                 fontSize: '12px',
                 cursor: 'pointer'
               }}
@@ -548,7 +548,7 @@ const MultiSensoryPreview: React.FC<MultiSensoryPreviewProps> = ({ scene, onSens
       </div>
 
       {/* Visualization Controls */}
-      <div style={{ borderTop: '1px solid #334155', paddingTop: '16px', marginBottom: '16px' }}>
+      <div style={{ borderTop: '1px solid #4a4a4b', paddingTop: '16px', marginBottom: '16px' }}>
         <h4 style={{ margin: '0 0 12px 0', fontSize: '14px' }}>Visualization</h4>
 
         <div style={{ marginBottom: '8px' }}>
@@ -592,9 +592,9 @@ const MultiSensoryPreview: React.FC<MultiSensoryPreviewProps> = ({ scene, onSens
       </div>
 
       {/* Color Legend */}
-      <div style={{ borderTop: '1px solid #334155', paddingTop: '16px', marginBottom: '16px' }}>
+      <div style={{ borderTop: '1px solid #4a4a4b', paddingTop: '16px', marginBottom: '16px' }}>
         <h4 style={{ margin: '0 0 8px 0', fontSize: '14px' }}>Comfort Scale</h4>
-        <div style={{ fontSize: '12px', color: '#94a3b8' }}>
+        <div style={{ fontSize: '12px', color: '#a3a2a2' }}>
           <div style={{ display: 'flex', alignItems: 'center', marginBottom: '4px' }}>
             <div style={{ width: '12px', height: '12px', background: '#00ff00', marginRight: '8px', borderRadius: '2px' }}></div>
             Excellent (80-100%)
@@ -619,12 +619,12 @@ const MultiSensoryPreview: React.FC<MultiSensoryPreviewProps> = ({ scene, onSens
       </div>
 
       {/* Instructions */}
-      <div style={{ borderTop: '1px solid #334155', paddingTop: '16px' }}>
+      <div style={{ borderTop: '1px solid #4a4a4b', paddingTop: '16px' }}>
         <h4 style={{ margin: '0 0 8px 0', fontSize: '14px' }}>Analysis Overview</h4>
-        <div style={{ fontSize: '12px', color: '#94a3b8', marginBottom: '8px' }}>
+        <div style={{ fontSize: '12px', color: '#a3a2a2', marginBottom: '8px' }}>
           {isActive ? 'Multi-sensory comfort analysis in progress.' : 'Start analysis to evaluate visual, acoustic, and thermal comfort.'}
         </div>
-        <div style={{ fontSize: '12px', color: '#94a3b8' }}>
+        <div style={{ fontSize: '12px', color: '#a3a2a2' }}>
           Combines daylight analysis, acoustic modeling, and thermal comfort calculations for comprehensive environmental assessment.
         </div>
       </div>

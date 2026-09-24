@@ -107,7 +107,7 @@ export const DragDropMaterialHandler: React.FC<DragDropMaterialHandlerProps> = (
     // Handle drag enter/leave for visual feedback
     const handleDragEnter = (event: DragEvent) => {
       event.preventDefault();
-      canvas.style.border = '2px solid #3b82f6';
+      canvas.style.border = '2px solid #ff4d4f';
     };
 
     const handleDragLeave = (event: DragEvent) => {

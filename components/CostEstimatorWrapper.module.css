@@ -66,9 +66,9 @@
 .budgetInput {
   width: 80px;
   padding: 4px;
-  background: #374151;
+  background: #4a4a4b;
   color: white;
-  border: 1px solid #4b5563;
+  border: 1px solid #5e5e5f;
   border-radius: 4px;
   font-size: 12px;
 }
@@ -76,9 +76,9 @@
 .regionSelect {
   width: 96px;
   padding: 4px;
-  background: #374151;
+  background: #4a4a4b;
   color: white;
-  border: 1px solid #4b5563;
+  border: 1px solid #5e5e5f;
   border-radius: 4px;
   font-size: 12px;
 }
@@ -127,7 +127,7 @@
 
 .progressBarContainer {
   height: 8px;
-  background: #374151;
+  background: #4a4a4b;
   border-radius: 4px;
   overflow: hidden;
 }
@@ -168,7 +168,7 @@
   display: flex;
   justify-content: space-between;
   font-weight: bold;
-  border-top: 1px solid #4b5563;
+  border-top: 1px solid #5e5e5f;
   padding-top: 4px;
   margin-top: 8px;
 }
@@ -191,6 +191,6 @@
 
 .noSelectionMessage {
   text-align: center;
-  color: #9ca3af;
+  color: #a3a2a2;
   padding: 16px 0;
 }
