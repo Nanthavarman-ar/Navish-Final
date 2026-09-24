@@ -699,23 +699,42 @@ export class XRManager {
   // for input actually working.
   //
   // forceInputProfile: 'oculus-touch' additionally sidesteps a second failure mode seen
-  // after the above fix - squeeze (the exit gesture) working while BOTH thumbstick-
-  // driven features (smooth movement and the teleport arc) stayed completely dead.
-  // Without this, which exact profile gets resolved locally depends on matching the
-  // browser's own reported profile ID string(s) against Babylon's small locally-
-  // registered set (see webXRMotionControllerManager.js's _AvailableControllers) - if
-  // that match landed on "generic-trigger" (trigger only, no squeeze/thumbstick at all)
-  // rather than "oculus-touch" (trigger+squeeze+thumbstick, Babylon's dedicated Quest
-  // Touch class), squeeze wouldn't work either, which contradicts what was actually
-  // observed - but there's no way to be certain which resolution path this device
-  // actually took without a live device log, so forcing the profile directly removes
-  // that ambiguity rather than requiring another guess. Only affects gamepad/controller
-  // input - hand-tracking (Vision Pro etc) goes through a separate feature entirely, so
-  // this is safe there too, but SHOULD be revisited (made conditional, or dropped) if
-  // this app ever needs to support a non-Quest controller-based headset (Vive, WMR,
-  // Index) with its own distinct button layout.
-  private getInputOptions(): { disableOnlineControllerRepository: boolean; forceInputProfile: string } {
-    return { disableOnlineControllerRepository: true, forceInputProfile: 'oculus-touch' };
+  // after the above fix, ON REAL QUEST HARDWARE specifically - squeeze (the exit gesture)
+  // working while BOTH thumbstick-driven features (smooth movement and the teleport arc)
+  // stayed completely dead. Without this, which exact profile gets resolved locally
+  // depends on matching the browser's own reported profile ID string(s) against Babylon's
+  // small locally-registered set (see webXRMotionControllerManager.js's
+  // _AvailableControllers) - if that match landed on "generic-trigger" (trigger only, no
+  // squeeze/thumbstick at all) rather than "oculus-touch" (trigger+squeeze+thumbstick,
+  // Babylon's dedicated Quest Touch class), squeeze wouldn't work either, which
+  // contradicts what was actually observed on that device - so forcing the profile
+  // removed that ambiguity for Quest.
+  //
+  // FIX: this used to force 'oculus-touch' UNCONDITIONALLY, for every headset. Verified
+  // against Babylon's own bundled fallback table (webXRMotionControllerManager.pure.js)
+  // that this was actively WRONG for every non-Quest controller-based headset: Babylon
+  // already registers full local (no-network) profiles/fallback chains with proper
+  // trigger+squeeze+thumbstick/touchpad support for "htc-vive", "windows-mixed-reality"
+  // (covers WMR headsets and, via its own fallback, "samsung-odyssey"), and "valve-index" -
+  // none of those fall back to bare "generic-trigger" the way the old comment worried
+  // about. Forcing 'oculus-touch' on top of THOSE devices instead made Babylon read a
+  // Vive/Index/WMR/Odyssey controller's real trigger/squeeze/thumbstick signals through
+  // Quest Touch's component layout, which has no reason to line up - a real, likely cause
+  // of "works on Quest, broken controllers on other headsets" if this site was ever
+  // opened on one. Only force it for the browser this was actually diagnosed and fixed
+  // on (Quest's own Oculus Browser); every other headset now gets Babylon's normal,
+  // already-correct local profile resolution. Only affects gamepad/controller input -
+  // hand-tracking (Vision Pro etc) goes through a separate feature entirely, so this
+  // never affected that.
+  private isQuestBrowser(): boolean {
+    return typeof navigator !== 'undefined' && /OculusBrowser|Quest/i.test(navigator.userAgent || '');
+  }
+
+  private getInputOptions(): { disableOnlineControllerRepository: boolean; forceInputProfile?: string } {
+    return {
+      disableOnlineControllerRepository: true,
+      ...(this.isQuestBrowser() ? { forceInputProfile: 'oculus-touch' } : {})
+    };
   }
 
   // Makes the headset camera actually stop at walls/furniture instead of the thumbstick
@@ -2581,10 +2600,12 @@ export class XRManager {
     // Hold-Y-to-reset-position, left controller only. Getting stuck (wedged against
     // geometry by a bad collision resolve, or just disoriented after moving around a
     // large model) previously had no recovery besides fully exiting and re-entering VR.
-    // The oculus-touch profile this app forces (see getInputOptions) exposes the left
-    // controller's upper face button as 'y-button' - it isn't used for anything else
-    // here, unlike the right controller's face buttons which the built-in pointer
-    // selection feature can use for UI clicks. A shorter hold than the exit gesture
+    // On Quest (oculus-touch is forced there - see getInputOptions) the left controller's
+    // upper face button resolves to 'y-button'; other headsets' left-controller equivalent
+    // (if any) resolves to whatever their own real profile calls it, hence the 'b-button'
+    // fallback below - it isn't used for anything else here, unlike the right controller's
+    // face buttons which the built-in pointer selection feature can use for UI clicks. A
+    // shorter hold than the exit gesture
     // (which deliberately needs a deliberate 1200ms hold, since it ends the session) -
     // long enough that a stray touch while adjusting grip doesn't teleport the player by
     // accident, short enough to actually be quick to use.
