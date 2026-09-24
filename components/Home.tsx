@@ -188,20 +188,20 @@ function HeroSlider() {
       <div className="nv-hero__half nv-hero__half--l">
         {heroSlides.map((p, i) => (
           <div key={p.slug} className="nv-hero__slide nv-media">
-            <SiteImage src={p.image} alt={`${p.title} - ${p.type}`} eager={i === 0} />
+            <SiteImage src={p.image} alt={`${p.type} project ${p.num}`} eager={i === 0} />
           </div>
         ))}
       </div>
       <div className="nv-hero__half nv-hero__half--r">
         {heroSlides.map((p, i) => (
           <div key={p.slug} className="nv-hero__slide nv-media">
-            <SiteImage src={p.detail} alt={`${p.title} - detail`} eager={i === 0} />
+            <SiteImage src={p.detail} alt={`${p.type} project ${p.num} - detail`} eager={i === 0} />
           </div>
         ))}
       </div>
       <div className="nv-hero__labels">
         {heroSlides.map((p) => (
-          <LabelCard key={p.slug} title={p.title} sub={p.type} />
+          <LabelCard key={p.slug} title={p.title} sub={p.num} />
         ))}
       </div>
       <div className="nv-hero__foot">
@@ -214,7 +214,7 @@ function HeroSlider() {
                 aria-current={i === active}
                 onClick={() => jumpTo(i)}
               >
-                {p.title}
+                {p.num} {p.title}
               </button>
             </li>
           ))}
@@ -288,8 +288,8 @@ function ScaleSection() {
         .timeline()
         .fromTo(
           img,
-          { width: frameW, height: () => frameW() * 0.75, clipPath: 'inset(6% 6% 6% 6%)' },
-          { width: () => window.innerWidth, height: () => window.innerHeight, clipPath: 'inset(0% 0% 0% 0%)', ease: 'none', duration: 1 },
+          { top: '60%', width: frameW, height: () => frameW() * 0.75, clipPath: 'inset(6% 6% 6% 6%)' },
+          { top: '50%', width: () => window.innerWidth, height: () => window.innerHeight, clipPath: 'inset(0% 0% 0% 0%)', ease: 'none', duration: 1 },
         )
         .to(root.querySelectorAll('.nv-scale__head, .nv-scale__foot .nv-p'), { color: '#eceaea', duration: 0.15 }, 0.8);
       ScrollTrigger.create({

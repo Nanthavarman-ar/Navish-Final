@@ -1,7 +1,7 @@
-// Marketing-site copy and image slots. Images are loaded from /public/site/... - drop a
-// file at the matching path and it replaces the placeholder automatically (SiteImage
-// falls back to a toned placeholder while a file is missing). Project titles below are
-// placeholders until the real project list is provided.
+// Marketing-site copy and image slots. Images live in /public/site/... (SiteImage falls
+// back to a toned placeholder if a file is missing). The eight project renders are
+// reused for the process steps, contact and login pages. Projects are shown by type
+// and number rather than by name.
 
 export const SITE = {
   name: 'Navish',
@@ -14,6 +14,7 @@ const img = (path: string) => `/site/${path}.jpg`;
 
 export interface Project {
   slug: string;
+  num: string;
   title: string;
   type: string;
   image: string;
@@ -22,10 +23,11 @@ export interface Project {
 
 export const projects: Project[] = Array.from({ length: 8 }, (_, i) => {
   const n = String(i + 1).padStart(2, '0');
-  const types = ['Residential', 'Commercial', 'Residential', 'Interior', 'Residential', 'Hospitality', 'Interior', 'Commercial'];
+  const types = ['Residential', 'Commercial', 'Residential', 'Interior', 'Residential', 'Healthcare', 'Hospitality', 'Commercial'];
   return {
     slug: `project-${n}`,
-    title: `Project ${n}`,
+    num: n,
+    title: types[i],
     type: types[i],
     image: img(`projects/project-${n}`),
     detail: img(`projects/project-${n}-detail`),
@@ -44,37 +46,37 @@ export const processSteps: ProcessStep[] = [
   {
     title: 'Brief & intention',
     body: 'We begin by listening. Your site, your routines, your budget and the story you want the building to tell - everything that follows is measured against this first conversation.',
-    image: img('process/step-01'),
+    image: img('projects/project-03'),
   },
   {
     title: 'Concept & direction',
     body: 'Intentions become architecture: massing, light, orientation and a material mood. We present one clear direction, drawn and modelled, rather than a catalogue of options.',
-    image: img('process/step-02'),
+    image: img('projects/project-05'),
   },
   {
     title: 'Space planning',
     body: 'Rooms are arranged around how you actually live and work - circulation, storage, privacy and daylight resolved before a single wall is priced.',
-    image: img('process/step-03'),
+    image: img('projects/project-04'),
   },
   {
     title: 'Walkthrough in 3D & VR',
     body: 'Before anything is built you walk through it. Our 3D workspace and VR reviews let you stand in each room, test finishes and lighting, and sign off with confidence.',
-    image: img('process/step-04'),
+    image: img('projects/project-07'),
   },
   {
     title: 'Materials & details',
     body: 'Finishes, joinery and fittings are chosen and detailed with the builders who will install them, so what you approved is exactly what gets made.',
-    image: img('process/step-05'),
+    image: img('projects/project-06'),
   },
   {
     title: 'Budget & approvals',
     body: 'Costs are aligned line by line and every permit and statutory approval is prepared and followed through, so construction starts on firm ground.',
-    image: img('process/step-06'),
+    image: img('projects/project-02'),
   },
   {
     title: 'Build & handover',
     body: 'Our site team manages construction, quality and schedule end to end - and hands over a finished building, documented and ready to live in.',
-    image: img('process/step-07'),
+    image: img('projects/project-08'),
   },
 ];
 
@@ -125,7 +127,7 @@ export const pathways: Pathway[] = [
   },
 ];
 
-export const contactImage = img('contact/contact');
-export const loginImage = img('login/login');
+export const contactImage = img('projects/project-03');
+export const loginImage = img('projects/project-04');
 export const studioImage = img('home/studio');
-export const processHeroImage = img('process/hero');
+export const processHeroImage = img('projects/project-01');

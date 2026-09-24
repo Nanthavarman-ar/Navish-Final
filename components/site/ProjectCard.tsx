@@ -6,11 +6,11 @@ export function ProjectCard({ project, clip = true }: { project: Project; clip?:
   return (
     <article className="nv-card" data-flip-id={project.slug}>
       <div className="nv-media nv-card__media" {...(clip ? { 'data-nv-clip': '' } : {})}>
-        <SiteImage src={project.image} alt={`${project.title} - ${project.type}`} />
+        <SiteImage src={project.image} alt={`${project.type} project ${project.num}`} />
       </div>
-      <LabelCard title={project.title} sub={project.type} className="nv-card__tag" />
+      <LabelCard title={project.title} sub={project.num} className="nv-card__tag" />
       <div className="nv-card__meta">
-        <span className="nv-eyebrow">{project.title}</span>
+        <span className="nv-eyebrow">{project.num}</span>
         <span className="nv-eyebrow">{project.type}</span>
       </div>
     </article>
