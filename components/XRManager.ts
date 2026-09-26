@@ -109,9 +109,6 @@ export class XRManager {
   private arHintTimeout: ReturnType<typeof setTimeout> | null = null;
   private arSelectListener: (() => void) | null = null;
   private placementScale: number = 1;
-  // First-placement auto-fit target (see getOrCreatePlacementRoot's FIX comment) - keep in
-  // sync with ARScalePanel.tsx's own TABLETOP_TARGET_METERS, which this mirrors exactly.
-  private static readonly AR_AUTO_FIT_TARGET_METERS = 0.5;
   // Locked true right after the model's first placement - without this, EVERY tap on the
   // screen for the rest of the AR session re-placed and re-oriented the model (see
   // arSelectListener below), including a stray tap while trying to walk around, zoom, or
@@ -1163,7 +1160,7 @@ export class XRManager {
   // failure mode), not removed - this is additive, not a replacement.
   //
   // AR does NOT use this: it already has its own, better-suited placement system (tap-to-
-  // place + pinch-to-scale, designed for a shrink-to-tabletop-size viewing experience) -
+  // place + pinch-to-scale, placing the model at real 1:1 size on the actual site) -
   // see the auto-call to ensurePlacementRoot() in setupARPlacement() below, which had the
   // same underlying bug (only ever placing the model on the FIRST scale/rotate/mirror
   // button press, never automatically at session start) fixed the same session.
@@ -1359,30 +1356,13 @@ export class XRManager {
     this.placementModelSpace = space;
     this.attachModelOverlays(space, false);
 
-    // FIX: AR is designed as a shrink-to-tabletop-size viewing experience (see
-    // applyVRWorldShift's own comment: AR "has its own, better-suited placement system
-    // ... designed for a shrink-to-tabletop-size viewing experience") - but nothing
-    // actually applied that shrink on first placement, from EITHER path that creates this
-    // root: ensurePlacementRoot()'s "2m in front of the camera" fallback, or a real
-    // hit-test tap in arSelectListener. placementScale defaults to 1 (full authored
-    // size), so a real building-sized model got planted at full scale right where the
-    // viewer was standing/tapped - for anything bigger than a small room, that puts the
-    // viewer's own head inside solid wall/floor geometry, which backface-culls the
-    // interior surfaces around them and reads as "the model is barely visible/
-    // see-through", exactly as reported ("AR-la model paathi therinji theriyaama").
-    // Auto-fitting here, once, the first time this root is ever created (re-entering AR
-    // later in the same session reuses the existing root via the branch above, so this
-    // never overwrites a scale the user has since dialled in manually), means the first
-    // thing shown is a small, complete model viewed from outside it - the experience
-    // this app is actually designed around - instead of standing inside an unscaled one.
-    // Mirrors ARScalePanel's own "Tabletop" auto-fit formula (TABLETOP_TARGET_METERS)
-    // exactly, so this matches what that button would already produce.
-    const restSize = this.getPlacedModelRestSize();
-    const footprint = restSize ? Math.max(restSize.x, restSize.z) : 0;
-    if (footprint > 0) {
-      this.placementScale = Math.min(1, Math.max(0.01, XRManager.AR_AUTO_FIT_TARGET_METERS / footprint));
-      this.applyPlacementScale(root);
-    }
+    // AR places the model at its real, authored size (1:1). AR in this app is for standing
+    // on the actual site and seeing the building there at true scale - an earlier version
+    // auto-shrank it to a 0.5 m tabletop miniature on first placement, which defeated
+    // exactly that. Shrinking is still one pinch / "−" press (or ARScalePanel's Tabletop
+    // preset) away for anyone who wants the miniature view.
+    this.placementScale = 1;
+    this.applyPlacementScale(root);
 
     return root;
   }
@@ -1907,21 +1887,26 @@ export class XRManager {
     const root = this.getOrCreatePlacementRoot();
     if (isNew && this.xrCamera) {
       this.placeInFrontOfCamera(root);
-      this.showAROverlayHint('Placed near you - tap the floor to place it exactly, or use the buttons');
+      this.showAROverlayHint('Placed at real size in front of you - tap the floor to place it exactly, pinch or − to shrink');
     }
     return root;
   }
 
-  // Puts the model's base ~2m in front of wherever the user is facing, on the floor
-  // (probed the same way setupGrounding() finds it), facing the user.
+  // Puts the model on the floor in front of wherever the user is facing (floor probed the
+  // same way setupGrounding() finds it), facing the user. The model's NEAR EDGE lands ~2 m
+  // ahead, not its centre - at real 1:1 size a building centred 2 m away would put the
+  // viewer inside its walls; this keeps them standing just outside, looking at it.
   private placeInFrontOfCamera(root: TransformNode): void {
     if (!this.xrCamera) return;
     const camera = this.xrCamera;
     const forward = camera.getDirection(Vector3.Forward());
     forward.y = 0;
     if (forward.lengthSquared() < 1e-6) forward.set(0, 0, 1); else forward.normalize();
-    const targetX = camera.position.x + forward.x * 2;
-    const targetZ = camera.position.z + forward.z * 2;
+    const restSize = this.getPlacedModelRestSize();
+    const halfFootprint = restSize ? (Math.max(restSize.x, restSize.z) / 2) * this.placementScale : 0;
+    const distance = 2 + halfFootprint;
+    const targetX = camera.position.x + forward.x * distance;
+    const targetZ = camera.position.z + forward.z * distance;
 
     let floorY = camera.position.y - camera.realWorldHeight;
     if (this.groundFloorMeshes.length > 0) {
