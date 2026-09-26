@@ -6,6 +6,7 @@ import { Button } from './ui/button';
 import { supabase, projectId } from '../supabase/client';
 import { showToast } from './utils/toast';
 import { usePanelStack } from '../hooks/usePanelStack';
+import { attachToModelSpace, fromModelSpace, toModelSpace } from './utils/xrModelSpace';
 
 interface AnnotationToolProps {
   scene: Scene;
@@ -103,6 +104,7 @@ const AnnotationTool: React.FC<AnnotationToolProps> = ({ scene, roomId, onClose,
       // scale and camera distance - easy to miss, which read as "clicking the note does
       // nothing" even though the handler itself was working correctly.
       const pin = MeshBuilder.CreatePlane(`annotation_pin_${annotation.id}`, { size: 0.55 }, scene);
+      attachToModelSpace(scene, pin);
       pin.position = new Vector3(annotation.position.x, annotation.position.y + 0.28, annotation.position.z);
       pin.billboardMode = Mesh.BILLBOARDMODE_ALL;
       pin.renderingGroupId = 1;
@@ -167,7 +169,9 @@ const AnnotationTool: React.FC<AnnotationToolProps> = ({ scene, roomId, onClose,
       if (pointerInfo.type !== PointerEventTypes.POINTERPICK) return;
       const pickResult = scene.pick(scene.pointerX, scene.pointerY, (m) => !m.name.startsWith('annotation_pin_') && !m.name.startsWith('annotation_popup_panel_'));
       if (pickResult?.hit && pickResult.pickedPoint) {
-        setPendingPosition(pickResult.pickedPoint.clone());
+        // Saved in model space - in VR/AR the model may be moved/scaled away from its
+        // authored position, and the note has to come back to the same spot on it.
+        setPendingPosition(toModelSpace(scene, pickResult.pickedPoint));
         setIsPlacing(false);
       } else {
         showToast.info('Click directly on the model to place a note');
@@ -223,9 +227,13 @@ const AnnotationTool: React.FC<AnnotationToolProps> = ({ scene, roomId, onClose,
     const texWidth = 380;
     const texHeight = 266;
     const plane = MeshBuilder.CreatePlane(`annotation_popup_panel_${openNoteId}`, { width: planeWidth, height: planeHeight }, scene);
+    attachToModelSpace(scene, plane);
+    // The pin may sit under XRManager's VR/AR model root, where .position is local, not
+    // world - using it directly put the popup at the model's old, un-moved location in VR.
     const camera = scene.activeCamera;
-    const towardCamera = camera ? camera.position.subtract(pin.position).normalize() : new Vector3(0, 0, 1);
-    plane.position = pin.position.add(new Vector3(0, 0.3, 0)).add(towardCamera.scale(0.35));
+    const anchor = pin.getAbsolutePosition().clone();
+    const towardCamera = camera ? camera.globalPosition.subtract(anchor).normalize() : new Vector3(0, 0, 1);
+    plane.setAbsolutePosition(anchor.add(new Vector3(0, 0.3, 0)).add(towardCamera.scale(0.35)));
     plane.billboardMode = Mesh.BILLBOARDMODE_ALL;
     plane.renderingGroupId = 1;
 
@@ -316,7 +324,7 @@ const AnnotationTool: React.FC<AnnotationToolProps> = ({ scene, roomId, onClose,
   const focusAnnotation = (annotation: Annotation) => {
     const camera = scene.activeCamera;
     if (camera instanceof ArcRotateCamera) {
-      const target = new Vector3(annotation.position.x, annotation.position.y, annotation.position.z);
+      const target = fromModelSpace(scene, annotation.position);
       const targetRadius = Math.min(camera.radius, 6);
       Animation.CreateAndStartAnimation('annotationFocusTarget', camera, 'target', 30, 20, camera.target.clone(), target, Animation.ANIMATIONLOOPMODE_CONSTANT);
       Animation.CreateAndStartAnimation('annotationFocusRadius', camera, 'radius', 30, 20, camera.radius, targetRadius, Animation.ANIMATIONLOOPMODE_CONSTANT);

@@ -9,6 +9,7 @@ import type { MaterialManager } from './MaterialManager';
 import type { MaterialPreset } from './interfaces/MaterialInterfaces';
 import { loadSceneEdits, savePartialFeatureState, type SavedSwatchMarker, type SavedSwatchOption } from './utils/sceneEditsPersistence';
 import { resolveMeshRef } from './BabylonWorkspace/meshSceneHandlers';
+import { attachToModelSpace, toModelSpace } from './utils/xrModelSpace';
 
 interface MeshMaterialSwatchesProps {
   scene: Scene;
@@ -142,6 +143,7 @@ const MeshMaterialSwatches: React.FC<MeshMaterialSwatchesProps> = ({ scene, mate
     markers.forEach((marker) => {
       if (markerMeshesRef.current.has(marker.id)) return;
       const pin = MeshBuilder.CreatePlane(`swatch_marker_${marker.id}`, { size: 0.55 }, scene);
+      attachToModelSpace(scene, pin);
       pin.position = new Vector3(marker.position.x, marker.position.y + 0.05, marker.position.z);
       pin.billboardMode = Mesh.BILLBOARDMODE_ALL;
       pin.renderingGroupId = 1;
@@ -375,6 +377,7 @@ const MeshMaterialSwatches: React.FC<MeshMaterialSwatchesProps> = ({ scene, mate
       const planeHeight = 0.22;
       const planeWidth = planeHeight * (texWidth / texHeight);
       const plane = MeshBuilder.CreatePlane(`swatch_popup_panel_${id}`, { width: planeWidth, height: planeHeight }, scene);
+      attachToModelSpace(scene, plane);
       // zOffset alone (below) wasn't enough to stop this clipping into nearby geometry -
       // it's only a small render-time depth bias for fixing z-fighting/precision, not a
       // real position change, so it can't help when the popup is genuinely positioned
@@ -382,9 +385,12 @@ const MeshMaterialSwatches: React.FC<MeshMaterialSwatchesProps> = ({ scene, mate
       // Actually moving it a real distance toward wherever the camera currently is -
       // not just "up" - guarantees it ends up between the camera and the wall no matter
       // how tall the marked surface is or which angle it's viewed from.
+      // The marker may sit under XRManager's VR/AR model root, where .position is local,
+      // not world - using it directly put the popup at the model's old, un-moved spot in VR.
       const camera = scene.activeCamera;
-      const towardCamera = camera ? camera.position.subtract(mesh.position).normalize() : new Vector3(0, 0, 1);
-      plane.position = mesh.position.add(new Vector3(0, 0.3, 0)).add(towardCamera.scale(0.35));
+      const anchor = mesh.getAbsolutePosition().clone();
+      const towardCamera = camera ? camera.globalPosition.subtract(anchor).normalize() : new Vector3(0, 0, 1);
+      plane.setAbsolutePosition(anchor.add(new Vector3(0, 0.3, 0)).add(towardCamera.scale(0.35)));
       plane.billboardMode = Mesh.BILLBOARDMODE_ALL;
       plane.renderingGroupId = 1;
 
@@ -450,7 +456,8 @@ const MeshMaterialSwatches: React.FC<MeshMaterialSwatchesProps> = ({ scene, mate
         showToast.info('Click directly on a mesh to place a swatch marker');
         return;
       }
-      setDraftMarker({ meshId: pickResult.pickedMesh.id, meshName: pickResult.pickedMesh.name, position: pickResult.pickedPoint.clone() });
+      // Saved in model space so it stays on the same spot when VR/AR moves the model.
+      setDraftMarker({ meshId: pickResult.pickedMesh.id, meshName: pickResult.pickedMesh.name, position: toModelSpace(scene, pickResult.pickedPoint) });
       setDraftOptions([]);
       setIsPlacing(false);
     });

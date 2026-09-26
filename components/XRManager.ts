@@ -1,5 +1,6 @@
 import { Scene, Camera, ArcRotateCamera, FreeCamera, WebXRDefaultExperience, WebXRState, WebXRCamera, WebXRFeaturesManager, WebXRFeatureName, WebXRControllerComponent, WebXRInputSource, Vector3, Quaternion, AbstractMesh, TransformNode, Mesh, LinesMesh, MeshBuilder, StandardMaterial, Color3, Color4, Ray, Node } from '@babylonjs/core';
 import { AdvancedDynamicTexture, StackPanel, TextBlock, Button, Rectangle } from '@babylonjs/gui';
+import { AR_MODEL_SPACE_NAME, MODEL_ANCHORED_OVERLAY_RE, VR_WORLD_SHIFT_ROOT_NAME } from './utils/xrModelSpace';
 
 // One toggleable thing this app knows how to show in the in-headset menu (a placed
 // Interactive Fixture, a weather/flood simulation) - deliberately minimal (just enough
@@ -72,6 +73,15 @@ export class XRManager {
   private vrWorldShiftRoot: TransformNode | null = null;
   private vrWorldShiftOriginalParents: Map<AbstractMesh, Node | null> = new Map();
 
+  // Notes and material-switcher markers (and their popups) sit on points ON the model, but
+  // used to be left out of both the VR world-shift and AR placement - so in VR the model
+  // moved under the player while every note/swatch stayed behind at its old spot ("VR-la
+  // material switcher notes vera vera place-la place aaguthu"). attachModelOverlays()
+  // parents the existing ones under the same model-space node the model lives in; ones
+  // created later (a popup opened in-headset, a marker list re-sync) attach themselves via
+  // utils/xrModelSpace's attachToModelSpace().
+  private overlayOriginalParents: Map<AbstractMesh, Node | null> = new Map();
+
   // Meshes this class had to unfreeze (see unfreezeMeshesForXR) so VR's world-shift /
   // AR's placement root can actually move them - remembered so the VR path can put back
   // the freeze BabylonWorkspace applied after load (see refreezeMeshesAfterVR).
@@ -81,6 +91,15 @@ export class XRManager {
   // the model stays wherever the user last placed/scaled it for the rest of this XR
   // session; re-entering AR (or a fresh page load) starts fresh.
   private placementRoot: TransformNode | null = null;
+  // Child of placementRoot whose local space is the model's original world space - the
+  // model's meshes (and model-anchored overlays) live under this, while placementRoot
+  // itself sits at the model's footprint centre so move/rotate/scale all pivot around the
+  // model instead of around the scene's world origin. See getOrCreatePlacementRoot.
+  private placementModelSpace: TransformNode | null = null;
+  // WebXR fires 'select' for EVERY finger that touches the screen - including both
+  // fingers of a pinch and taps on the overlay buttons - so a pinch-to-scale or a button
+  // press could also re-place the model. Selects before this timestamp are ignored.
+  private suppressSelectUntil = 0;
   private hitTestFeature: XRHitTestFeatureLike | null = null;
   private reticle: Mesh | null = null;
   private lastHitPose: { position: Vector3; rotationQuaternion: Quaternion } | null = null;
@@ -1196,11 +1215,21 @@ export class XRManager {
   private refreezeMeshesAfterVR(): void {
     this.xrUnfrozenMeshes.forEach((mesh) => {
       if (mesh.isDisposed()) return;
-      if (this.placementRoot && mesh.parent === this.placementRoot) return;
+      if (this.placementModelSpace && mesh.parent === this.placementModelSpace) return;
       mesh.freezeWorldMatrix();
       mesh.doNotSyncBoundingInfo = true;
       this.xrUnfrozenMeshes.delete(mesh);
     });
+  }
+
+  private attachModelOverlays(space: TransformNode, trackOriginals: boolean): void {
+    for (const mesh of this.scene.meshes) {
+      if (!MODEL_ANCHORED_OVERLAY_RE.test(mesh.name || '') || mesh.parent === space) continue;
+      if (trackOriginals && !this.overlayOriginalParents.has(mesh)) this.overlayOriginalParents.set(mesh, mesh.parent);
+      // setParent keeps the current world position - callers attach while the space's
+      // combined transform is still identity, so local == saved model-space position.
+      mesh.setParent(space);
+    }
   }
 
   private applyVRWorldShift(): void {
@@ -1214,7 +1243,7 @@ export class XRManager {
     // (small models authored right at the player's own spawn point).
     if (Math.abs(offsetX) < 0.5 && Math.abs(offsetZ) < 0.5) return;
 
-    const root = new TransformNode('xrVRWorldShiftRoot', this.scene);
+    const root = new TransformNode(VR_WORLD_SHIFT_ROOT_NAME, this.scene);
 
     // FIX: setParent() preserves each mesh's CURRENT world position at the moment it's
     // called (recomputing local coordinates against the parent's CURRENT world matrix) -
@@ -1233,6 +1262,9 @@ export class XRManager {
       this.vrWorldShiftOriginalParents.set(mesh, mesh.parent);
       mesh.setParent(root);
     }
+    // Still at identity here, so the overlays keep their exact positions relative to the
+    // model once the offset below moves everything together.
+    this.attachModelOverlays(root, true);
 
     // Horizontal re-centre only - the model's own authored floor height is left alone
     // (matches "Y is left alone" for the camera-seed above: real tracked height, not
@@ -1258,6 +1290,18 @@ export class XRManager {
       if (!mesh.isDisposed()) mesh.setParent(originalParent);
     });
     this.vrWorldShiftOriginalParents.clear();
+    // Must happen before root.dispose() below - disposing a TransformNode disposes its
+    // children too, which would delete every note/swatch marker still parented to it.
+    this.overlayOriginalParents.forEach((originalParent, mesh) => {
+      if (!mesh.isDisposed()) mesh.setParent(originalParent);
+    });
+    this.overlayOriginalParents.clear();
+    // Overlays created while in VR (attachToModelSpace) were never in that map - move them
+    // back out too, keeping their (now un-shifted) position.
+    this.vrWorldShiftRoot.getChildMeshes(true).forEach((mesh) => mesh.setParent(null));
+    if (this.placementModelSpace && !this.placementModelSpace.isDisposed()) {
+      this.attachModelOverlays(this.placementModelSpace, false);
+    }
     this.vrWorldShiftRoot.dispose();
     this.vrWorldShiftRoot = null;
     this.refreezeMeshesAfterVR();
@@ -1270,21 +1314,50 @@ export class XRManager {
   private getOrCreatePlacementRoot(): TransformNode {
     // Frozen meshes ignore their parent moving/scaling - see unfreezeMeshesForXR. Meshes
     // stay unfrozen for as long as they live under this root (it outlives the AR session).
-    if (this.placementRoot && !this.placementRoot.isDisposed()) {
+    if (this.placementRoot && !this.placementRoot.isDisposed() && this.placementModelSpace) {
       // A model loaded/changed after the root was first created - pick up any meshes
       // that aren't parented yet.
+      const space = this.placementModelSpace;
       const placeable = this.getPlaceableMeshes();
       this.unfreezeMeshesForXR(placeable);
       placeable.forEach((m) => {
-        if (m.parent !== this.placementRoot) m.setParent(this.placementRoot);
+        if (m.parent !== space) m.setParent(space);
       });
       return this.placementRoot;
     }
-    const root = new TransformNode('ar_placement_root', this.scene);
     const placeable = this.getPlaceableMeshes();
     this.unfreezeMeshesForXR(placeable);
-    placeable.forEach((m) => m.setParent(root));
+
+    // FIX ("AR-la model scale panna replace panna kastama irukku"): the root used to be
+    // created at the WORLD ORIGIN, so it pivoted around (0,0,0) - not around the model.
+    // Real exports are rarely authored at the origin, so every scale step swung the model
+    // sideways (by its distance from the origin times the scale change), rotating orbited
+    // it around an invisible point, and a tap placed the model's origin - not the model -
+    // on the tapped spot, often metres away. The root now sits at the model's footprint
+    // centre on its lowest point, with a child node offsetting back so the model's own
+    // coordinates stay untouched: placing, scaling and rotating all happen around the
+    // model itself, and a tap puts the model's base right where you tapped.
+    let pivot = Vector3.Zero();
+    const withGeometry = placeable.filter((m) => m.getTotalVertices() > 0);
+    if (withGeometry.length > 0) {
+      let min = withGeometry[0].getBoundingInfo().boundingBox.minimumWorld.clone();
+      let max = withGeometry[0].getBoundingInfo().boundingBox.maximumWorld.clone();
+      withGeometry.forEach((m) => {
+        const bb = m.getBoundingInfo().boundingBox;
+        min = Vector3.Minimize(min, bb.minimumWorld);
+        max = Vector3.Maximize(max, bb.maximumWorld);
+      });
+      pivot = new Vector3((min.x + max.x) / 2, min.y, (min.z + max.z) / 2);
+    }
+    const root = new TransformNode('ar_placement_root', this.scene);
+    root.position.copyFrom(pivot);
+    const space = new TransformNode(AR_MODEL_SPACE_NAME, this.scene);
+    space.parent = root;
+    space.position.copyFrom(pivot.negate());
+    placeable.forEach((m) => m.setParent(space));
     this.placementRoot = root;
+    this.placementModelSpace = space;
+    this.attachModelOverlays(space, false);
 
     // FIX: AR is designed as a shrink-to-tabletop-size viewing experience (see
     // applyVRWorldShift's own comment: AR "has its own, better-suited placement system
@@ -1354,6 +1427,13 @@ export class XRManager {
     const container = document.createElement('div');
     container.id = 'naviz-ar-overlay';
     container.style.cssText = 'position:fixed;inset:0;pointer-events:none;z-index:999999;';
+    // A tap on an overlay button is ALSO delivered to the XR session as a 'select' - the
+    // WebXR DOM Overlay spec's way to stop that is cancelling 'beforexrselect'. Without
+    // it, pressing +/- or a move arrow while a re-place was pending re-placed the model
+    // under the button instead.
+    container.addEventListener('beforexrselect', (e) => {
+      if ((e.target as HTMLElement | null)?.closest?.('button')) e.preventDefault();
+    });
 
     // AR sessions (especially phone-based ones, the common case for AR - there's no
     // squeeze/grip controller to hold for the VR hold-to-exit gesture) had NO way to
@@ -1375,6 +1455,23 @@ export class XRManager {
     exitBtn.addEventListener('touchstart', onExit, { passive: false });
     exitBtn.addEventListener('mousedown', onExit);
     container.appendChild(exitBtn);
+
+    // Re-place: the only way to move the model again after its first placement used to
+    // be the desktop ARScalePanel's Reposition button - invisible during an immersive AR
+    // session, so on a phone the model couldn't be re-placed at all short of exiting AR.
+    const replaceBtn = document.createElement('button');
+    replaceBtn.textContent = 'Re-place';
+    replaceBtn.title = 'Re-place the model: tap the floor where it should go';
+    replaceBtn.setAttribute('aria-label', 'Re-place the model');
+    replaceBtn.style.cssText = 'position:fixed;top:max(20px,env(safe-area-inset-top));left:20px;pointer-events:auto;height:52px;padding:0 20px;border-radius:9999px;border:2px solid rgba(255,255,255,0.85);background:rgba(31, 31, 32,0.75);color:#fff;font-size:15px;font-weight:600;display:flex;align-items:center;justify-content:center;touch-action:manipulation;user-select:none;';
+    const onReplace = (e: Event) => {
+      e.preventDefault();
+      e.stopPropagation();
+      this.beginARReposition();
+    };
+    replaceBtn.addEventListener('touchstart', onReplace, { passive: false });
+    replaceBtn.addEventListener('mousedown', onReplace);
+    container.appendChild(replaceBtn);
 
     // One-shot guidance text (e.g. "Placed near you...") - see showAROverlayHint(). Starts
     // empty/invisible; only takes up visible space once there's something to say, so it
@@ -1563,7 +1660,7 @@ export class XRManager {
         if (this.controllerHitTestSource) return;
         if (results.length > 0) {
           const hit = results[0];
-          reticle.isVisible = true;
+          reticle.isVisible = this.isAwaitingPlacement();
           reticle.position.copyFrom(hit.position);
           if (hit.rotationQuaternion) {
             reticle.rotationQuaternion = hit.rotationQuaternion.clone();
@@ -1585,6 +1682,7 @@ export class XRManager {
 
     const session = this.xrExperience.baseExperience.sessionManager.session;
     this.arSelectListener = () => {
+      if (performance.now() < this.suppressSelectUntil) return;
       if (!this.lastHitPose) return;
       // Once placed, further taps are ignored unless requestReposition() was explicitly
       // called - see the field comment on placementLocked for why: without this, ANY tap
@@ -1604,6 +1702,8 @@ export class XRManager {
       // Rotate buttons already let them dial in the exact heading afterward.
       this.faceCameraAtPlacement(root);
       this.placementLocked = true;
+      if (this.reticle) this.reticle.isVisible = false;
+      this.showAROverlayHint('Placed - use Re-place to move it again', 2000);
     };
     session?.addEventListener('select', this.arSelectListener);
 
@@ -1646,6 +1746,7 @@ export class XRManager {
       e.preventDefault();
       this.pinchStartDistance = distanceBetween(e.touches);
       this.pinchStartScale = this.placementScale;
+      this.suppressSelectUntil = performance.now() + 700;
     };
 
     this.arPinchTouchMove = (e: TouchEvent) => {
@@ -1654,10 +1755,14 @@ export class XRManager {
       const currentDistance = distanceBetween(e.touches);
       const ratio = currentDistance / this.pinchStartDistance;
       this.setPlacedModelScale(this.pinchStartScale * ratio);
+      this.suppressSelectUntil = performance.now() + 700;
     };
 
     this.arPinchTouchEnd = (e: TouchEvent) => {
       if (e.touches.length < 2) {
+        // The fingers lift one at a time; each lift ends a transient XR input and fires
+        // 'select' - keep ignoring those for a moment after the pinch ends.
+        if (this.pinchStartDistance > 0) this.suppressSelectUntil = performance.now() + 700;
         this.pinchStartDistance = 0;
       }
     };
@@ -1737,7 +1842,7 @@ export class XRManager {
         rotationQuaternion.z *= -1;
         rotationQuaternion.w *= -1;
       }
-      reticle.isVisible = true;
+      reticle.isVisible = this.isAwaitingPlacement();
       reticle.position.copyFrom(position);
       reticle.rotationQuaternion = rotationQuaternion.clone();
       this.lastHitPose = { position, rotationQuaternion };
@@ -1801,33 +1906,64 @@ export class XRManager {
     const isNew = !this.placementRoot || this.placementRoot.isDisposed();
     const root = this.getOrCreatePlacementRoot();
     if (isNew && this.xrCamera) {
-      const camera = this.xrCamera;
-      const forward = camera.getDirection(Vector3.Forward());
-      forward.y = 0;
-      if (forward.lengthSquared() < 1e-6) forward.set(0, 0, 1); else forward.normalize();
-      const targetX = camera.position.x + forward.x * 2;
-      const targetZ = camera.position.z + forward.z * 2;
-
-      let floorY = camera.position.y - camera.realWorldHeight;
-      if (this.groundFloorMeshes.length > 0) {
-        const probeRay = new Ray(
-          new Vector3(targetX, floorY + XRManager.GROUND_PROBE_ABOVE_M, targetZ),
-          Vector3.Down(),
-          XRManager.GROUND_PROBE_ABOVE_M + XRManager.GROUND_PROBE_BELOW_M
-        );
-        const pick = this.scene.pickWithRay(probeRay, (m) => this.groundFloorMeshes.indexOf(m) !== -1);
-        if (pick?.hit && pick.pickedPoint) floorY = pick.pickedPoint.y;
-      }
-
-      root.position.set(targetX, floorY, targetZ);
-      // Same "face whoever placed it" default the tap-to-place path uses (see
-      // faceCameraAtPlacement) - previously this fallback set no rotation at all, leaving
-      // the model at its as-authored orientation, which is just as likely to show its
-      // back to the user as its front.
-      this.faceCameraAtPlacement(root);
-      this.showAROverlayHint('Placed near you - tap the ground to fine-tune, or keep using the buttons');
+      this.placeInFrontOfCamera(root);
+      this.showAROverlayHint('Placed near you - tap the floor to place it exactly, or use the buttons');
     }
     return root;
+  }
+
+  // Puts the model's base ~2m in front of wherever the user is facing, on the floor
+  // (probed the same way setupGrounding() finds it), facing the user.
+  private placeInFrontOfCamera(root: TransformNode): void {
+    if (!this.xrCamera) return;
+    const camera = this.xrCamera;
+    const forward = camera.getDirection(Vector3.Forward());
+    forward.y = 0;
+    if (forward.lengthSquared() < 1e-6) forward.set(0, 0, 1); else forward.normalize();
+    const targetX = camera.position.x + forward.x * 2;
+    const targetZ = camera.position.z + forward.z * 2;
+
+    let floorY = camera.position.y - camera.realWorldHeight;
+    if (this.groundFloorMeshes.length > 0) {
+      const probeRay = new Ray(
+        new Vector3(targetX, floorY + XRManager.GROUND_PROBE_ABOVE_M, targetZ),
+        Vector3.Down(),
+        XRManager.GROUND_PROBE_ABOVE_M + XRManager.GROUND_PROBE_BELOW_M
+      );
+      const pick = this.scene.pickWithRay(probeRay, (m) => this.groundFloorMeshes.indexOf(m) !== -1);
+      if (pick?.hit && pick.pickedPoint) floorY = pick.pickedPoint.y;
+    }
+
+    root.position.set(targetX, floorY, targetZ);
+    // Same "face whoever placed it" default the tap-to-place path uses (see
+    // faceCameraAtPlacement) - previously this fallback set no rotation at all, leaving
+    // the model at its as-authored orientation, which is just as likely to show its
+    // back to the user as its front.
+    this.faceCameraAtPlacement(root);
+  }
+
+  // True while the next tap will place the model (before the first placement, or after
+  // Re-place) - the reticle is only shown then, so it's obvious when a tap will move it.
+  private isAwaitingPlacement(): boolean {
+    return !this.hasActivePlacement() || !this.placementLocked;
+  }
+
+  // In-AR "Re-place" button. With a working hit test the next floor tap moves the model
+  // there; on devices without one (no reticle ever appears) it's brought in front of the
+  // user straight away instead of waiting for a tap that can never land.
+  private beginARReposition(): void {
+    const root = this.ensurePlacementRoot();
+    const hasHitTest = !!this.hitTestFeature || !!this.controllerHitTestSource;
+    if (!hasHitTest) {
+      this.placeInFrontOfCamera(root);
+      this.placementLocked = true;
+      this.showAROverlayHint('Moved in front of you');
+      return;
+    }
+    this.placementLocked = false;
+    // Ignore the select generated by this very button press.
+    this.suppressSelectUntil = performance.now() + 400;
+    this.showAROverlayHint('Point at the floor and tap where the model should go', 4000);
   }
 
   // Points the placement root's local +Z ("forward", Babylon's mesh-orientation

@@ -1,5 +1,6 @@
 import { useEffect, useCallback } from 'react';
 import { Scene, ArcRotateCamera, AbstractMesh, Mesh, Vector3, PointerEventTypes, PointerInfo, Color3, Quaternion } from '@babylonjs/core';
+import { fromModelSpace } from '../utils/xrModelSpace';
 
 // Exported so BabylonWorkspace.tsx's OWN separate selection listener (its "click-to-
 // select" effect, further down the file) uses this exact same definition rather than
@@ -44,7 +45,9 @@ export const isSelectableMesh = (mesh: AbstractMesh): boolean =>
 export function resolveMeshRef(scene: Scene, meshId: string, meshName: string, position: { x: number; y: number; z: number }): AbstractMesh | null {
   const candidates = scene.meshes.filter((m) => m.id === meshId || m.name === meshName);
   if (candidates.length <= 1) return candidates[0] ?? null;
-  const target = new Vector3(position.x, position.y, position.z);
+  // Saved positions are in model space; bounding boxes are live world space (the model
+  // may be moved/scaled by VR/AR), so compare against where that point is right now.
+  const target = fromModelSpace(scene, position);
   const containing = candidates.find((c) => c.getBoundingInfo().boundingBox.intersectsPoint(target));
   if (containing) return containing;
   let best = candidates[0];
