@@ -100,6 +100,20 @@ export class XRManager {
   // fingers of a pinch and taps on the overlay buttons - so a pinch-to-scale or a button
   // press could also re-place the model. Selects before this timestamp are ignored.
   private suppressSelectUntil = 0;
+
+  // Headset AR (Quest etc.): the phone's DOM-overlay buttons above never show in a headset
+  // - WebXR DOM Overlay is a handheld-only feature - so AR in a headset had no controls at
+  // all. Controllers drive placement instead (thumbsticks + face buttons), with a small
+  // wrist panel as the visible, clickable version of the same controls.
+  private arControllerFrameCallback: (() => void) | null = null;
+  private arControllerAddedObserver: ((controller: WebXRInputSource) => void) | null = null;
+  private arButtonUnsubscribers: Array<() => void> = [];
+  private arPanelMesh: Mesh | null = null;
+  private arPanelAdt: AdvancedDynamicTexture | null = null;
+  private arPanelScaleText: TextBlock | null = null;
+  private static readonly AR_STICK_DEADZONE = 0.2;
+  private static readonly AR_MOVE_SPEED_MPS = 1.5;
+  private static readonly AR_ROTATE_SPEED_RAD = Math.PI / 3; // 60 deg/s at full deflection
   private hitTestFeature: XRHitTestFeatureLike | null = null;
   private reticle: Mesh | null = null;
   private lastHitPose: { position: Vector3; rotationQuaternion: Quaternion } | null = null;
@@ -1118,9 +1132,23 @@ export class XRManager {
   // placed UI markers and prop geometry into the anchor transform right along with the
   // building.
   private getPlaceableMeshes(): AbstractMesh[] {
+    // Anything riding on the headset or a controller (the laser pointer, controller models,
+    // the wrist panels) must stay with the player - reparenting it under the model root
+    // would leave it floating in the world, offset from the hand it belongs to.
+    const xrAnchors = new Set<Node>();
+    if (this.xrCamera) xrAnchors.add(this.xrCamera);
+    this.xrExperience?.input.controllers.forEach((c) => {
+      xrAnchors.add(c.pointer);
+      if (c.grip) xrAnchors.add(c.grip);
+    });
+    const attachedToXR = (m: AbstractMesh): boolean => {
+      for (let n: Node | null = m; n; n = n.parent) if (xrAnchors.has(n)) return true;
+      return false;
+    };
     return this.scene.meshes.filter((m) => {
       const name = m.name || '';
       if (!m.isEnabled()) return false;
+      if (attachedToXR(m)) return false;
       if (/skybox/i.test(name)) return false;
       // FIX: "ground" used to be matched as a PREFIX below (`^(ground|...)`), which also
       // excluded any real building mesh merely STARTING WITH "ground" - e.g.
@@ -1131,7 +1159,7 @@ export class XRManager {
       // exactly instead, same as BabylonWorkspace.tsx's own defaultScene() check for this
       // app's synthetic placeholder ground, which is always named exactly "ground".
       if (/^ground$/i.test(name)) return false;
-      return !/^(measure_|preview_|measurement_|annotation_|swatch_marker_|swatch_popup_panel_|hotspot_marker_|fixture_marker_|fixture_person_|fixture_pet_|fixture_rain_plane_|ambient_zone_|cursor_|collab_|sound_privacy_marker_|mood_light_|ar_reticle|ar_placement_root|__root__)/i.test(name);
+      return !/^(measure_|preview_|measurement_|annotation_|swatch_marker_|swatch_popup_panel_|hotspot_marker_|fixture_marker_|fixture_person_|fixture_pet_|fixture_rain_plane_|ambient_zone_|cursor_|collab_|sound_privacy_marker_|mood_light_|ar_reticle|ar_placement_root|__root__|xr_ar_panel|xr_teleport_|vrFeatureMenu|xrDebug)/i.test(name);
     });
   }
 
@@ -1663,6 +1691,8 @@ export class XRManager {
     const session = this.xrExperience.baseExperience.sessionManager.session;
     this.arSelectListener = () => {
       if (performance.now() < this.suppressSelectUntil) return;
+      // A trigger press on the wrist panel's buttons is also a session 'select'.
+      if (this.isPointingAtARPanel()) return;
       if (!this.lastHitPose) return;
       // Once placed, further taps are ignored unless requestReposition() was explicitly
       // called - see the field comment on placementLocked for why: without this, ANY tap
@@ -1682,12 +1712,14 @@ export class XRManager {
       // Rotate buttons already let them dial in the exact heading afterward.
       this.faceCameraAtPlacement(root);
       this.placementLocked = true;
+      this.updateScaleReadout();
       if (this.reticle) this.reticle.isVisible = false;
       this.showAROverlayHint('Placed - use Re-place to move it again', 2000);
     };
     session?.addEventListener('select', this.arSelectListener);
 
     this.setupPinchToZoom();
+    this.setupARHeadsetControls();
 
     // FIX: ensurePlacementRoot()'s own "2m in front of the user, floor-probed" fallback
     // (see its comment) was written specifically so there's always something reasonable
@@ -1861,6 +1893,7 @@ export class XRManager {
     this.reticle = null;
     this.teardownAROverlayUI();
     this.teardownPinchToZoom();
+    this.teardownARHeadsetControls();
     if (this.autoRotateObserver) {
       this.scene.onBeforeRenderObservable.remove(this.autoRotateObserver);
       this.autoRotateObserver = null;
@@ -1933,6 +1966,186 @@ export class XRManager {
     return !this.hasActivePlacement() || !this.placementLocked;
   }
 
+  // Headset AR controls. Only for tracked-pointer controllers (a headset's) - a phone's
+  // screen taps are 'screen' input sources and keep using the DOM overlay/pinch.
+  //   Left stick   move the model along the floor (relative to where you're looking)
+  //   Right stick  left/right rotates it, up/down scales it
+  //   Trigger      places it where the reticle is (first placement / after Re-place)
+  //   A            Re-place          B   back to 1:1 (real size)
+  //   Y            show/hide the wrist panel
+  //   Hold grip    exit (existing gesture, setupControllerEvents)
+  private setupARHeadsetControls(): void {
+    if (!this.xrExperience) return;
+    this.teardownARHeadsetControls();
+    const input = this.xrExperience.input;
+
+    const bindButton = (mc: any, componentId: string, onPress: () => void) => {
+      const component = mc?.getComponent?.(componentId);
+      if (!component) return;
+      const observer = component.onButtonStateChangedObservable.add((c: any) => {
+        if (c.changes?.pressed && c.pressed) onPress();
+      });
+      this.arButtonUnsubscribers.push(() => component.onButtonStateChangedObservable.remove(observer));
+    };
+
+    const onController = (controller: WebXRInputSource) => {
+      if (controller.inputSource.targetRayMode !== 'tracked-pointer') return;
+      // The panel is a convenience on top of the stick/button controls - a GUI failure on
+      // some device must not take those down with it (same policy as the VR menu).
+      if (!this.arPanelMesh) {
+        try {
+          this.createARPanel();
+        } catch (error) {
+          console.warn('[XRManager] Could not create the AR wrist panel:', error);
+        }
+      }
+      if (controller.inputSource.handedness === 'left' && this.arPanelMesh) this.positionVRMenu(this.arPanelMesh, controller);
+      const bind = (mc: any) => {
+        if (controller.inputSource.handedness === 'right') {
+          bindButton(mc, 'a-button', () => this.beginARReposition());
+          bindButton(mc, 'b-button', () => this.resetPlacedModelScale());
+        } else if (controller.inputSource.handedness === 'left') {
+          bindButton(mc, 'y-button', () => {
+            if (this.arPanelMesh) this.arPanelMesh.setEnabled(!this.arPanelMesh.isEnabled());
+          });
+        }
+      };
+      if (controller.motionController) bind(controller.motionController);
+      else controller.onMotionControllerInitObservable.addOnce(bind);
+    };
+    input.controllers.forEach(onController);
+    this.arControllerAddedObserver = onController;
+    input.onControllerAddedObservable.add(onController);
+
+    const stickOf = (hand: 'left' | 'right') => {
+      const controller = this.xrExperience?.input.controllers.find(
+        (c) => c.inputSource.handedness === hand && c.inputSource.targetRayMode === 'tracked-pointer'
+      );
+      const stick = controller?.motionController?.getComponentOfType(WebXRControllerComponent.THUMBSTICK_TYPE)
+        ?? controller?.motionController?.getComponentOfType(WebXRControllerComponent.TOUCHPAD_TYPE);
+      if (!stick) return null;
+      const dz = XRManager.AR_STICK_DEADZONE;
+      return { x: Math.abs(stick.axes.x) > dz ? stick.axes.x : 0, y: Math.abs(stick.axes.y) > dz ? stick.axes.y : 0 };
+    };
+
+    this.arControllerFrameCallback = () => {
+      if (!this.hasActivePlacement()) return;
+      const dt = Math.min(0.1, this.scene.getEngine().getDeltaTime() / 1000);
+      const left = stickOf('left');
+      if (left && (left.x || left.y)) {
+        const step = XRManager.AR_MOVE_SPEED_MPS * dt;
+        // WebXR stick convention: y negative = pushed forward.
+        this.nudgePlacedModel(-left.y * step, left.x * step);
+      }
+      const right = stickOf('right');
+      if (right && (right.x || right.y)) {
+        // One axis at a time, whichever is pushed further, so rotating doesn't also
+        // creep the scale (and vice versa).
+        if (Math.abs(right.x) >= Math.abs(right.y)) {
+          this.rotatePlacedModel(right.x * XRManager.AR_ROTATE_SPEED_RAD * dt);
+        } else {
+          // Push up to grow, pull down to shrink - up to 2x per second.
+          this.scalePlacedModel(Math.pow(2, -right.y * dt));
+        }
+      }
+    };
+    this.xrExperience.baseExperience.sessionManager.onXRFrameObservable.add(this.arControllerFrameCallback);
+  }
+
+  private teardownARHeadsetControls(): void {
+    const sessionManager = this.xrExperience?.baseExperience?.sessionManager;
+    if (sessionManager && this.arControllerFrameCallback) {
+      sessionManager.onXRFrameObservable.removeCallback(this.arControllerFrameCallback);
+    }
+    this.arControllerFrameCallback = null;
+    if (this.xrExperience && this.arControllerAddedObserver) {
+      this.xrExperience.input.onControllerAddedObservable.removeCallback(this.arControllerAddedObserver);
+    }
+    this.arControllerAddedObserver = null;
+    this.arButtonUnsubscribers.forEach((off) => off());
+    this.arButtonUnsubscribers = [];
+    this.arPanelAdt?.dispose();
+    this.arPanelAdt = null;
+    this.arPanelMesh?.dispose(false, true);
+    this.arPanelMesh = null;
+    this.arPanelScaleText = null;
+  }
+
+  // Wrist panel (left controller, same placement as the VR feature menu) with the same
+  // actions as the phone overlay - clickable with the controller laser + trigger - and a
+  // reminder of the stick/button mapping.
+  private createARPanel(): void {
+    const plane = MeshBuilder.CreatePlane('xr_ar_panel', { width: 0.3, height: 0.36 }, this.scene);
+    plane.isPickable = true;
+    plane.renderingGroupId = 1;
+    this.positionVRMenu(plane);
+
+    const adt = AdvancedDynamicTexture.CreateForMesh(plane, 600, 720);
+    adt.background = 'rgba(31, 31, 32, 0.92)';
+
+    const panel = new StackPanel('xrArPanelStack');
+    panel.width = '100%';
+    panel.paddingTop = '18px';
+    adt.addControl(panel);
+
+    const text = (value: string, size: number, height: number, color = 'white') => {
+      const t = new TextBlock(undefined, value);
+      t.color = color;
+      t.fontSize = size;
+      t.height = `${height}px`;
+      t.textWrapping = true;
+      panel.addControl(t);
+      return t;
+    };
+    text('AR placement', 34, 52);
+    this.arPanelScaleText = text(`Scale ${Math.round(this.placementScale * 100)}%`, 26, 40, '#ff7072');
+
+    const row = (items: Array<[string, () => void]>) => {
+      const r = new StackPanel();
+      r.isVertical = false;
+      r.height = '92px';
+      r.spacing = 12;
+      items.forEach(([label, action]) => {
+        const b = Button.CreateSimpleButton(`xrAr_${label}`, label);
+        b.width = `${Math.floor(540 / items.length) - 12}px`;
+        b.height = '80px';
+        b.color = 'white';
+        b.fontSize = 26;
+        b.background = '#4a4a4b';
+        b.cornerRadius = 14;
+        b.thickness = 0;
+        b.onPointerClickObservable.add(() => {
+          // The same trigger press is also a session 'select' - don't let it place.
+          this.suppressSelectUntil = performance.now() + 400;
+          action();
+        });
+        b.onPointerEnterObservable.add(() => { b.background = '#ff4d4f'; });
+        b.onPointerOutObservable.add(() => { b.background = '#4a4a4b'; });
+        r.addControl(b);
+      });
+      panel.addControl(r);
+    };
+    row([['Re-place', () => this.beginARReposition()], ['1:1 size', () => this.resetPlacedModelScale()]]);
+    row([['- Smaller', () => this.scalePlacedModel(1 / 1.15)], ['+ Bigger', () => this.scalePlacedModel(1.15)]]);
+    row([['Rotate L', () => this.rotatePlacedModel(-Math.PI / 12)], ['Rotate R', () => this.rotatePlacedModel(Math.PI / 12)]]);
+    row([['Mirror', () => this.mirrorPlacedModel()], ['Exit AR', () => { void this.exitXR(); }]]);
+    text('Left stick: move  -  Right stick: rotate / scale\nTrigger: place  -  A: re-place  -  B: 1:1  -  Y: hide panel', 20, 90, '#c4c2c2');
+
+    this.arPanelMesh = plane;
+    this.arPanelAdt = adt;
+  }
+
+  private isPointingAtARPanel(): boolean {
+    const panel = this.arPanelMesh;
+    if (!panel || !panel.isEnabled() || !this.xrExperience) return false;
+    const ray = new Ray(Vector3.Zero(), Vector3.Forward());
+    return this.xrExperience.input.controllers.some((c) => {
+      if (c.inputSource.targetRayMode !== 'tracked-pointer') return false;
+      c.getWorldPointerRayToRef(ray);
+      return ray.intersectsMesh(panel).hit;
+    });
+  }
+
   // In-AR "Re-place" button. With a working hit test the next floor tap moves the model
   // there; on devices without one (no reticle ever appears) it's brought in front of the
   // user straight away instead of waiting for a tap that can never land.
@@ -1949,6 +2162,7 @@ export class XRManager {
     // Ignore the select generated by this very button press.
     this.suppressSelectUntil = performance.now() + 400;
     this.showAROverlayHint('Point at the floor and tap where the model should go', 4000);
+    if (this.arPanelScaleText) this.arPanelScaleText.text = 'Aim at the floor, pull the trigger to place';
   }
 
   // Points the placement root's local +Z ("forward", Babylon's mesh-orientation
@@ -2136,6 +2350,9 @@ export class XRManager {
     if (this.arScaleReadoutElement) {
       this.arScaleReadoutElement.textContent = `${Math.round(this.placementScale * 100)}%`;
     }
+    if (this.arPanelScaleText) {
+      this.arPanelScaleText.text = `Scale ${Math.round(this.placementScale * 100)}%`;
+    }
   }
 
   // Exit XR mode
@@ -2226,16 +2443,23 @@ export class XRManager {
       this.enableHandTracking(featuresManager);
     }
 
-    // Smooth thumbstick locomotion (left controller) - see setupCustomMovement for why
-    // this is a full reimplementation rather than WebXRFeatureName.MOVEMENT.
-    this.setupCustomMovement();
+    // In AR the real world IS the scene: the only way the viewer moves is by physically
+    // walking. Stick locomotion, teleporting, snap-turn or floor-following there would
+    // move the virtual camera while the passthrough view stays put - sliding the placed
+    // model off the real site. In AR the sticks drive the model instead (see
+    // setupARHeadsetControls).
+    if (this.currentSessionMode !== 'immersive-ar') {
+      // Smooth thumbstick locomotion (left controller) - see setupCustomMovement for why
+      // this is a full reimplementation rather than WebXRFeatureName.MOVEMENT.
+      this.setupCustomMovement();
 
-    // Continuous floor-following (walking height, stairs) - independent of whether
-    // point-and-teleport itself is enabled, since it also grounds plain walking.
-    this.setupGrounding(floorMeshes);
+      // Continuous floor-following (walking height, stairs) - independent of whether
+      // point-and-teleport itself is enabled, since it also grounds plain walking.
+      this.setupGrounding(floorMeshes);
 
-    if (this.teleportationEnabled) {
-      this.setupCustomTeleportation(floorMeshes);
+      if (this.teleportationEnabled) {
+        this.setupCustomTeleportation(floorMeshes);
+      }
     }
 
     // Set up controller events
@@ -2814,7 +3038,7 @@ export class XRManager {
   toggleTeleportation(): void {
     this.teleportationEnabled = !this.teleportationEnabled;
 
-    if (this.xrExperience && this.currentSessionMode !== 'none') {
+    if (this.xrExperience && this.currentSessionMode === 'immersive-vr') {
       if (this.teleportationEnabled) {
         this.setupCustomTeleportation(this.getFloorMeshes());
       } else {
