@@ -1,4 +1,4 @@
-import { Engine, Scene, Mesh, InstancedMesh, Vector3, Color3, StandardMaterial, PBRMaterial, TransformNode, SceneLoader } from '@babylonjs/core';
+import { Engine, Scene, Mesh, InstancedMesh, Vector3, Color3, StandardMaterial, PBRMaterial, TransformNode, SceneLoader, Constants } from '@babylonjs/core';
 import { CostEstimator, CostEstimate, CostBreakdown } from './CostEstimator';
 import { runChunked } from './utils/runChunked';
 
@@ -1033,14 +1033,17 @@ export class BIMManager {
     if (!this.config.clashDetectionEnabled) return;
 
     this.clashes = [];
+    // Re-running used to stack a fresh set of markers on top of the previous run's.
+    this.clashHighlightGroup?.getChildMeshes().forEach((m) => m.dispose(false, true));
 
     interface BoundedMesh { mesh: Mesh | InstancedMesh; min: Vector3; max: Vector3 }
     const boundedMeshes: BoundedMesh[] = [];
     this.models.forEach(model => {
       model.elements.forEach(element => {
-        if (element.mesh) {
+        if (element.mesh && !element.mesh.isDisposed()) {
+          element.mesh.computeWorldMatrix(true);
           const box = element.mesh.getBoundingInfo().boundingBox;
-          boundedMeshes.push({ mesh: element.mesh, min: box.minimumWorld, max: box.maximumWorld });
+          boundedMeshes.push({ mesh: element.mesh, min: box.minimumWorld.clone(), max: box.maximumWorld.clone() });
         }
       });
     });
@@ -1058,17 +1061,25 @@ export class BIMManager {
         // loop can overlap a on X either.
         if (b.min.x > a.max.x) break;
 
-        if (
-          a.max.y >= b.min.y && a.min.y <= b.max.y &&
-          a.max.z >= b.min.z && a.min.z <= b.max.z
-        ) {
+        // Overlap of the two WORLD-space boxes. Elements that merely touch (a wall
+        // standing on a slab, panels meeting at a corner) overlap by ~0 and aren't clashes.
+        const overlapMin = Vector3.Maximize(a.min, b.min);
+        const overlapMax = Vector3.Minimize(a.max, b.max);
+        const overlap = overlapMax.subtract(overlapMin);
+        const CONTACT_TOLERANCE = 0.02; // metres
+        if (overlap.x > CONTACT_TOLERANCE && overlap.y > CONTACT_TOLERANCE && overlap.z > CONTACT_TOLERANCE) {
           const clash: BIMClash = {
             id: `clash_${this.clashes.length}`,
             type: 'intersection',
             severity: 'critical',
             elements: [a.mesh.id, b.mesh.id],
             description: `Intersection detected between ${a.mesh.id} and ${b.mesh.id}`,
-            position: a.mesh.position.add(b.mesh.position).scale(0.5)
+            // FIX: was the average of the two meshes' LOCAL .position values. For a loaded
+            // model every mesh sits under the glTF __root__ node (handedness flip, rotation,
+            // offset), so local positions aren't where the geometry is - the red markers
+            // landed scattered beside the building. The centre of the actual overlap region
+            // is where the clash physically is.
+            position: overlapMin.add(overlapMax).scale(0.5)
           };
           this.clashes.push(clash);
           this.createClashHighlight(clash);
@@ -1095,13 +1106,20 @@ export class BIMManager {
     if (!this.clashHighlightGroup) return;
 
     // Create a sphere to highlight the clash position
-    const highlightMesh = Mesh.CreateSphere(`clash_highlight_${clash.id}`, 16, 0.2, this.scene);
+    const highlightMesh = Mesh.CreateSphere(`clash_highlight_${clash.id}`, 16, 0.3, this.scene);
     highlightMesh.position = clash.position;
+    // A clash is by definition INSIDE the two elements it involves, so the marker was
+    // hidden inside the wall/beam it flagged - draw it over the model instead.
+    highlightMesh.renderingGroupId = 1;
+    highlightMesh.isPickable = false;
 
     // Apply red material for clash highlight
     const material = new StandardMaterial(`clash_material_${clash.id}`, this.scene);
     material.diffuseColor = new Color3(1, 0, 0);
     material.emissiveColor = new Color3(0.5, 0, 0);
+    // Group 1 keeps the depth buffer in this workspace (see setRenderingAutoClearDepthStencil),
+    // so the group alone doesn't lift it out of the wall - skip the depth test for it.
+    material.depthFunction = Constants.ALWAYS;
     highlightMesh.material = material;
 
     // Add to clash highlight group
@@ -1262,11 +1280,16 @@ export class BIMManager {
   // the browser in between, which was long enough to trip Chrome's own "Page Unresponsive"
   // hang detector on large models.
   async registerLoadedModelFromScene(modelId: string, name: string): Promise<BIMModel> {
+    // A real model has loaded - the placeholder demo building (loaded at scene init when no
+    // model was selected yet) must go. Nothing else ever removed it, so it stayed at the
+    // world origin next to the real building for the rest of the session.
+    this.unloadDemoModel();
     const meshes = this.scene.meshes.filter((m): m is Mesh =>
       m instanceof Mesh &&
       m.getTotalVertices() > 0 &&
       !!m.name &&
-      !/^(ground|__root__|measure_|preview_|scenario_|proceduralSkybox|analytics_heatmap)/i.test(m.name)
+      !/^(ground|__root__|measure_|preview_|scenario_|proceduralSkybox|analytics_heatmap|clash_highlight_|annotation_|swatch_|hotspot_|fixture_|cursor_|collab_|sound_privacy_marker_|mood_light_|ambient_zone_|xr_|ar_|vrFeatureMenu|xrDebug|hdrSkyBox|skybox)/i.test(m.name) &&
+      !m.infiniteDistance
     );
 
     const inferType = (meshName: string): BIMElementType => {
@@ -1341,6 +1364,15 @@ export class BIMManager {
   // wiring/plumbing/hvac meshes on every call with no cleanup of the previous set, so
   // re-enabling the BIM Integration feature repeatedly permanently stacked duplicate,
   // overlapping demo geometry in the scene.
+  unloadDemoModel(): void {
+    if (!this.demoModelId) return;
+    const model = this.models.get(this.demoModelId);
+    model?.elements.forEach((element) => element.mesh?.dispose(false, true));
+    model?.hiddenDetails.forEach((detail) => detail.mesh?.dispose(false, true));
+    this.models.delete(this.demoModelId);
+    this.demoModelId = null;
+  }
+
   async loadDemoModel(): Promise<BIMModel> {
     if (this.demoModelId) {
       const existing = this.models.get(this.demoModelId);

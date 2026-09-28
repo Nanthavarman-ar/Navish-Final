@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { Scene, Mesh } from '@babylonjs/core';
 import { BIMManager, BIMModel, BIMElement, BIMClash } from './BIMManager';
 import { showToast } from './utils/toast';
@@ -52,6 +52,21 @@ const BIMIntegration: React.FC<BIMIntegrationProps> = ({
   // hitting whatever instance existed at first mount, even if the parent's ref was ever
   // reassigned to a new manager afterwards.
   const localBimManager = bimManager ?? null;
+
+  // The loaded building is registered with the manager when it loads (not through this
+  // panel's Import button), so the list used to say "No BIM models loaded" while one was.
+  // Kept in sync while the panel is open, since registration finishes asynchronously.
+  useEffect(() => {
+    if (!isActive || !localBimManager) return;
+    const sync = () => {
+      const all = localBimManager.getAllModels();
+      setModels((prev) => (prev.length === all.length && prev.every((m, i) => m === all[i]) ? prev : all));
+      setSelectedModel((prev) => prev ?? all[0] ?? null);
+    };
+    sync();
+    const id = setInterval(sync, 1500);
+    return () => clearInterval(id);
+  }, [isActive, localBimManager]);
 
   const handleFileImport = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];

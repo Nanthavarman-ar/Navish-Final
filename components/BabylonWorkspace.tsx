@@ -4657,24 +4657,18 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
             console.error('Error toggling hidden details:', error);
             showToast.error('Failed to toggle hidden details');
           }
-          // Both calls below return Promise<...> (BIMManager.ts:992,1338) - they were
-          // previously fired without await/.then, so the success toast showed the instant
-          // the call was MADE rather than once it actually finished, regardless of whether
-          // it went on to succeed or reject. A rejection became a silent unhandled promise
-          // rejection while the user had already been told it worked.
-          bimManagerRef.current.enableClashDetection()
-            .then(() => showToast.success('Clash detection enabled'))
-            .catch((error: unknown) => {
-              console.error('Error enabling clash detection:', error);
-              showToast.error('Failed to enable clash detection');
-            });
-          if (typeof bimManagerRef.current.loadDemoModel === 'function') {
-            bimManagerRef.current.loadDemoModel()
-              .then(() => showToast.success('Demo model loaded'))
-              .catch((error: unknown) => {
-                console.error('Error loading demo model:', error);
-                showToast.error('Failed to load demo model');
-              });
+          // FIX ("BIM integration panna default model place aagi, building pakathula dot
+          // dot aah vanthuruthu"): enabling BIM used to (a) load a hard-coded demo BIM model
+          // - 5 m walls, floor, ceiling and pipes - at the world origin, wherever the real
+          // building happened to be, and (b) immediately run a clash scan whose markers were
+          // computed from local positions and so scattered beside the building. BIM now
+          // works on the model that's actually in the scene (registered on model load, or
+          // here if nothing is registered yet); clash checks stay on the dedicated Clash
+          // Detection tool / the panel's Analysis tab, where they're asked for.
+          const bim = bimManagerRef.current;
+          if (bim.getAllModels().length === 0) {
+            bim.registerLoadedModelFromScene('scene-model', 'Current model')
+              .catch((error: unknown) => console.error('Error registering the scene as a BIM model:', error));
           }
         }
 
