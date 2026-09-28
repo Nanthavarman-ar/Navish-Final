@@ -39,10 +39,11 @@ const BIMIntegration: React.FC<BIMIntegrationProps> = ({
   const [isImporting, setIsImporting] = useState(false);
   const [importProgress, setImportProgress] = useState(0);
   const [searchTerm, setSearchTerm] = useState('');
-  const [showHiddenDetails, setShowHiddenDetails] = useState(false);
-  const [transparencyMode, setTransparencyMode] = useState(false);
-  const [wallPeelingMode, setWallPeelingMode] = useState(false);
-  const [clashDetectionEnabled, setClashDetectionEnabled] = useState(false);
+  const initialConfig = bimManager?.getConfig?.();
+  const [showHiddenDetails, setShowHiddenDetails] = useState(!!initialConfig?.showHiddenDetails);
+  const [transparencyMode, setTransparencyMode] = useState(!!initialConfig?.transparencyMode);
+  const [wallPeelingMode, setWallPeelingMode] = useState(!!initialConfig?.wallPeelingMode);
+  const [clashDetectionEnabled, setClashDetectionEnabled] = useState(!!initialConfig?.clashDetectionEnabled);
   const [elementFilter, setElementFilter] = useState<string>('all');
 
   const fileInputRef = useRef<HTMLInputElement>(null);

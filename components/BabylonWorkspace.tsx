@@ -515,6 +515,9 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
     activeFeatures,
     featuresByCategory: rawFeaturesByCategory
   } = useFeatureStates(initialFeatureStates);
+  // Read inside handleFeatureToggle, which is memoized without featureStates in its deps.
+  const featureStatesRef = useRef(featureStates);
+  featureStatesRef.current = featureStates;
 
   // Import is admin-only (see handleFeatureToggle/onImport/handleWorkspaceFileUpload's
   // own isAdmin checks below, which block the action itself) - filtered out of the
@@ -4652,7 +4655,7 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
             if (!bimManagerRef.current.getConfig?.()?.showHiddenDetails) {
               bimManagerRef.current.toggleHiddenDetails();
             }
-            showToast.success('Hidden details toggled');
+            showToast.success('BIM view on');
           } catch (error) {
             console.error('Error toggling hidden details:', error);
             showToast.error('Failed to toggle hidden details');
@@ -5196,6 +5199,11 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
       if (id === 'showClashDetection' && bimManagerRef.current) {
         bimManagerRef.current.disableClashDetection();
         showToast.info('Clash detection disabled');
+      }
+      // BIM is an on/off overlay: switching it off removes what it added to the view.
+      if (id === 'showBIMIntegration' && bimManagerRef.current) {
+        bimManagerRef.current.resetViewModes({ keepClashDetection: !!featureStatesRef.current.showClashDetection });
+        showToast.info('BIM view turned off');
       }
       if (id === 'showGestureDetection' && gestureManagerRef.current) {
         gestureManagerRef.current.stopGestureRecognition();

@@ -101,6 +101,7 @@ export class BIMManager {
   private scene: Scene;
   private models: Map<string, BIMModel> = new Map();
   private demoModelId: string | null = null;
+  private alphaBeforeTransparency = new Map<{ alpha: number }, number>();
   private config: BIMConfig;
   private hiddenDetailGroup: TransformNode | null = null;
   private isInitialized: boolean = false;
@@ -727,24 +728,25 @@ export class BIMManager {
   // Toggle transparency mode
   toggleTransparencyMode(): void {
     this.config.transparencyMode = !this.config.transparencyMode;
+    const on = this.config.transparencyMode;
 
+    // Switching off used to force every material to alpha 1 - which made the loaded
+    // model's own glass/transparent materials opaque for good. Each material's real alpha
+    // is remembered on the way in and put back on the way out.
+    const apply = (material: { alpha: number } | null | undefined, alpha: number) => {
+      if (!material) return;
+      if (on) {
+        if (!this.alphaBeforeTransparency.has(material)) this.alphaBeforeTransparency.set(material, material.alpha);
+        material.alpha = Math.min(material.alpha, alpha);
+      } else {
+        material.alpha = this.alphaBeforeTransparency.get(material) ?? 1.0;
+      }
+    };
     this.models.forEach(model => {
-      // Update element transparency
-      model.elements.forEach(element => {
-        if (element.mesh && element.mesh.material) {
-          const material = element.mesh.material as StandardMaterial;
-          material.alpha = this.config.transparencyMode ? 0.7 : 1.0;
-        }
-      });
-
-      // Update hidden detail transparency
-      model.hiddenDetails.forEach(detail => {
-        if (detail.mesh && detail.mesh.material) {
-          const material = detail.mesh.material as StandardMaterial;
-          material.alpha = this.config.transparencyMode ? 0.5 : 1.0;
-        }
-      });
+      model.elements.forEach(element => apply(element.mesh?.material, 0.7));
+      model.hiddenDetails.forEach(detail => apply(detail.mesh?.material, 0.5));
     });
+    if (!on) this.alphaBeforeTransparency.clear();
 
     console.log(`Transparency mode ${this.config.transparencyMode ? 'enabled' : 'disabled'}`);
   }
@@ -1010,7 +1012,7 @@ export class BIMManager {
     // Clear existing clash highlights
     if (this.clashHighlightGroup) {
       this.clashHighlightGroup.getChildMeshes().forEach(mesh => {
-        mesh.dispose();
+        mesh.dispose(false, true);
       });
     }
 
@@ -1364,6 +1366,16 @@ export class BIMManager {
   // wiring/plumbing/hvac meshes on every call with no cleanup of the previous set, so
   // re-enabling the BIM Integration feature repeatedly permanently stacked duplicate,
   // overlapping demo geometry in the scene.
+  // Turning the BIM Integration feature OFF used to leave everything it had switched on
+  // (hidden MEP details, see-through mode, wall peeling, clash markers) in the scene.
+  // keepClashDetection: the separate Clash Detection tool is still on and owns those markers.
+  resetViewModes(options: { keepClashDetection?: boolean } = {}): void {
+    if (this.config.showHiddenDetails) this.toggleHiddenDetails();
+    if (this.config.transparencyMode) this.toggleTransparencyMode();
+    if (this.config.wallPeelingMode) this.toggleWallPeeling();
+    if (!options.keepClashDetection && this.config.clashDetectionEnabled) this.disableClashDetection();
+  }
+
   unloadDemoModel(): void {
     if (!this.demoModelId) return;
     const model = this.models.get(this.demoModelId);
