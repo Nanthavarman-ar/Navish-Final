@@ -21,7 +21,10 @@ import {
   Calendar,
   FileType,
   HardDrive,
-  LogOut
+  LogOut,
+  Share2,
+  Copy,
+  ExternalLink
 } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '../ui/dialog';
 import { Label } from '../ui/label';
@@ -135,6 +138,47 @@ export function ModelsPage() {
     } catch (error) {
       console.error('Failed to rename model:', error);
       showToast.error('Failed to rename model', 'The name on the server is unchanged - please try again');
+    }
+  };
+
+  // Public demo links: anyone with the link can open the model in the viewer without
+  // logging in (read-only). Only admins can create or revoke a link.
+  const [demoDialogModelId, setDemoDialogModelId] = useState<string | null>(null);
+  const [demoBusy, setDemoBusy] = useState(false);
+  const demoModel = demoDialogModelId ? models.find((m) => m.id.toString() === demoDialogModelId) : null;
+  const demoLink = demoModel?.isDemo && demoModel?.publicShareId
+    ? `${window.location.origin}/demo/${demoModel.publicShareId}`
+    : '';
+
+  const setDemoSharing = async (modelId: string | number, enabled: boolean) => {
+    setDemoBusy(true);
+    try {
+      const result = await apiCall(`/models/${modelId}/demo`, {
+        method: 'PATCH',
+        body: JSON.stringify({ enabled }),
+      });
+      const updated = result?.model;
+      setModels(prev => prev.map(m =>
+        m.id.toString() === modelId.toString()
+          ? { ...m, isDemo: !!updated?.isDemo, publicShareId: updated?.publicShareId }
+          : m
+      ));
+      showToast.success(enabled ? 'Public demo link created' : 'Demo link turned off', enabled ? 'Anyone with the link can view this model - no login needed.' : 'The old link no longer works.');
+    } catch (error) {
+      console.error('Failed to update demo sharing:', error);
+      showToast.error('Could not update the demo link', 'Please try again');
+    } finally {
+      setDemoBusy(false);
+    }
+  };
+
+  const copyDemoLink = async () => {
+    if (!demoLink) return;
+    try {
+      await navigator.clipboard.writeText(demoLink);
+      showToast.success('Link copied');
+    } catch {
+      showToast.info('Copy this link', demoLink);
     }
   };
 
@@ -415,6 +459,16 @@ export function ModelsPage() {
                     <Eye className="w-3 h-3" />
                   </Button>
                   <Button
+                    onClick={() => setDemoDialogModelId(model.id.toString())}
+                    size="sm"
+                    variant="outline"
+                    className="border-white text-white hover:bg-white hover:text-black"
+                    title="Public demo link"
+                    aria-label="Public demo link"
+                  >
+                    <Share2 className="w-3 h-3" />
+                  </Button>
+                  <Button
                     onClick={() => handleEditModel(model.id)}
                     size="sm"
                     variant="outline"
@@ -433,7 +487,10 @@ export function ModelsPage() {
                 </div>
               </div>
               <CardHeader className="pb-2">
-                <CardTitle className="text-white text-lg">{model.name}</CardTitle>
+                <CardTitle className="text-white text-lg flex items-center gap-2">
+                  {model.name}
+                  {model.isDemo && <Badge className="bg-red-500/20 text-red-300 border border-red-400/40">Public demo</Badge>}
+                </CardTitle>
                 <CardDescription className="text-gray-400 text-sm line-clamp-2">
                   {model.description}
                 </CardDescription>
@@ -546,6 +603,15 @@ export function ModelsPage() {
                     >
                       <Users className="w-4 h-4 mr-1" />
                       Assign
+                    </Button>
+                    <Button
+                      onClick={() => setDemoDialogModelId(model.id.toString())}
+                      size="sm"
+                      variant="outline"
+                      className={model.isDemo ? 'border-red-400 text-red-300 hover:bg-red-400 hover:text-white' : 'border-slate-600'}
+                    >
+                      <Share2 className="w-4 h-4 mr-1" />
+                      {model.isDemo ? 'Demo link' : 'Make demo'}
                     </Button>
                     <Button
                       onClick={() => handleDownloadModel(model.id)}
@@ -679,6 +745,49 @@ export function ModelsPage() {
               </Button>
             </div>
           </div>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={!!demoModel} onOpenChange={(open) => { if (!open) setDemoDialogModelId(null); }}>
+        <DialogContent className="bg-slate-800 border-slate-700 text-white">
+          <DialogHeader>
+            <DialogTitle>Public demo link</DialogTitle>
+            <DialogDescription className="text-gray-400">
+              {demoModel?.name} - anyone with the link can open this model in the 3D viewer without logging in. They can look around but can't upload or change anything.
+            </DialogDescription>
+          </DialogHeader>
+          {demoLink ? (
+            <div className="space-y-3">
+              <div className="flex gap-2">
+                <Input readOnly value={demoLink} className="bg-slate-700 border-slate-600 text-white" onFocus={(e) => e.currentTarget.select()} />
+                <Button onClick={copyDemoLink} className="bg-cyan-600 hover:bg-cyan-700 shrink-0">
+                  <Copy className="w-4 h-4 mr-1" /> Copy
+                </Button>
+              </div>
+              <div className="flex justify-between gap-2">
+                <Button variant="outline" className="border-slate-600" onClick={() => window.open(demoLink, '_blank', 'noopener')}>
+                  <ExternalLink className="w-4 h-4 mr-1" /> Open
+                </Button>
+                <Button
+                  variant="outline"
+                  className="border-red-400 text-red-400 hover:bg-red-400 hover:text-white"
+                  disabled={demoBusy}
+                  onClick={() => demoModel && setDemoSharing(demoModel.id, false)}
+                >
+                  Stop sharing
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex justify-end">
+              <Button
+                className="bg-cyan-600 hover:bg-cyan-700"
+                disabled={demoBusy}
+                onClick={() => demoModel && setDemoSharing(demoModel.id, true)}
+              >
+                <Share2 className="w-4 h-4 mr-1" /> {demoBusy ? 'Creating...' : 'Create public demo link'}
+              </Button>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </div>

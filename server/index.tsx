@@ -1620,6 +1620,114 @@ app.patch('/make-server-cf230d31/models/:id', async (c) => {
   }
 });
 
+// ---------------------------------------------------------------------------------------
+// Public demo models. An admin can mark any model as a public demo; that gives it an
+// unguessable share id, and /demo/<shareId> in the app then opens the model for anyone -
+// no login - read-only. Turning it off deletes the share id, so old links stop working.
+// Uploading stays admin-only everywhere (finalize-model-upload / r2-* routes are unchanged).
+// ---------------------------------------------------------------------------------------
+const newShareId = (): string => {
+  const bytes = new Uint8Array(16);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+};
+
+// Make a model a public demo, or stop sharing it (Admin only).
+app.patch('/make-server-cf230d31/models/:id/demo', async (c) => {
+  const { error, user } = await verifyAdmin(c.req.raw);
+  if (error) {
+    return c.json({ error }, 401);
+  }
+
+  try {
+    const modelId = c.req.param('id');
+    const model = await kv.get(`model:${modelId}`);
+    if (!model) {
+      return c.json({ error: 'Model not found' }, 404);
+    }
+
+    const body = await c.req.json().catch(() => ({}));
+    const enabled = body?.enabled === true;
+    if (enabled) {
+      model.isDemo = true;
+      model.publicShareId = model.publicShareId || newShareId();
+    } else {
+      model.isDemo = false;
+      delete model.publicShareId;
+    }
+    await kv.set(`model:${modelId}`, model);
+
+    await logAuditEvent(
+      user.id,
+      user.user_metadata?.username || 'admin',
+      enabled ? 'MODEL_DEMO_SHARED' : 'MODEL_DEMO_UNSHARED',
+      model.name,
+      enabled ? `Shared "${model.name}" as a public demo` : `Stopped sharing "${model.name}" as a public demo`,
+      c.req.header('cf-connecting-ip') || 'unknown',
+      c.req.header('user-agent') || 'unknown'
+    );
+
+    return c.json({ model });
+  } catch (error) {
+    console.error('Demo toggle error:', error);
+    return c.json({ error: 'Internal server error' }, 500);
+  }
+});
+
+// Public, no login: the one model behind a demo share id. Returns only what the viewer
+// needs to load it - never the uploader, client assignments or storage paths.
+app.get('/make-server-cf230d31/public/demo/:shareId', async (c) => {
+  try {
+    const shareId = c.req.param('shareId');
+    if (!/^[a-f0-9]{32}$/.test(shareId)) {
+      return c.json({ error: 'Demo not found' }, 404);
+    }
+    const allModels = await kv.getByPrefix('model:');
+    const model = allModels.find((m: any) => m?.isDemo === true && m?.publicShareId === shareId);
+    if (!model) {
+      return c.json({ error: 'Demo not found' }, 404);
+    }
+
+    let modelUrl = model.signedUrl as string | undefined;
+    if (!modelUrl) {
+      if (model.storageProvider === 'r2') {
+        modelUrl = `${getR2PublicUrlBase()}/${model.filePath}`;
+      } else {
+        const { data } = await supabase.storage
+          .from('make-cf230d31-models')
+          .createSignedUrl(model.filePath, 60 * 60 * 24 * 365);
+        modelUrl = data?.signedUrl;
+      }
+      if (modelUrl) {
+        model.signedUrl = modelUrl;
+        await kv.set(`model:${model.id}`, model);
+      }
+    }
+    if (!modelUrl) {
+      return c.json({ error: 'Demo model file is unavailable' }, 404);
+    }
+
+    return c.json({
+      model: {
+        id: model.id,
+        name: model.name,
+        description: model.description || '',
+        fileName: model.fileName,
+        format: model.format,
+        fileSize: model.fileSize,
+        thumbnail: model.thumbnail,
+        signedUrl: modelUrl,
+        ktx2Url: model.ktx2Url,
+        ktx2Status: model.ktx2Status,
+        isDemo: true,
+      },
+    });
+  } catch (error) {
+    console.error('Public demo fetch error:', error);
+    return c.json({ error: 'Failed to load demo' }, 500);
+  }
+});
+
 // Queues the (best-effort, async) server-side KTX2 re-encode for an already-uploaded
 // model - see components/utils/directModelUpload.ts's queueKtx2Optimize (the caller,
 // right after finalize-model-upload succeeds) and server.js's /optimize-ktx2 (the actual

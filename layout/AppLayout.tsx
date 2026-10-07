@@ -10,6 +10,7 @@ import { ProjectsPage } from '../components/site/ProjectsPage';
 import { FeaturesPage } from '../components/site/FeaturesPage';
 import { ProcessPage } from '../components/site/ProcessPage';
 import { ContactPage } from '../components/site/ContactPage';
+import { DemoViewer } from '../components/DemoViewer';
 import { AdminLogin } from '../components/AdminLogin';
 import { ClientLogin } from '../components/ClientLogin';
 import { AdminDashboard } from '../components/AdminDashboard';
@@ -84,6 +85,7 @@ const mapPathToPage = (path: string): string => {
   if (normalized === '/features') return 'features';
   if (normalized === '/process') return 'process';
   if (normalized === '/contact') return 'contact';
+  if (normalized.startsWith('/demo/')) return 'demo';
   if (normalized.startsWith('/admin/login')) return 'admin-login';
   if (normalized.startsWith('/client/login')) return 'client-login';
   if (normalized.startsWith('/admin/clients')) return 'admin-clients';
@@ -115,6 +117,8 @@ const mapPageToPath = (page: string): string => {
   if (page === 'features') return '/features';
   if (page === 'process') return '/process';
   if (page === 'contact') return '/contact';
+  // A demo's URL carries its share id, so there's no single path to sync back to.
+  if (page === 'demo') return '';
   if (page === 'admin-login') return '/admin/login';
   if (page === 'client-login') return '/client/login';
   if (page === 'admin-clients') return '/admin/clients';
@@ -451,6 +455,7 @@ export default function AppLayout() {
       <Route path="/features" element={<FeaturesPage />} />
       <Route path="/process" element={<ProcessPage />} />
       <Route path="/contact" element={<ContactPage />} />
+      <Route path="/demo/:shareId" element={<DemoViewer />} />
       <Route path="/admin/login" element={<AdminLogin />} />
       <Route path="/client/login" element={<ClientLogin />} />
       <Route path="/client/upload" element={user?.role === 'client' ? <UserUploadPage /> : <Home />} />

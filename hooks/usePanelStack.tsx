@@ -7,6 +7,48 @@ const GAP_PX = 8;
 // panel in a corner keeps exactly the position it had before, only panels after it move.
 const BASE_OFFSET_PX = 16;
 
+// Left-docked panels used to sit at a fixed left:16px - directly on top of the Tools
+// sidebar. Opening e.g. Lighting covered the whole tool list, so nothing else could be
+// clicked until that panel was closed (reported as the workspace "working once, then
+// freezing for a while"). The sidebar publishes its right edge here (see
+// usePublishLeftInset) and left-corner panels start after it.
+export const LEFT_INSET_VAR = '--workspace-left-inset';
+const leftDockStyle = (): React.CSSProperties => ({
+  left: `calc(var(${LEFT_INSET_VAR}, 0px) + ${BASE_OFFSET_PX}px)`,
+  maxWidth: `calc(100vw - var(${LEFT_INSET_VAR}, 0px) - ${BASE_OFFSET_PX * 2}px)`,
+});
+
+/**
+ * Publishes the given element's right edge (viewport px) as LEFT_INSET_VAR while it's
+ * mounted. Below 640px the Tools sidebar is an overlay drawer, not a column beside the
+ * canvas, so nothing is reserved there. Polled (cheap) as well as on resize, because the
+ * sidebar's position also changes without a resize - its slide-in animation, or the
+ * workspace preview window being dragged.
+ */
+export function usePublishLeftInset(ref: React.RefObject<HTMLElement | null>): void {
+  useEffect(() => {
+    const root = document.documentElement;
+    let last = -1;
+    const update = () => {
+      const el = ref.current;
+      const docked = window.matchMedia('(min-width: 640px)').matches;
+      const right = el && docked ? Math.max(0, Math.round(el.getBoundingClientRect().right)) : 0;
+      if (right !== last) {
+        last = right;
+        root.style.setProperty(LEFT_INSET_VAR, `${right}px`);
+      }
+    };
+    update();
+    const id = window.setInterval(update, 300);
+    window.addEventListener('resize', update);
+    return () => {
+      window.clearInterval(id);
+      window.removeEventListener('resize', update);
+      root.style.setProperty(LEFT_INSET_VAR, '0px');
+    };
+  }, [ref]);
+}
+
 interface PanelEntry {
   id: string;
   order: number;
@@ -147,7 +189,7 @@ export function usePanelStack(corner: PanelCorner, active: boolean = true): { re
     const anchor = corner.startsWith('top') ? 'top' : 'bottom';
     return {
       ref: () => {},
-      style: { [anchor]: BASE_OFFSET_PX, maxHeight: `calc(100vh - ${BASE_OFFSET_PX * 2}px)` } as React.CSSProperties,
+      style: { [anchor]: BASE_OFFSET_PX, maxHeight: `calc(100vh - ${BASE_OFFSET_PX * 2}px)`, ...(corner.endsWith('left') ? leftDockStyle() : {}) } as React.CSSProperties,
     };
   }
 
@@ -164,5 +206,5 @@ export function usePanelStack(corner: PanelCorner, active: boolean = true): { re
   // available space - overrides whatever static cap each panel's className happens to
   // set, without needing to touch every one of them individually.
   const maxHeight = `calc(100vh - ${offset}px - ${BASE_OFFSET_PX}px)`;
-  return { ref: setEl, style: { [anchor]: offset, maxHeight } as React.CSSProperties };
+  return { ref: setEl, style: { [anchor]: offset, maxHeight, ...(corner.endsWith('left') ? leftDockStyle() : {}) } as React.CSSProperties };
 }

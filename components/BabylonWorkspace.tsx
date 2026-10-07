@@ -6255,17 +6255,22 @@ const getCategoryDescription = (categoryName: string): string => {
           </button>,
           document.body
         )}
-        {/* Hidden file input */}
-        <label htmlFor="file-upload" className="hidden">File Upload</label>
-        <input
-          id="file-upload"
-          ref={fileInputRef}
-          type="file"
-          multiple
-          accept=".gltf,.glb,.obj,.fbx,.stl"
-          className="hidden"
-          onChange={(e) => handleWorkspaceFileUpload(e.target.files)}
-        />
+        {/* Hidden model-import file input - admins only (uploading models is admin-only; the
+            handler re-checks too). Not rendered at all for clients or public demo visitors. */}
+        {isAdmin && (
+          <>
+            <label htmlFor="file-upload" className="hidden">File Upload</label>
+            <input
+              id="file-upload"
+              ref={fileInputRef}
+              type="file"
+              multiple
+              accept=".gltf,.glb,.obj,.fbx,.stl"
+              className="hidden"
+              onChange={(e) => handleWorkspaceFileUpload(e.target.files)}
+            />
+          </>
+        )}
         {/* Loading Overlay */}
         {!isInitialized && (
           <div className="absolute inset-0 bg-black/50 flex items-center justify-center z-50">

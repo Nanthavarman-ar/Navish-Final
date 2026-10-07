@@ -17,6 +17,9 @@ import { showToast } from '../utils/toast';
 import { finalizeModelUpload, queueKtx2Optimize } from '../utils/directModelUpload';
 import { uploadFileToR2 } from '../utils/r2ModelUpload';
 import { optimizeGlbFile } from '../utils/modelOptimizer';
+
+const MAX_UPLOAD_BYTES = 5 * 1024 * 1024 * 1024; // 5GB per model file
+const OPTIMIZE_MAX_BYTES = 1024 * 1024 * 1024; // in-browser optimization only up to 1GB
 import { useApp } from '../../contexts/AppContext';
 import {
   Upload,
@@ -121,7 +124,9 @@ export function UploadPage() {
       // into memory (raw pixel/vertex buffers, well past the on-disk file size) before
       // re-encoding, so an arbitrarily large source file risks exhausting the browser
       // tab's own memory during THAT step, a failure mode no try/catch here can prevent.
-      const maxSize = 1024 * 1024 * 1024;
+      // Raised to 5GB on request. Files over OPTIMIZE_MAX_BYTES skip the in-browser
+      // optimization pass (see handleUpload) for exactly the memory reason above.
+      const maxSize = MAX_UPLOAD_BYTES;
 
       if (!supportedFormats.includes(extension)) {
         invalidFiles.push(
@@ -133,7 +138,7 @@ export function UploadPage() {
       }
 
       if (file.size > maxSize) {
-        invalidFiles.push(`${file.name} (file too large, max 1GB)`);
+        invalidFiles.push(`${file.name} (file too large, max 5GB)`);
         return;
       }
 
@@ -211,7 +216,10 @@ export function UploadPage() {
         let fileToUpload = uploadFile.file;
         let optimizations: string[] | undefined;
         let isBakedLightmapModel = false;
-        const canOptimize = uploadFile.originalFormat === '.glb' || uploadFile.originalFormat === '.gltf';
+        // The optimizer decodes the whole file in browser memory - fine up to ~1GB, but a
+        // multi-GB file can exhaust the tab before it finishes. Those upload as-is.
+        const canOptimize = (uploadFile.originalFormat === '.glb' || uploadFile.originalFormat === '.gltf')
+          && uploadFile.file.size <= OPTIMIZE_MAX_BYTES;
 
         if (canOptimize) {
           setUploadFiles(prev => prev.map(f =>
@@ -415,7 +423,7 @@ export function UploadPage() {
                   Drop your 3D models here
                 </h3>
                 <p className="text-gray-400 mb-4">
-                  or click to browse your files (Max 1GB per file)
+                  or click to browse your files (Max 5GB per file)
                 </p>
                 <div className="grid grid-cols-3 gap-2 max-w-sm mx-auto">
                   {supportedFormats.map((format) => (

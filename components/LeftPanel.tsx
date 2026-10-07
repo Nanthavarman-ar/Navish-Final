@@ -1,4 +1,5 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
+import { usePublishLeftInset } from '../hooks/usePanelStack';
 import { motion, AnimatePresence } from 'framer-motion';
 import { CardHeader, CardTitle } from './ui/card';
 import { Input } from './ui/input';
@@ -175,8 +176,13 @@ const LeftPanel: React.FC<LeftPanelProps> = ({
     onSearchChange(value);
   };
 
+  // Floating left-docked panels open beside this sidebar instead of on top of it.
+  const rootRef = useRef<HTMLDivElement>(null);
+  usePublishLeftInset(rootRef);
+
   return (
     <motion.div
+      ref={rootRef}
       initial={{ x: -320, opacity: 0 }}
       animate={{ x: 0, opacity: 1 }}
       exit={{ x: -320, opacity: 0 }}
