@@ -1,6 +1,7 @@
 import { Scene, Camera, ArcRotateCamera, FreeCamera, WebXRDefaultExperience, WebXRState, WebXRCamera, WebXRFeaturesManager, WebXRFeatureName, WebXRControllerComponent, WebXRInputSource, Vector3, Quaternion, AbstractMesh, TransformNode, Mesh, LinesMesh, MeshBuilder, StandardMaterial, Color3, Color4, Ray, Node } from '@babylonjs/core';
 import { AdvancedDynamicTexture, StackPanel, TextBlock, Button, Rectangle } from '@babylonjs/gui';
 import { AR_MODEL_SPACE_NAME, MODEL_ANCHORED_OVERLAY_RE, VR_WORLD_SHIFT_ROOT_NAME } from './utils/xrModelSpace';
+import { isLiveTransform } from './utils/liveTransform';
 
 // One toggleable thing this app knows how to show in the in-headset menu (a placed
 // Interactive Fixture, a weather/flood simulation) - deliberately minimal (just enough
@@ -1241,6 +1242,7 @@ export class XRManager {
     this.xrUnfrozenMeshes.forEach((mesh) => {
       if (mesh.isDisposed()) return;
       if (this.placementModelSpace && mesh.parent === this.placementModelSpace) return;
+      if (isLiveTransform(mesh)) return; // animated by a fixture (fan, door, ...) - see utils/liveTransform
       mesh.freezeWorldMatrix();
       mesh.doNotSyncBoundingInfo = true;
       this.xrUnfrozenMeshes.delete(mesh);

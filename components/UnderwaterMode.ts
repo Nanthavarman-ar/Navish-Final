@@ -168,7 +168,12 @@ export class UnderwaterMode {
       ["time", "intensity", "speed", "waterColor", "chromaticAberration", "refractionStrength", "resolution"],
       [],
       1.0,
-      this.camera
+      // Created detached (no camera) - passing the camera here already attached it, and
+      // activate() then attached it a second time, which Babylon rejects ("You're trying to
+      // reuse a post process not defined as reusable"). activate()/deactivate() own it.
+      null,
+      BABYLON.Texture.BILINEAR_SAMPLINGMODE,
+      this.scene.getEngine()
     );
 
     // Set initial uniforms with enhanced parameters

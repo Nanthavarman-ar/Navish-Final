@@ -23,6 +23,7 @@ import { useFeatureStates, UseFeatureStatesReturn } from '../hooks/useFeatureSta
 import { useWorkspaceState, WorkspaceState } from '../hooks/useWorkspaceState';
 import { useUIHandlers } from '../hooks/useUIHandlers';
 import { useApp, LAST_MODEL_ID_KEY } from '../contexts/AppContext';
+import { isLiveTransform } from './utils/liveTransform';
 import { supabase, projectId } from '../supabase/client';
 
 // Import extracted modules
@@ -2312,7 +2313,22 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
         void getSceneLoaderModule();
 
         // Create engine with error handling
-        engine = new Engine(canvasRef.current!, true, { preserveDrawingBuffer: true });
+        // audioEngine: true - Babylon only creates its (legacy) audio engine when asked;
+        // without it Engine.audioEngine stayed undefined and Spatial Audio crashed on enable
+        // ("Cannot read properties of undefined (reading 'audioContext')").
+        engine = new Engine(canvasRef.current!, true, { preserveDrawingBuffer: true, audioEngine: true });
+        // Babylon focuses the canvas on every pointerdown. A plain focus() also scrolls any
+        // scrollable ancestor to bring the canvas into view - mid-click. The canvas then sat
+        // at a different screen position for the pointerup than for the pointerdown, so the
+        // two picks hit different meshes and POINTERPICK never fired: placing fixtures/notes/
+        // BIM items and clicking markers silently did nothing, or landed somewhere else.
+        {
+          const canvasEl = canvasRef.current!;
+          const nativeFocus = HTMLElement.prototype.focus;
+          canvasEl.focus = function (options?: FocusOptions) {
+            nativeFocus.call(this, { ...options, preventScroll: true });
+          };
+        }
         // Reverse-Z depth buffer (far=0, near=1 instead of the usual near=0, far=1) -
         // redistributes depth precision far more evenly across the whole near/far range,
         // instead of the standard buffer's precision being almost entirely wasted right
@@ -3209,6 +3225,15 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
           return () => {};
         }
         window.addEventListener('resize', handleResize);
+        // The canvas also changes size WITHOUT the window resizing - the Tools sidebar
+        // opening/closing, the preview window being resized, layout changes. Babylon picks
+        // assuming its drawing buffer matches the canvas's on-screen size, so until
+        // engine.resize() ran, every click landed offset from the cursor: fixtures/BIM/
+        // notes got placed beside the building and markers "stopped" responding to clicks.
+        const canvasResizeObserver = typeof ResizeObserver !== 'undefined' && canvasRef.current
+          ? new ResizeObserver(handleResize)
+          : null;
+        if (canvasResizeObserver && canvasRef.current) canvasResizeObserver.observe(canvasRef.current);
 
         // Mark as initialized
         if (!shouldAbort()) {
@@ -3218,6 +3243,7 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
         // Store cleanup function references
         return () => {
           window.removeEventListener('resize', handleResize);
+          canvasResizeObserver?.disconnect();
           if (resizeRaf !== null) cancelAnimationFrame(resizeRaf);
         };
 
@@ -3927,7 +3953,7 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
       // (SceneLoader.Append's success callback) for why every static mesh is frozen
       // by default. Safe here specifically because editing only ever happens while a
       // mesh is gizmo-attached, i.e. between the unfreeze below and this re-freeze.
-      if (pivotedMeshRef.current.getTotalVertices() > 0) {
+      if (pivotedMeshRef.current.getTotalVertices() > 0 && !isLiveTransform(pivotedMeshRef.current)) {
         pivotedMeshRef.current.freezeWorldMatrix();
         pivotedMeshRef.current.doNotSyncBoundingInfo = true;
       }
@@ -5374,7 +5400,7 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
               last.mesh.rotation.copyFrom(last.rotation);
             }
             last.mesh.scaling.copyFrom(last.scaling);
-            if (wasFrozen && last.mesh.getTotalVertices() > 0) {
+            if (wasFrozen && last.mesh.getTotalVertices() > 0 && !isLiveTransform(last.mesh)) {
               last.mesh.freezeWorldMatrix();
               last.mesh.doNotSyncBoundingInfo = true;
             }

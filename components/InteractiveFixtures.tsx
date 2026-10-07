@@ -6,6 +6,7 @@ import { showToast } from './utils/toast';
 import { usePanelStack } from '../hooks/usePanelStack';
 import { loadSceneEdits, savePartialFeatureState, SavedFixture } from './utils/sceneEditsPersistence';
 import { resolveMeshRef, isSelectableMesh } from './BabylonWorkspace/meshSceneHandlers';
+import { markLiveTransform } from './utils/liveTransform';
 import { uploadFileToR2 } from './utils/r2ModelUpload';
 import { projectId } from '../supabase/client';
 import type { XRManager, VRMenuItem } from './XRManager';
@@ -486,6 +487,9 @@ const InteractiveFixtures: React.FC<InteractiveFixturesProps> = ({ scene, roomId
         // make the animation happen exactly nowhere.
         resolved.unfreezeWorldMatrix();
         resolved.doNotSyncBoundingInfo = false;
+        // ...and keep it that way: selecting/deselecting it, Undo, or leaving VR used to
+        // re-freeze it, which is what made a fan/door stop after the first use.
+        markLiveTransform(resolved);
       }
       resolvedMeshCacheRef.current.set(fixture.id, resolved);
     }

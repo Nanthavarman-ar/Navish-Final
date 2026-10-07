@@ -13,7 +13,9 @@ export interface AudioConfig {
 export class AudioManager {
   private scene: BABYLON.Scene;
   private config: AudioConfig;
-  private audioEngine: BABYLON.IAudioEngine;
+  // null when the engine was created without an audio engine (or audio is unavailable) -
+  // every use below tolerates that instead of throwing.
+  private audioEngine: BABYLON.IAudioEngine | null;
   private spatialAudioEnabled: boolean = false;
   private xrSession?: XRSession;
   // Procedural (generated, not file-based) ambient tone - used so spatial audio is
@@ -48,7 +50,7 @@ export class AudioManager {
       ...config
     };
 
-    this.audioEngine = BABYLON.Engine.audioEngine!;
+    this.audioEngine = BABYLON.Engine.audioEngine ?? null;
     if (!this.audioEngine) {
       console.warn('Audio engine not available');
       return;
@@ -57,8 +59,10 @@ export class AudioManager {
   }
 
   private initializeAudio(): void {
+    const audioEngine = this.audioEngine;
+    if (!audioEngine) return;
     // Set master volume
-    this.audioEngine.setGlobalVolume(this.config.masterVolume);
+    audioEngine.setGlobalVolume(this.config.masterVolume);
 
     // Enable spatial audio if supported
     if (this.config.enableSpatialAudio && 'AudioListener' in window) {
@@ -66,11 +70,11 @@ export class AudioManager {
     }
 
     // Handle audio context suspension
-    if (this.audioEngine.audioContext && this.audioEngine.audioContext.state === 'suspended') {
+    if (audioEngine.audioContext && audioEngine.audioContext.state === 'suspended') {
       // Resume audio context on user interaction
       const resumeAudio = () => {
-        if (this.audioEngine.audioContext) {
-          this.audioEngine.audioContext.resume();
+        if (audioEngine.audioContext) {
+          audioEngine.audioContext.resume();
         }
         document.removeEventListener('click', resumeAudio);
         document.removeEventListener('touchstart', resumeAudio);
@@ -295,7 +299,7 @@ export class AudioManager {
 
   public updateConfig(newConfig: Partial<AudioConfig>): void {
     this.config = { ...this.config, ...newConfig };
-    this.audioEngine.setGlobalVolume(this.config.masterVolume);
+    this.audioEngine?.setGlobalVolume(this.config.masterVolume);
   }
 
   public get isSpatialAudioEnabled(): boolean {
@@ -303,7 +307,7 @@ export class AudioManager {
   }
 
   public get audioContext(): AudioContext | null {
-    return this.audioEngine.audioContext;
+    return this.audioEngine?.audioContext ?? null;
   }
 
   public setXrSession(session: XRSession): void {
@@ -318,7 +322,7 @@ export class AudioManager {
     this.spatialAudioEnabled = true;
 
     // If in XR session, use WebXR audio context for enhanced spatialization
-    if (this.xrSession && this.audioEngine.audioContext) {
+    if (this.xrSession && this.audioEngine?.audioContext) {
       try {
         if ('setSinkId' in this.audioEngine.audioContext) {
           console.log('XR spatial audio enabled with session context');
@@ -415,7 +419,7 @@ export class AudioManager {
     // Update audio listener position to match the active camera for spatial audio
     if (this.spatialAudioEnabled && this.scene.activeCamera) {
       const camera = this.scene.activeCamera;
-      const listener = this.audioEngine.audioContext?.listener;
+      const listener = this.audioEngine?.audioContext?.listener;
 
       if (listener) {
         // Set listener position to camera position

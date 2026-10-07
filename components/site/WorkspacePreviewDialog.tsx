@@ -162,7 +162,7 @@ export function WorkspacePreviewDialog({
       <DialogContent
         ref={modalRef}
         data-lenis-prevent
-        className={`p-0 select-none border-0 rounded-[2px] ${isDragging ? 'cursor-grabbing' : 'cursor-grab'}`}
+        className={`p-0 select-none border-0 rounded-[2px] flex flex-col gap-0 overflow-hidden ${isDragging ? 'cursor-grabbing' : 'cursor-grab'}`}
         style={{
           position: 'fixed',
           left: `${modalPosition.x}px`,
@@ -217,8 +217,10 @@ export function WorkspacePreviewDialog({
           </div>
         </DialogHeader>
 
-        <div className="flex-1 p-0 bg-[#111] overflow-auto w-full h-full">
-          <div className="w-full h-full min-h-[600px]">
+        {/* Fills exactly the space under the header - it used to be h-full PLUS the header,
+            so it scrolled by the header's height, and the canvas jumped mid-click. */}
+        <div className="flex-1 min-h-0 p-0 bg-[#111] overflow-hidden w-full">
+          <div className="w-full h-full">
             <Suspense
               fallback={
                 <div className="w-full h-full min-h-[600px] flex items-center justify-center">
