@@ -17,6 +17,7 @@ import { Separator } from './ui/separator';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from './ui/dropdown-menu';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { Maximize, MapPin, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Move, RotateCw, Maximize2, X, FlipHorizontal, Trash2, Home, SwitchCamera } from 'lucide-react';
+import { XRQuickButtons } from './BabylonWorkspace/XRQuickButtons';
 
 // Import proper hooks from hooks directory
 import { useFeatureStates, UseFeatureStatesReturn } from '../hooks/useFeatureStates';
@@ -5873,9 +5874,12 @@ const getCategoryDescription = (categoryName: string): string => {
 
 
 
-  // Layout classes - min-w-0 min-h-0 prevents flex overflow from hiding children
+  // Layout classes - min-w-0 min-h-0 prevents flex overflow from hiding children.
+  // max-h-full: inside the workspace preview window (and any other box shorter than the
+  // viewport) h-screen alone overflowed the box, cutting off the canvas's bottom strip -
+  // Fit/Set/Flip and the VR/AR buttons sat below the visible edge.
   const layoutClasses = {
-    container: 'relative flex h-screen bg-gray-800',
+    container: 'relative flex h-screen max-h-full bg-gray-800',
     leftPanel: 'flex flex-col w-72 border-r border-gray-700 bg-gray-900 text-white shrink-0',
     mainWorkspace: 'flex-1 flex flex-col min-w-0 min-h-0',
   };
@@ -6036,6 +6040,14 @@ const getCategoryDescription = (categoryName: string): string => {
                 Flip
               </Button>
             </div>
+            {enableXR && (
+              <XRQuickButtons
+                vrActive={!!featureStates.showVR}
+                arActive={!!featureStates.showAR}
+                onToggleVR={() => handleFeatureToggle('showVR', !featureStates.showVR)}
+                onToggleAR={() => handleFeatureToggle('showAR', !featureStates.showAR)}
+              />
+            )}
             {workspaceState.selectedMesh && (
               <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-40 flex items-center gap-1 bg-gray-900/95 border border-cyan-500/20 rounded-lg shadow-2xl px-2 py-1.5 text-white">
                 <span className="text-xs text-gray-300 px-2 max-w-[140px] truncate" title={workspaceState.selectedMesh.name}>
