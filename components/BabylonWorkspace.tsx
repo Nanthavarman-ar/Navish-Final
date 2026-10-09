@@ -6040,14 +6040,14 @@ const getCategoryDescription = (categoryName: string): string => {
                 Flip
               </Button>
             </div>
-            {enableXR && (
-              <XRQuickButtons
-                vrActive={!!featureStates.showVR}
-                arActive={!!featureStates.showAR}
-                onToggleVR={() => handleFeatureToggle('showVR', !featureStates.showVR)}
-                onToggleAR={() => handleFeatureToggle('showAR', !featureStates.showAR)}
-              />
-            )}
+            {/* Always shown: VR/AR work on every workspace page (the main /workspace
+                route never passes enableXR, so gating on it hid the buttons there). */}
+            <XRQuickButtons
+              vrActive={!!featureStates.showVR}
+              arActive={!!featureStates.showAR}
+              onToggleVR={() => handleFeatureToggle('showVR', !featureStates.showVR)}
+              onToggleAR={() => handleFeatureToggle('showAR', !featureStates.showAR)}
+            />
             {workspaceState.selectedMesh && (
               <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-40 flex items-center gap-1 bg-gray-900/95 border border-cyan-500/20 rounded-lg shadow-2xl px-2 py-1.5 text-white">
                 <span className="text-xs text-gray-300 px-2 max-w-[140px] truncate" title={workspaceState.selectedMesh.name}>
