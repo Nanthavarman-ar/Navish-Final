@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Scene, Mesh, AbstractMesh, Material, MultiMaterial, MeshBuilder, StandardMaterial, PBRMaterial, DynamicTexture, Texture, Color3, Vector3, PointerEventTypes, VertexBuffer } from '@babylonjs/core';
+import { Scene, Mesh, AbstractMesh, Material, MultiMaterial, MeshBuilder, StandardMaterial, PBRMaterial, DynamicTexture, Texture, BaseTexture, Color3, Vector3, PointerEventTypes, VertexBuffer } from '@babylonjs/core';
 import { AdvancedDynamicTexture, Rectangle, StackPanel, Image as GuiImage } from '@babylonjs/gui';
 import { X, Palette, Trash2, Plus, Upload } from 'lucide-react';
 import { Button } from './ui/button';
@@ -69,6 +69,76 @@ function materialPreviewColor(mat: Material): string {
   const alpha = typeof anyMat.alpha === 'number' ? anyMat.alpha : 1;
   if (c) return `rgba(${Math.round(c.r * 255)}, ${Math.round(c.g * 255)}, ${Math.round(c.b * 255)}, ${alpha})`;
   return '#5e5e5f';
+}
+
+// The baked image a Blender-baked (unlit) material shows - v4/v5 bakes put it in albedo,
+// legacy bakes in emissive. null for an ordinary lit material.
+function bakedImageOf(material: Material | null | undefined): BaseTexture | null {
+  if (!(material instanceof PBRMaterial) || !material.unlit) return null;
+  return material.albedoTexture || material.emissiveTexture || null;
+}
+
+// Average luminance of a texture's stored (sRGB) values - the same values the lightmap
+// multiply sees - read from a small mip so it's cheap. null if the texture can't be read
+// back (not loaded yet, compressed, cross-origin...).
+async function averageLuminance(texture: BaseTexture): Promise<number | null> {
+  try {
+    const size = texture.getSize().width || 256;
+    const lod = Math.max(0, Math.floor(Math.log2(size / 16)));
+    const data = (await texture.readPixels(0, lod)) as Uint8Array | Float32Array | null;
+    if (!data || data.length < 4) return null;
+    const isFloat = data instanceof Float32Array;
+    let sum = 0;
+    let count = 0;
+    for (let i = 0; i < data.length; i += 4) {
+      const n = (v: number) => (isFloat ? v : v / 255);
+      sum += 0.2126 * n(data[i]) + 0.7152 * n(data[i + 1]) + 0.0722 * n(data[i + 2]);
+      count++;
+    }
+    return count ? sum / count : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Makes a freshly applied swatch material visible under the scene's actual lighting.
+ *
+ * Reported: "some colours come out black". On a Blender-baked model (unlit materials,
+ * Baked Lighting Mode) the workspace deliberately zeroes the hemispheric light and turns
+ * the sun's diffuse/specular black every frame, and there's no environment texture - so a
+ * normal LIT PBR material put on by the swatcher received no light at all and rendered
+ * solid black. Here such a material is made unlit as well, with the mesh's old baked
+ * image kept as a lightmap (colour x baked light and shadow), its level normalised by the
+ * bake's average brightness so a dark original surface doesn't darken the new colour.
+ *
+ * On ordinary lit scenes without an environment map, a fully metallic preset (Gold, Silver,
+ * Copper) has nothing to reflect and renders near-black too, so metallic is capped there.
+ */
+function adaptSwatchMaterial(scene: Scene, mesh: AbstractMesh, bakedImage: BaseTexture | null): void {
+  const material = mesh.material;
+  if (!(material instanceof PBRMaterial)) return;
+
+  if (bakedImage) {
+    const lightmap = bakedImage.clone() as BaseTexture | null;
+    material.unlit = true;
+    if (lightmap) {
+      material.lightmapTexture = lightmap;
+      material.useLightmapAsShadowmap = true;
+      lightmap.level = 1.3;
+      averageLuminance(bakedImage).then((avg) => {
+        if (avg && avg > 1e-4) lightmap.level = Math.min(3, Math.max(1, 0.6 / avg));
+      });
+    }
+    // Same flag every other baked material carries, so toggling Baked Lighting Mode off
+    // later leaves this one unlit too (applyBakedLightingState reads it).
+    material.metadata = { ...(material.metadata || {}), authoredUnlit: true };
+    return;
+  }
+
+  if (!scene.environmentTexture && material.metallic !== null && material.metallic !== undefined && material.metallic > 0.2) {
+    material.metallic = 0.2;
+  }
 }
 
 function hexToRgba(hex: string, alpha: number): string {
@@ -235,12 +305,19 @@ const MeshMaterialSwatches: React.FC<MeshMaterialSwatchesProps> = ({ scene, mate
   // generates fresh ones directly from real vertex world positions (a planar projection
   // onto the mesh's two dominant axes), so the tiling is correct regardless of the
   // source file's own UV layout.
-  const applyTextureOption = useCallback((mesh: AbstractMesh, option: SwatchOption) => {
+  const applyTextureOption = useCallback((mesh: AbstractMesh, option: SwatchOption, bakedImage: BaseTexture | null) => {
     if (!option.textureDataUrl) return;
     const material = new PBRMaterial(`swatch_tex_${option.id}_${Date.now()}`, scene);
     const texture = new Texture(option.textureDataUrl, scene);
     texture.wrapU = Texture.WRAP_ADDRESSMODE;
     texture.wrapV = Texture.WRAP_ADDRESSMODE;
+    // On a baked mesh the baked image stays on as a lightmap (adaptSwatchMaterial), read
+    // through its own UV set - so the tiling UVs go into the OTHER channel instead of
+    // overwriting the one the bake needs.
+    const bakedChannel = bakedImage ? bakedImage.coordinatesIndex : -1;
+    const tilingChannel = bakedChannel === 0 ? 1 : 0;
+    const tilingKind = tilingChannel === 1 ? VertexBuffer.UV2Kind : VertexBuffer.UVKind;
+    texture.coordinatesIndex = tilingChannel;
 
     const bb = mesh.getBoundingInfo().boundingBox;
     const axes: Array<'x' | 'y' | 'z'> = ['x', 'y', 'z'];
@@ -266,8 +343,10 @@ const MeshMaterialSwatches: React.FC<MeshMaterialSwatchesProps> = ({ scene, mate
         newUVs[i * 2] = (worldPos[uAxis] - bb.minimumWorld[uAxis]) / tileWidthM;
         newUVs[i * 2 + 1] = (worldPos[vAxis] - bb.minimumWorld[vAxis]) / tileHeightM;
       }
-      mesh.setVerticesData(VertexBuffer.UVKind, newUVs, true);
+      mesh.setVerticesData(tilingKind, newUVs, true);
     } else {
+      // No vertex data of its own to add a UV set to - tile over its existing UVs.
+      texture.coordinatesIndex = 0;
       const surfaceWidthM = extentsByAxis[0].size;
       const surfaceHeightM = extentsByAxis[1].size;
       texture.uScale = Math.max(surfaceWidthM / tileWidthM, 0.01);
@@ -320,18 +399,25 @@ const MeshMaterialSwatches: React.FC<MeshMaterialSwatchesProps> = ({ scene, mate
     if (mesh.material) {
       window.dispatchEvent(new CustomEvent('naviz:materialSwapUndo', { detail: { mesh, previousMaterial: mesh.material } }));
     }
+    // Read before the swap: a mesh that's already been swatched keeps its original bake
+    // as the new material's lightmap, so take it from there on a second swap.
+    const previous = mesh.material;
+    const bakedImage = bakedImageOf(previous)
+      ?? (previous instanceof PBRMaterial && previous.unlit ? previous.lightmapTexture : null);
     if (option.kind === 'texture') {
-      applyTextureOption(mesh, option);
+      applyTextureOption(mesh, option, bakedImage);
     } else if (option.kind === 'scene-material') {
       applySceneMaterialOption(mesh, option);
     } else if (option.presetId) {
       const material = materialManager.createMaterialFromPreset(option.presetId);
       if (material) materialManager.applyMaterialToMesh(material.name, mesh);
     }
+    // A scene-material clone already carries its own (lit or baked) setup.
+    if (option.kind !== 'scene-material') adaptSwatchMaterial(scene, mesh, bakedImage);
     if (mesh.material) mesh.material.backFaceCulling = previousBackFaceCulling;
     showToast.success(`Applied ${option.label}`);
     closeSwatchPopup();
-  }, [applyTextureOption, applySceneMaterialOption, materialManager, closeSwatchPopup]);
+  }, [scene, applyTextureOption, applySceneMaterialOption, materialManager, closeSwatchPopup]);
 
   // Click a marker (outside placing mode) to open its round swatch popup right above it.
   useEffect(() => {
