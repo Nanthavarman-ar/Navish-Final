@@ -97,7 +97,22 @@ export function ClientDashboard() {
         {viewMode === 'grid' ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
             {sectionModels.map((model) => (
-              <Card key={model.id} className="bg-slate-800/50 border-slate-700 hover:border-purple-500/50 transition-all duration-300 group cursor-pointer">
+              // The whole card opens the model (it showed a pointer cursor but only the
+              // small hover button actually did anything); Enter/Space work too.
+              <Card
+                key={model.id}
+                role="button"
+                tabIndex={0}
+                aria-label={`Open ${model.name || 'model'} in the workspace`}
+                onClick={() => handleOpenWorkspace(model)}
+                onKeyDown={(e) => {
+                  if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) {
+                    e.preventDefault();
+                    handleOpenWorkspace(model);
+                  }
+                }}
+                className="bg-slate-800/50 border-slate-700 hover:border-purple-500/50 focus-visible:outline-2 focus-visible:outline-purple-400 transition-all duration-300 group cursor-pointer"
+              >
                 <div className="aspect-video relative overflow-hidden rounded-t-lg">
                   <Suspense fallback={
                     <div className="w-full h-full bg-slate-700 animate-pulse flex items-center justify-center">
@@ -112,7 +127,8 @@ export function ClientDashboard() {
                   </Suspense>
                   <div className="hover-reveal absolute inset-0 bg-linear-to-t from-black/60 to-transparent pointer-events-none" />
                   <Button
-                    onClick={() => handleOpenWorkspace(model)}
+                    onClick={(e) => { e.stopPropagation(); handleOpenWorkspace(model); }}
+                    tabIndex={-1}
                     className="hover-reveal absolute bottom-4 left-1/2 transform -translate-x-1/2 bg-linear-to-r from-purple-500 to-pink-500 hover:from-purple-400 hover:to-pink-400"
                     size="sm"
                   >
@@ -305,15 +321,18 @@ export function ClientDashboard() {
         </div>
 
         <div className="space-y-8">
-          {renderModelsSection(
+          {/* Clients can't upload (uploads go through the admin), so an always-empty
+              "My Uploaded Models" section only contradicted the upload page. Shown
+              only for accounts that do have their own uploads. */}
+          {myUploadedModels.length > 0 && renderModelsSection(
             'My Uploaded Models',
             myUploadedModels,
-            searchTerm ? 'No uploaded models match your search.' : 'You have not uploaded any models yet.'
+            'No uploaded models match your search.'
           )}
           {renderModelsSection(
             'Assigned / Shared With Me',
             accessibleModels,
-            searchTerm ? 'No assigned models match your search.' : 'No assigned models available.'
+            searchTerm ? 'No models match your search.' : 'No models have been shared with you yet. Your project team will add them here.'
           )}
         </div>
       </main>

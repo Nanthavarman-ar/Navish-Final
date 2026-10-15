@@ -4888,7 +4888,7 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
                 // real WebXR session never came up - the sidebar button and any UI keyed
                 // off showVR kept claiming VR was active with nothing actually running.
                 disableFeature('showVR');
-                showToast.error('Failed to enter VR mode', 'This device/browser may not support VR');
+                showToast.info('VR needs a headset', 'Open this page in the browser on a VR headset such as Meta Quest to walk through the model in VR.');
               }
             })
             .catch((error) => {
@@ -4926,7 +4926,7 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
                 // showing AR as on over the normal desktop view, with no real session and
                 // none of XRManager's on-screen controls actually present.
                 disableFeature('showAR');
-                showToast.error('Failed to enter AR mode', 'This device/browser may not support AR');
+                showToast.info('AR needs a supported phone or tablet', 'Open this page in Chrome on an ARCore-enabled Android device to place the model in your space.');
               }
             })
             .catch((error) => {
