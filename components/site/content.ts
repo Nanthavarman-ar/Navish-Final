@@ -6,7 +6,7 @@
 export const SITE = {
   name: 'Navish',
   descriptor: 'Architect & Builders',
-  email: 'navishstudioarchitects@gmail.com',
+  email: 'info@navishstudioarchitect.com',
   tagline: 'Quiet architecture shaped by true stories',
 };
 
