@@ -104,9 +104,11 @@ const mapPathToPage = (path: string): string => {
   if (normalized === '/workspace') return 'workspace';
   if (normalized === '/babylon-workspace') return 'babylon-workspace';
   if (normalized === '/integrated-workspace') return 'integrated-workspace';
-  if (normalized === '/button-test-runner') return 'button-test-runner';
-  if (normalized === '/comprehensive-button-test') return 'comprehensive-button-test';
-  if (normalized === '/button-function-test') return 'button-function-test';
+  // QA pages only exist in dev builds (see Routes below) - in production these fall
+  // through to 'not-found' so the tab title matches the 404 page shown.
+  if (import.meta.env.DEV && normalized === '/button-test-runner') return 'button-test-runner';
+  if (import.meta.env.DEV && normalized === '/comprehensive-button-test') return 'comprehensive-button-test';
+  if (import.meta.env.DEV && normalized === '/button-function-test') return 'button-function-test';
   if (normalized === '/tools-features') return 'tools-features';
   if (normalized === '/traffic-parking-simulation') return 'traffic-parking-simulation';
   const toolSlug = getToolSlugFromPath(normalized);
