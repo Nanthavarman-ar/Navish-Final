@@ -63,12 +63,8 @@ export function OverviewPage() {
     : [];
 
   return (
-    <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-white text-xl font-semibold">Overview</h2>
-          <p className="text-gray-400 text-sm">Platform-wide stats at a glance</p>
-        </div>
+    <div className="space-y-6">
+      <div className="flex items-center justify-end">
         <button
           type="button"
           onClick={loadStats}

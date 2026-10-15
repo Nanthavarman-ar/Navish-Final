@@ -152,7 +152,7 @@ export function UploadPage() {
     });
 
     if (invalidFiles.length > 0) {
-      alert(`Some files were skipped:\n${invalidFiles.join('\n')}`);
+      showToast.error(`${invalidFiles.length} file${invalidFiles.length !== 1 ? 's' : ''} skipped`, invalidFiles.join(', '));
     }
 
     setUploadFiles(prev => [...prev, ...validFiles]);
@@ -198,7 +198,7 @@ export function UploadPage() {
 
   const startUpload = async () => {
     if (uploadFiles.length === 0 || !modelTitle) {
-      alert('Please provide a title and select files to upload');
+      showToast.error(!modelTitle ? 'Add a title for this model' : 'Select at least one file to upload');
       return;
     }
 
@@ -380,20 +380,9 @@ export function UploadPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="font-display text-3xl font-bold text-white">Upload Models</h2>
-          <p className="text-gray-400">Upload and optimize 3D models · <span className="text-green-400 font-medium">Admin: Unlimited free</span></p>
-        </div>
-        <Button
-          onClick={() => navigate('/admin/clients')}
-          variant="outline"
-          className="border-slate-600 text-gray-400 hover:text-white"
-        >
-          <LogOut className="w-4 h-4 mr-2" />
-          Back to Admin
-        </Button>
-      </div>
+      {/* The page title is already in the dashboard header, and the sidebar replaces the
+          old "Back to Admin" button. */}
+      <p className="text-sm text-green-400 font-medium">Admin uploads are unlimited and free.</p>
 
       <div className="grid lg:grid-cols-2 gap-6">
         {/* Upload Section */}

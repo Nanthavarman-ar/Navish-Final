@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { supabase, projectId } from '../../supabase/client';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
@@ -157,7 +156,6 @@ const actionTypes = [
 const severityLevels = ['all', 'info', 'success', 'warning', 'error'];
 
 export function AuditLogsPage() {
-  const navigate = useNavigate();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedAction, setSelectedAction] = useState('ALL_ACTIONS');
   const [selectedSeverity, setSelectedSeverity] = useState('all');
@@ -165,10 +163,12 @@ export function AuditLogsPage() {
   const [dateRange, setDateRange] = useState('7d');
   const [auditLogs, setAuditLogs] = useState<typeof mockAuditLogs>([]);
   const [isLoadingLogs, setIsLoadingLogs] = useState(true);
-  const [usingSampleData, setUsingSampleData] = useState(false);
+  const [logsError, setLogsError] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
     const loadAuditLogs = async () => {
+      setLogsError(null);
       setIsLoadingLogs(true);
       try {
         const { data: { session } } = await supabase.auth.getSession();
@@ -195,17 +195,18 @@ export function AuditLogsPage() {
           userAgent: entry.user_agent || ''
         }));
         setAuditLogs(normalized);
-        setUsingSampleData(false);
       } catch (error) {
-        console.error('Failed to load audit logs, showing sample data:', error);
-        setAuditLogs(mockAuditLogs);
-        setUsingSampleData(true);
+        // Used to swap in mockAuditLogs - invented security events shown on a real
+        // admin's audit screen. An audit log must only ever show what actually happened.
+        console.error('Failed to load audit logs:', error);
+        setAuditLogs([]);
+        setLogsError(error instanceof Error ? error.message : 'Failed to load audit logs');
       } finally {
         setIsLoadingLogs(false);
       }
     };
     loadAuditLogs();
-  }, []);
+  }, [reloadKey]);
 
   const filteredLogs = auditLogs.filter(log => {
     const matchesSearch = log.action.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -296,28 +297,15 @@ export function AuditLogsPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="font-display text-3xl font-bold text-white">Audit Logs</h2>
-          <p className="text-gray-400">Monitor all system activities and user actions</p>
-        </div>
-        <div className="flex items-center gap-3">
-          <Button
-            onClick={exportLogs}
-            disabled={filteredLogs.length === 0}
-            className="bg-linear-to-r from-green-500 to-emerald-500 hover:from-green-400 hover:to-emerald-400 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <Download className="w-4 h-4 mr-2" />
-            Export Logs
-          </Button>
-          <Button
-            onClick={() => navigate('/login')}
-            className="bg-linear-to-r from-red-500 to-red-600 hover:from-red-400 hover:to-red-500 text-white px-6 py-3 rounded-xl shadow-lg shadow-red-500/25 transform hover:scale-105 transition-all duration-300"
-          >
-            <LogOut className="w-4 h-4 mr-2" />
-            Back to Login
-          </Button>
-        </div>
+      <div className="flex items-center justify-end">
+        <Button
+          onClick={exportLogs}
+          disabled={filteredLogs.length === 0}
+          className="bg-linear-to-r from-green-500 to-emerald-500 hover:from-green-400 hover:to-emerald-400 disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          <Download className="w-4 h-4 mr-2" />
+          Export Logs
+        </Button>
       </div>
 
       {/* Filters */}
@@ -469,15 +457,18 @@ export function AuditLogsPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {usingSampleData && !isLoadingLogs && (
-            <div className="mb-4 px-3 py-2 bg-yellow-500/10 border border-yellow-500/30 rounded-lg text-xs text-yellow-200">
-              Couldn't reach the live audit log - showing sample data for reference.
-            </div>
-          )}
           {isLoadingLogs ? (
             <div className="flex items-center justify-center py-12 text-gray-400 gap-2">
               <div className="animate-spin w-5 h-5 border-2 border-cyan-500 border-t-transparent rounded-full" />
               Loading audit logs...
+            </div>
+          ) : logsError ? (
+            <div className="text-center py-8">
+              <div className="text-white text-lg mb-2">Couldn't load the audit log</div>
+              <p className="text-gray-500 text-sm mb-4">{logsError}</p>
+              <Button onClick={() => setReloadKey((k) => k + 1)} className="bg-linear-to-r from-cyan-500 to-blue-500 hover:from-cyan-400 hover:to-blue-400">
+                Retry
+              </Button>
             </div>
           ) : filteredLogs.length === 0 ? (
             <div className="text-center py-8">
@@ -492,12 +483,12 @@ export function AuditLogsPage() {
                   key={log.id}
                   className="flex items-start gap-4 p-4 bg-slate-700/30 rounded-lg border border-slate-600 hover:border-slate-500 transition-colors"
                 >
-                  <div className={`p-2 rounded-lg ${getSeverityColor(log.severity)}`}>
+                  <div className={`shrink-0 p-2 rounded-lg ${getSeverityColor(log.severity)}`}>
                     {getActionIcon(log.action)}
                   </div>
                   
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-3 mb-2">
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mb-2">
                       <h4 className="text-white font-medium">
                         {log.action.replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, l => l.toUpperCase())}
                       </h4>
@@ -515,9 +506,9 @@ export function AuditLogsPage() {
                       </Badge>
                     </div>
                     
-                    <p className="text-gray-300 mb-2">{log.details}</p>
+                    <p className="text-gray-300 mb-2 break-words">{log.details}</p>
                     
-                    <div className="flex items-center gap-4 text-xs text-gray-500">
+                    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-gray-500 break-all">
                       <span className="flex items-center gap-1">
                         <Calendar className="w-3 h-3" />
                         {log.timestamp}

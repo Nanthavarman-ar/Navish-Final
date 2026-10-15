@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
@@ -22,9 +21,16 @@ import {
   Box,
   Mail,
   Phone,
-  MapPin,
-  LogOut
+  MapPin
 } from 'lucide-react';
+
+const formatDate = (value: string) => {
+  const d = value ? new Date(value) : null;
+  return d && !isNaN(d.getTime()) ? d.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) : '—';
+};
+
+const initialsOf = (name: string) =>
+  name.split(/s+/).filter(Boolean).slice(0, 2).map((n) => n[0]).join('').toUpperCase() || '?';
 
 const functionsBaseUrl = `https://${projectId}.supabase.co/functions/v1/make-server-cf230d31`;
 
@@ -63,7 +69,6 @@ interface AssignableModel {
 }
 
 export function ClientsPage() {
-  const navigate = useNavigate();
   const [searchTerm, setSearchTerm] = useState('');
   const [isAddClientOpen, setIsAddClientOpen] = useState(false);
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
@@ -139,6 +144,12 @@ export function ClientsPage() {
     client.company.toLowerCase().includes(searchTerm.toLowerCase()) ||
     client.username.toLowerCase().includes(searchTerm.toLowerCase())
   );
+
+  const now = new Date();
+  const newThisMonth = clients.filter((c) => {
+    const d = new Date(c.createdDate);
+    return !isNaN(d.getTime()) && d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
+  }).length;
 
   const filteredAvailableModels = availableModels.filter(model =>
     model.name.toLowerCase().includes(assignModelsDialog.searchTerm.toLowerCase())
@@ -375,11 +386,9 @@ export function ClientsPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="font-display text-3xl font-bold text-white">User Management</h2>
-          <p className="text-gray-400">Manage user accounts and permissions</p>
-        </div>
+      {/* Title lives in the dashboard header already - repeating it here pushed the
+          Add button off-screen on phones. */}
+      <div className="flex items-center justify-end">
         <div className="flex items-center gap-3">
           <Dialog open={isAddClientOpen} onOpenChange={setIsAddClientOpen}>
           <DialogTrigger asChild>
@@ -500,13 +509,6 @@ export function ClientsPage() {
             </div>
           </DialogContent>
           </Dialog>
-          <Button
-            onClick={() => navigate('/login')}
-            className="bg-linear-to-r from-red-500 to-red-600 hover:from-red-400 hover:to-red-500 text-white px-6 py-3 rounded-xl shadow-lg shadow-red-500/25 transform hover:scale-105 transition-all duration-300"
-          >
-            <LogOut className="w-4 h-4 mr-2" />
-            Back to Login
-          </Button>
         </div>
       </div>
 
@@ -576,7 +578,8 @@ export function ClientsPage() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-gray-400">New This Month</p>
-                <p className="font-technical text-2xl font-bold text-white">2</p>
+                {/* Was a hardcoded "2" regardless of the real data. */}
+                <p className="font-technical text-2xl font-bold text-white">{newThisMonth}</p>
               </div>
               <div className="text-blue-400">
                 <Calendar className="w-8 h-8" />
@@ -605,12 +608,12 @@ export function ClientsPage() {
             {!isLoadingClients && filteredClients.map((client) => (
               <div
                 key={client.id}
-                className="flex items-center justify-between p-4 bg-slate-700/30 rounded-lg border border-slate-600 hover:border-slate-500 transition-colors"
+                className="flex flex-wrap items-center justify-between gap-3 p-4 bg-slate-700/30 rounded-lg border border-slate-600 hover:border-slate-500 transition-colors"
               >
-                <div className="flex items-center gap-4 flex-1">
-                  <div className="w-12 h-12 bg-linear-to-r from-purple-500 to-pink-500 rounded-full flex items-center justify-center">
+                <div className="flex items-center gap-4 flex-1 min-w-0 basis-full sm:basis-auto">
+                  <div className="w-12 h-12 shrink-0 bg-linear-to-r from-purple-500 to-pink-500 rounded-full flex items-center justify-center">
                     <span className="text-white font-semibold text-lg">
-                      {client.name.split(' ').map(n => n[0]).join('').toUpperCase()}
+                      {initialsOf(client.name)}
                     </span>
                   </div>
                   
@@ -626,32 +629,32 @@ export function ClientsPage() {
                     </div>
                     
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-2 text-sm text-gray-400">
-                      <div className="flex items-center gap-1">
-                        <Mail className="w-3 h-3" />
-                        {client.email}
+                      <div className="flex items-center gap-1 min-w-0">
+                        <Mail className="w-3 h-3 shrink-0" />
+                        <span className="truncate">{client.email}</span>
                       </div>
                       <div className="flex items-center gap-1">
-                        <Phone className="w-3 h-3" />
-                        {client.phone}
+                        <Phone className="w-3 h-3 shrink-0" />
+                        {client.phone || '—'}
                       </div>
                       <div className="flex items-center gap-1">
-                        <MapPin className="w-3 h-3" />
-                        {client.location}
+                        <MapPin className="w-3 h-3 shrink-0" />
+                        {client.location || '—'}
                       </div>
                       <div className="flex items-center gap-1">
-                        <Box className="w-3 h-3" />
-                        {client.assignedModels} models
+                        <Box className="w-3 h-3 shrink-0" />
+                        {client.assignedModels} model{client.assignedModels !== 1 ? 's' : ''}
                       </div>
                     </div>
-                    
+
+                    {/* new Date('') rendered "Invalid Date" for users with no timestamp. */}
                     <div className="mt-2 text-xs text-gray-500">
-                      Created: {new Date(client.createdDate).toLocaleDateString()} • 
-                      Last active: {new Date(client.lastActive).toLocaleDateString()}
+                      Created: {formatDate(client.createdDate)} · Last active: {formatDate(client.lastActive)}
                     </div>
                   </div>
                 </div>
                 
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <Button
                     size="sm"
                     variant="outline"
@@ -674,6 +677,8 @@ export function ClientsPage() {
                     size="sm"
                     variant="outline"
                     onClick={() => handleToggleStatus(client.id)}
+                    title={client.status === 'active' ? 'Deactivate user' : 'Activate user'}
+                    aria-label={client.status === 'active' ? 'Deactivate user' : 'Activate user'}
                     className={client.status === 'active' 
                       ? 'border-orange-400 text-orange-400 hover:bg-orange-400 hover:text-white'
                       : 'border-green-400 text-green-400 hover:bg-green-400 hover:text-white'
@@ -685,6 +690,8 @@ export function ClientsPage() {
                     size="sm"
                     variant="outline"
                     onClick={() => handleDeleteClient(client.id)}
+                    title="Delete user"
+                    aria-label="Delete user"
                     className="border-red-400 text-red-400 hover:bg-red-400 hover:text-white"
                   >
                     <Trash2 className="w-4 h-4" />

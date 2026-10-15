@@ -627,3 +627,15 @@ html {
   }
 }
 
+
+/* Card actions that fade in on hover. On touch screens (no hover) they used to stay
+   invisible, so tablets and phones had no visible way to open/edit a model. Now they're
+   always shown there, and keyboard focus reveals them on desktop too. */
+.hover-reveal {
+  transition: opacity 0.3s ease;
+}
+@media (hover: hover) and (pointer: fine) {
+  .group:not(:hover):not(:focus-within) .hover-reveal {
+    opacity: 0;
+  }
+}

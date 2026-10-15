@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../../contexts/AuthContext';
+import { apiCall } from '../../hooks/useApi';
 import { supabase, projectId } from '../../supabase/client';
 import { showToast } from '../utils/toast';
 import { Button } from '../ui/button';
@@ -29,17 +30,18 @@ import {
 } from 'lucide-react';
 
 export function SettingsPage() {
-  const navigate = useNavigate();
+  const { user, logout } = useAuth();
   const [settings, setSettings] = useState({
-    // Profile
-    adminName: 'Administrator',
-    adminEmail: 'admin@naviz.com',
-    
-    // Security
-    twoFactorEnabled: true,
-    sessionTimeout: '4',
-    passwordExpiry: '90',
-    
+    // Profile - prefilled from the signed-in account (was a placeholder
+    // "admin@naviz.com" from the product's old name).
+    adminName: user?.name && !user.name.includes('@') ? user.name : 'Administrator',
+    adminEmail: user?.email || '',
+
+    // Security: the old Two-Factor (shown ON by default), session-timeout and
+    // password-expiry fields were saved to storage but never enforced anywhere - an
+    // admin could reasonably believe 2FA was protecting the account when it wasn't.
+    // They're replaced by the real actions in the Security tab below.
+
     // System
     autoOptimization: true,
     compressionLevel: 'high',
@@ -58,13 +60,59 @@ export function SettingsPage() {
     dateFormat: 'MM/DD/YYYY',
     
     // Storage
-    storageUsed: '2.4',
-    storageLimit: '10',
     autoCleanup: true,
     cleanupDays: '30'
   });
 
   const [isSaving, setIsSaving] = useState(false);
+
+  // Real storage figure from /stats (the page used to show a hardcoded "2.4 GB / 10 GB").
+  const [storageUsed, setStorageUsed] = useState<string | null>(null);
+  useEffect(() => {
+    apiCall('/stats')
+      .then((data) => setStorageUsed(data?.stats?.storageUsed ?? null))
+      .catch(() => setStorageUsed(null));
+  }, []);
+
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [passwordBusy, setPasswordBusy] = useState(false);
+  const handleChangePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (newPassword.length < 8) {
+      showToast.error('Password too short', 'Use at least 8 characters');
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      showToast.error('Passwords do not match');
+      return;
+    }
+    setPasswordBusy(true);
+    try {
+      const { error } = await supabase.auth.updateUser({ password: newPassword });
+      if (error) throw error;
+      setNewPassword('');
+      setConfirmPassword('');
+      showToast.success('Password updated');
+    } catch (error) {
+      console.error('Failed to change password:', error);
+      showToast.error('Could not change password', error instanceof Error ? error.message : 'Please try again');
+    } finally {
+      setPasswordBusy(false);
+    }
+  };
+
+  const handleSignOutEverywhere = async () => {
+    if (!confirm('Sign out of every device, including this one?')) return;
+    try {
+      const { error } = await supabase.auth.signOut({ scope: 'global' });
+      if (error) throw error;
+      await logout();
+    } catch (error) {
+      console.error('Global sign-out failed:', error);
+      showToast.error('Could not sign out other devices', 'Please try again');
+    }
+  };
   const functionsBaseUrl = `https://${projectId}.supabase.co/functions/v1/make-server-cf230d31`;
 
   useEffect(() => {
@@ -78,7 +126,10 @@ export function SettingsPage() {
         if (!response.ok) return;
         const data = await response.json();
         if (data.settings) {
-          setSettings((prev) => ({ ...prev, ...data.settings }));
+          // Drop keys from older saves that no longer mean anything (see above).
+          const { twoFactorEnabled, sessionTimeout, passwordExpiry, storageUsed: _u, storageLimit, ...saved } = data.settings;
+          void twoFactorEnabled; void sessionTimeout; void passwordExpiry; void _u; void storageLimit;
+          setSettings((prev) => ({ ...prev, ...saved }));
         }
       } catch (error) {
         console.error('Failed to load saved settings:', error);
@@ -138,11 +189,7 @@ export function SettingsPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="font-display text-3xl font-bold text-white">System Settings</h2>
-          <p className="text-gray-400">Configure platform preferences and security</p>
-        </div>
+      <div className="flex items-center justify-end">
         <div className="flex items-center gap-3">
           <Button
             onClick={handleSave}
@@ -156,18 +203,12 @@ export function SettingsPage() {
             )}
             {isSaving ? 'Saving...' : 'Save Changes'}
           </Button>
-          <Button
-            onClick={() => navigate('/login')}
-            className="bg-linear-to-r from-red-500 to-red-600 hover:from-red-400 hover:to-red-500 text-white px-6 py-3 rounded-xl shadow-lg shadow-red-500/25 transform hover:scale-105 transition-all duration-300"
-          >
-            <LogOut className="w-4 h-4 mr-2" />
-            Back to Login
-          </Button>
         </div>
       </div>
 
       <Tabs defaultValue="profile" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-7 bg-slate-800/50">
+        {/* Scrolls sideways on narrow screens instead of squeezing 7 tabs into a grid. */}
+        <TabsList className="flex w-full justify-start overflow-x-auto bg-slate-800/50">
           <TabsTrigger value="profile" className="data-[state=active]:bg-cyan-500">
             <User className="w-4 h-4 mr-2" />
             Profile
@@ -208,7 +249,7 @@ export function SettingsPage() {
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
-              <div className="grid grid-cols-2 gap-6">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                 <div>
                   <Label htmlFor="adminName" className="text-white">Admin Name</Label>
                   <Input
@@ -230,21 +271,6 @@ export function SettingsPage() {
                 </div>
               </div>
               
-              <div>
-                <h4 className="text-white font-medium mb-3">Profile Picture</h4>
-                <div className="flex items-center gap-4">
-                  <div className="w-20 h-20 bg-linear-to-r from-cyan-400 to-purple-400 rounded-full flex items-center justify-center">
-                    <span className="text-black font-bold text-2xl">A</span>
-                  </div>
-                  <div className="space-y-2">
-                    <Button variant="outline" size="sm" className="border-slate-600" disabled title="Coming soon">
-                      <Upload className="w-4 h-4 mr-2" />
-                      Upload New
-                    </Button>
-                    <p className="text-xs text-gray-400">JPG, PNG or GIF. Max 2MB.</p>
-                  </div>
-                </div>
-              </div>
             </CardContent>
           </Card>
         </TabsContent>
@@ -259,49 +285,57 @@ export function SettingsPage() {
                   Configure security settings and access controls
                 </CardDescription>
               </CardHeader>
-              <CardContent className="space-y-6">
-                <div className="flex items-center justify-between">
+              <CardContent className="space-y-8">
+                <form onSubmit={handleChangePassword} className="space-y-4 max-w-md">
+                  <h4 className="text-white font-medium flex items-center gap-2">
+                    <Lock className="w-4 h-4" /> Change password
+                  </h4>
                   <div>
-                    <Label className="text-white">Two-Factor Authentication</Label>
-                    <p className="text-sm text-gray-400">Add an extra layer of security</p>
-                  </div>
-                  <Switch
-                    checked={settings.twoFactorEnabled}
-                    onCheckedChange={(checked) => handleSettingChange('twoFactorEnabled', checked)}
-                  />
-                </div>
-                
-                <div className="grid grid-cols-2 gap-6">
-                  <div>
-                    <Label htmlFor="sessionTimeout" className="text-white">Session Timeout (hours)</Label>
+                    <Label htmlFor="newPassword" className="text-white">New password</Label>
                     <Input
-                      id="sessionTimeout"
-                      type="number"
-                      value={settings.sessionTimeout}
-                      onChange={(e) => handleSettingChange('sessionTimeout', e.target.value)}
+                      id="newPassword"
+                      type="password"
+                      autoComplete="new-password"
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
                       className="bg-slate-700/50 border-slate-600 text-white"
+                      placeholder="At least 8 characters"
                     />
                   </div>
                   <div>
-                    <Label htmlFor="passwordExpiry" className="text-white">Password Expiry (days)</Label>
+                    <Label htmlFor="confirmPassword" className="text-white">Confirm new password</Label>
                     <Input
-                      id="passwordExpiry"
-                      type="number"
-                      value={settings.passwordExpiry}
-                      onChange={(e) => handleSettingChange('passwordExpiry', e.target.value)}
+                      id="confirmPassword"
+                      type="password"
+                      autoComplete="new-password"
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
                       className="bg-slate-700/50 border-slate-600 text-white"
                     />
                   </div>
-                </div>
-                
-                <div className="space-y-3">
-                  <Button variant="outline" className="border-yellow-400 text-yellow-400 hover:bg-yellow-400 hover:text-black" disabled title="Coming soon">
-                    <Lock className="w-4 h-4 mr-2" />
-                    Change Password
+                  <Button
+                    type="submit"
+                    disabled={passwordBusy || !newPassword}
+                    variant="outline"
+                    className="border-yellow-400 text-yellow-400 hover:bg-yellow-400 hover:text-black"
+                  >
+                    {passwordBusy ? 'Updating...' : 'Update password'}
                   </Button>
-                  <Button variant="outline" className="border-red-400 text-red-400 hover:bg-red-400 hover:text-white" disabled title="Coming soon">
-                    <Eye className="w-4 h-4 mr-2" />
-                    View Active Sessions
+                </form>
+
+                <div className="space-y-2 border-t border-slate-700 pt-6">
+                  <h4 className="text-white font-medium">Sessions</h4>
+                  <p className="text-sm text-gray-400">
+                    Lost a device or shared a computer? Sign out of every device signed in to this account.
+                  </p>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={handleSignOutEverywhere}
+                    className="border-red-400 text-red-400 hover:bg-red-400 hover:text-white"
+                  >
+                    <LogOut className="w-4 h-4 mr-2" />
+                    Sign out of all devices
                   </Button>
                 </div>
               </CardContent>
@@ -331,7 +365,7 @@ export function SettingsPage() {
                   />
                 </div>
                 
-                <div className="grid grid-cols-2 gap-6">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                   <div>
                     <Label className="text-white">Compression Level</Label>
                     <Select
@@ -523,20 +557,9 @@ export function SettingsPage() {
               </CardHeader>
               <CardContent className="space-y-6">
                 <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <Label className="text-white">Storage Usage</Label>
-                    <span className="text-white">
-                      {settings.storageUsed} GB / {settings.storageLimit} GB
-                    </span>
-                  </div>
-                  <div className="w-full bg-slate-700 rounded-full h-3">
-                    <div 
-                      className="bg-linear-to-r from-cyan-500 to-blue-500 h-3 rounded-full transition-all duration-300"
-                      style={{
-                        '--progress-width': `${(parseFloat(settings.storageUsed) / parseFloat(settings.storageLimit)) * 100}%`,
-                        width: 'var(--progress-width)'
-                      } as React.CSSProperties}
-                    ></div>
+                  <div className="flex items-center justify-between">
+                    <Label className="text-white">Storage used by models</Label>
+                    <span className="text-white font-medium">{storageUsed ?? '—'}</span>
                   </div>
                 </div>
                 
@@ -560,17 +583,6 @@ export function SettingsPage() {
                     onChange={(e) => handleSettingChange('cleanupDays', e.target.value)}
                     className="bg-slate-700/50 border-slate-600 text-white max-w-xs"
                   />
-                </div>
-                
-                <div className="flex gap-3">
-                  <Button variant="outline" className="border-blue-400 text-blue-400 hover:bg-blue-400 hover:text-white" disabled title="Coming soon">
-                    <Download className="w-4 h-4 mr-2" />
-                    Export Data
-                  </Button>
-                  <Button variant="outline" className="border-red-400 text-red-400 hover:bg-red-400 hover:text-white" disabled title="Coming soon">
-                    <Zap className="w-4 h-4 mr-2" />
-                    Clean Now
-                  </Button>
                 </div>
               </CardContent>
             </Card>

@@ -33,7 +33,11 @@ export function AdminDashboard() {
   const navigate = useNavigate();
   const location = useLocation();
   const [currentView, setCurrentView] = useState<AdminView>('overview');
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  // Starts collapsed (icons only) on phones/tablets - the full 256px sidebar left a
+  // 390px-wide screen with barely any room for the actual page.
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(
+    () => typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches
+  );
 
   // Determine current view from URL. Any admin sub-path that isn't one of the specific
   // views below (e.g. the bare /admin or /admin/dashboard AppLayout's page-state router
@@ -87,7 +91,7 @@ export function AdminDashboard() {
     <div className="h-screen bg-slate-900 flex relative overflow-hidden">
       <div className="ambient-glow" aria-hidden><span className="ambient-glow-blob" /></div>
       {/* Sidebar - relative z-10 so it stacks above the ambient-glow layer */}
-      <div className={`relative z-10 bg-slate-800 border-r border-slate-700 transition-all duration-300 ${sidebarCollapsed ? 'w-16' : 'w-64'}`}>
+      <div className={`relative z-10 shrink-0 flex flex-col bg-slate-800 border-r border-slate-700 transition-all duration-300 ${sidebarCollapsed ? 'w-16' : 'w-64'}`}>
         <div className="p-4 border-b border-slate-700">
           <div className="flex items-center justify-between">
             {!sidebarCollapsed && (
@@ -101,13 +105,15 @@ export function AdminDashboard() {
               size="sm"
               onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
               className="text-gray-400 hover:text-white"
+              aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+              aria-expanded={!sidebarCollapsed}
             >
               {sidebarCollapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
             </Button>
           </div>
         </div>
 
-        <div className="p-4 space-y-2">
+        <nav className="p-2 space-y-2 overflow-y-auto" aria-label="Admin">
           {menuItems.map((item) => {
             const Icon = item.icon;
             const isActive = currentView === item.id;
@@ -118,8 +124,11 @@ export function AdminDashboard() {
                 variant={isActive ? 'default' : 'ghost'}
                 className={`w-full justify-start ${isActive ? 'bg-cyan-600 hover:bg-cyan-700' : 'text-gray-400 hover:text-white hover:bg-slate-700'}`}
                 onClick={() => handleViewChange(item.id)}
+                title={sidebarCollapsed ? item.label : undefined}
+                aria-label={sidebarCollapsed ? item.label : undefined}
+                aria-current={isActive ? 'page' : undefined}
               >
-                <Icon className="w-4 h-4 mr-3" />
+                <Icon className={`w-4 h-4 shrink-0 ${sidebarCollapsed ? '' : 'mr-3'}`} />
                 {!sidebarCollapsed && (
                   <div className="text-left">
                     <div className="font-medium">{item.label}</div>
@@ -129,22 +138,26 @@ export function AdminDashboard() {
               </Button>
             );
           })}
-        </div>
+        </nav>
 
-        <div className="absolute bottom-4 left-4 right-4">
+        {/* In normal flow (mt-auto) rather than absolute - it used to sit on top of the
+            last menu items on short screens. */}
+        <div className="mt-auto p-2 pb-4">
           <Button
             variant="outline"
             className="w-full border-slate-600 text-gray-400 hover:text-white hover:bg-slate-700"
             onClick={handleLogout}
+            title={sidebarCollapsed ? 'Logout' : undefined}
+            aria-label="Logout"
           >
-            <LogOut className="w-4 h-4 mr-2" />
+            <LogOut className={`w-4 h-4 ${sidebarCollapsed ? '' : 'mr-2'}`} />
             {!sidebarCollapsed && 'Logout'}
           </Button>
         </div>
       </div>
 
       {/* Main Content - relative z-10 so it stacks above the ambient-glow layer */}
-      <div className="relative z-10 flex-1 flex flex-col">
+      <div className="relative z-10 flex-1 min-w-0 flex flex-col">
         {/* Header */}
         <div className="bg-slate-800 border-b border-slate-700/80 p-4">
           <div className="flex items-center justify-between">
@@ -152,17 +165,18 @@ export function AdminDashboard() {
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => navigate('/home')}
+                onClick={() => navigate('/')}
                 className="text-gray-400 hover:text-white"
+                aria-label="Back to home"
               >
-                <Home className="w-4 h-4 mr-2" />
-                Back to Home
+                <Home className="w-4 h-4 sm:mr-2" />
+                <span className="hidden sm:inline">Back to Home</span>
               </Button>
               <div>
                 <h2 className="text-white text-xl font-semibold">
                   {menuItems.find(item => item.id === currentView)?.label}
                 </h2>
-                <p className="text-gray-400 text-sm">
+                <p className="text-gray-400 text-sm hidden sm:block">
                   {menuItems.find(item => item.id === currentView)?.description}
                 </p>
               </div>
@@ -172,7 +186,7 @@ export function AdminDashboard() {
               <Badge variant="outline" className="border-cyan-400 text-cyan-400">
                 {user?.role === 'client' ? 'User' : user?.role?.toUpperCase()}
               </Badge>
-              <div className="text-right">
+              <div className="text-right hidden md:block">
                 <p className="text-white font-medium">{user?.name}</p>
                 <p className="text-gray-400 text-sm">{user?.email}</p>
               </div>
@@ -181,7 +195,7 @@ export function AdminDashboard() {
         </div>
 
         {/* Content */}
-        <div className="flex-1 overflow-auto">
+        <div className="flex-1 overflow-auto p-4 md:p-6">
           <Suspense fallback={
             <div className="flex items-center justify-center h-full">
               <div className="text-center">

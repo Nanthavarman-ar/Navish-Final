@@ -21,13 +21,21 @@ import {
   Calendar,
   FileType,
   HardDrive,
-  LogOut,
   Share2,
   Copy,
   ExternalLink
 } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '../ui/dialog';
 import { Label } from '../ui/label';
+
+const tagsOf = (model: any): string[] => (Array.isArray(model?.tags) ? model.tags.map(String) : []);
+const clientsOf = (model: any): string[] => (Array.isArray(model?.assignedClients) ? model.assignedClients : []);
+const fileUrlOf = (model: any): string | null =>
+  model?.modelUrl || model?.signedUrl || model?.url || model?.fileUrl || null;
+const formatDate = (value: unknown) => {
+  const d = value ? new Date(value as string) : null;
+  return d && !isNaN(d.getTime()) ? d.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) : '—';
+};
 
 export function ModelsPage() {
   const navigate = useNavigate();
@@ -57,15 +65,19 @@ export function ModelsPage() {
     }
   }, [modelsResponse]);
 
+  // Records from the server don't always carry every field (e.g. a client upload with
+  // no description or tags) - reading .toLowerCase()/.some()/.length straight off them
+  // threw during render and blanked the whole Models page.
+  const term = searchTerm.toLowerCase();
   const filteredModels = models.filter(model => {
-    const matchesSearch = model.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         model.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         model.tags.some((tag: string) => tag.toLowerCase().includes(searchTerm.toLowerCase()));
-    
+    const matchesSearch = String(model.name || '').toLowerCase().includes(term) ||
+                         String(model.description || '').toLowerCase().includes(term) ||
+                         tagsOf(model).some((tag) => tag.toLowerCase().includes(term));
+
     if (selectedFilter === 'all') return matchesSearch;
-    if (selectedFilter === 'assigned') return matchesSearch && model.assignedClients.length > 0;
-    if (selectedFilter === 'unassigned') return matchesSearch && model.assignedClients.length === 0;
-    
+    if (selectedFilter === 'assigned') return matchesSearch && clientsOf(model).length > 0;
+    if (selectedFilter === 'unassigned') return matchesSearch && clientsOf(model).length === 0;
+
     return matchesSearch;
   });
 
@@ -254,10 +266,14 @@ export function ModelsPage() {
 
   const handleDownloadModel = (modelId: string | number) => {
     const model = models.find(m => m.id.toString() === modelId.toString());
-    if (model?.modelUrl) {
+    // The /models API returns the file location as signedUrl, not modelUrl - checking
+    // only modelUrl made every download report "unavailable".
+    const fileUrl = fileUrlOf(model);
+    if (fileUrl) {
+      const ext = String(model?.format || 'glb').toLowerCase().replace(/^\./, '');
       const link = document.createElement('a');
-      link.href = model.modelUrl;
-      link.download = `${model.name || 'model'}.glb`;
+      link.href = fileUrl;
+      link.download = `${model?.name || 'model'}.${ext}`;
       document.body.appendChild(link);
       link.click();
       link.remove();
@@ -338,26 +354,16 @@ export function ModelsPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="font-display text-3xl font-bold text-white">Models Management</h2>
-          <p className="text-gray-400">Manage your 3D model library</p>
-        </div>
-        <div className="flex items-center gap-3">
-          <Button
-            onClick={navigateToUpload}
-            className="bg-linear-to-r from-cyan-500 to-blue-500 hover:from-cyan-400 hover:to-blue-400"
-          >
-            Upload New Model
-          </Button>
-          <Button
-            onClick={() => navigate('/login')}
-            className="bg-linear-to-r from-red-500 to-red-600 hover:from-red-400 hover:to-red-500 text-white px-6 py-3 rounded-xl shadow-lg shadow-red-500/25 transform hover:scale-105 transition-all duration-300"
-          >
-            <LogOut className="w-4 h-4 mr-2" />
-            Back to Login
-          </Button>
-        </div>
+      {/* The dashboard header already names this page, so only the action lives here.
+          A "Back to Login" button used to sit alongside it - it went to /login without
+          signing out, which is confusing; the sidebar's Logout does that properly. */}
+      <div className="flex items-center justify-end">
+        <Button
+          onClick={navigateToUpload}
+          className="bg-linear-to-r from-cyan-500 to-blue-500 hover:from-cyan-400 hover:to-blue-400"
+        >
+          Upload New Model
+        </Button>
       </div>
 
       {/* Search and Filters */}
@@ -391,6 +397,8 @@ export function ModelsPage() {
               variant={viewMode === 'grid' ? 'default' : 'ghost'}
               size="sm"
               onClick={() => setViewMode('grid')}
+                  aria-label="Grid view"
+                  aria-pressed={viewMode === 'grid'}
               className="rounded-none"
             >
               <Grid className="w-4 h-4" />
@@ -399,6 +407,8 @@ export function ModelsPage() {
               variant={viewMode === 'list' ? 'default' : 'ghost'}
               size="sm"
               onClick={() => setViewMode('list')}
+                  aria-label="List view"
+                  aria-pressed={viewMode === 'list'}
               className="rounded-none"
             >
               <List className="w-4 h-4" />
@@ -445,15 +455,17 @@ export function ModelsPage() {
                   aria-label="Select model"
                 />
                 <ImageWithFallback
-                  src={model.thumbnail || `https://images.unsplash.com/photo-1586023492125-27b2c045efd7?w=300&h=200&fit=crop`}
+                  src={model.thumbnail || model.preview || ''}
                   alt={model.name}
                   className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                 />
-                <div className="absolute inset-0 bg-linear-to-t from-black/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
-                <div className="absolute bottom-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                <div className="hover-reveal absolute inset-0 bg-linear-to-t from-black/60 to-transparent pointer-events-none" />
+                <div className="hover-reveal absolute bottom-2 right-2 flex gap-1">
                   <Button
                     onClick={() => handleViewModel(model)}
                     size="sm"
+                    title="Open in workspace"
+                    aria-label="Open in workspace"
                     className="bg-cyan-500 hover:bg-cyan-400"
                   >
                     <Eye className="w-3 h-3" />
@@ -471,6 +483,8 @@ export function ModelsPage() {
                   <Button
                     onClick={() => handleEditModel(model.id)}
                     size="sm"
+                    title="Rename model"
+                    aria-label="Rename model"
                     variant="outline"
                     className="border-white text-white hover:bg-white hover:text-black"
                   >
@@ -479,6 +493,8 @@ export function ModelsPage() {
                   <Button
                     onClick={() => handleDeleteModel(model.id)}
                     size="sm"
+                    title="Delete model"
+                    aria-label="Delete model"
                     variant="outline"
                     className="border-red-400 text-red-400 hover:bg-red-400 hover:text-white"
                   >
@@ -498,7 +514,7 @@ export function ModelsPage() {
               <CardContent>
                 <div className="space-y-3">
                   <div className="flex flex-wrap gap-1">
-                    {model.tags.map((tag: string) => (
+                    {tagsOf(model).map((tag: string) => (
                       <Badge key={tag} variant="outline" className="text-xs border-slate-600 text-gray-400">
                         {tag}
                       </Badge>
@@ -507,11 +523,11 @@ export function ModelsPage() {
                   <div className="flex items-center justify-between text-xs text-gray-500">
                     <span className="flex items-center gap-1">
                       <Calendar className="w-3 h-3" />
-                      {new Date(model.uploadDate).toLocaleDateString()}
+                      {formatDate(model.uploadDate)}
                     </span>
                     <span className="flex items-center gap-1">
                       <HardDrive className="w-3 h-3" />
-                      {model.size}
+                      {model.size || '—'}
                     </span>
                   </div>
                   <div className="flex items-center justify-between text-xs">
@@ -521,9 +537,9 @@ export function ModelsPage() {
                       title="Manage which clients can access this model"
                     >
                       <Users className="w-3 h-3" />
-                      {model.assignedClients.length} user{model.assignedClients.length !== 1 ? 's' : ''}
+                      {clientsOf(model).length} user{clientsOf(model).length !== 1 ? 's' : ''}
                     </button>
-                    <span className="text-gray-500">{model.views} views</span>
+                    <span className="text-gray-500">{model.views ?? 0} views</span>
                   </div>
                 </div>
               </CardContent>
@@ -545,7 +561,7 @@ export function ModelsPage() {
                   />
                   <div className="w-16 h-16 rounded-lg overflow-hidden shrink-0">
                     <ImageWithFallback
-                      src={model.thumbnail || `https://images.unsplash.com/photo-1586023492125-27b2c045efd7?w=300&h=200&fit=crop`}
+                      src={model.thumbnail || model.preview || ''}
                       alt={model.name}
                       className="w-full h-full object-cover"
                     />
@@ -556,11 +572,11 @@ export function ModelsPage() {
                     <div className="flex items-center gap-4 text-xs text-gray-500">
                       <span className="flex items-center gap-1">
                         <Calendar className="w-3 h-3" />
-                        {new Date(model.uploadDate).toLocaleDateString()}
+                        {formatDate(model.uploadDate)}
                       </span>
                       <span className="flex items-center gap-1">
                         <HardDrive className="w-3 h-3" />
-                        {model.size}
+                        {model.size || '—'}
                       </span>
                       <span className="flex items-center gap-1">
                         <FileType className="w-3 h-3" />
@@ -572,9 +588,9 @@ export function ModelsPage() {
                         title="Manage which clients can access this model"
                       >
                         <Users className="w-3 h-3" />
-                        {model.assignedClients.length} users
+                        {clientsOf(model).length} user{clientsOf(model).length !== 1 ? 's' : ''}
                       </button>
-                      <span>{model.views} views</span>
+                      <span>{model.views ?? 0} views</span>
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
@@ -686,7 +702,7 @@ export function ModelsPage() {
                 const currentModel = assignDialog.modelIds.length === 1
                   ? models.find(m => m.id.toString() === assignDialog.modelIds[0]?.toString())
                   : undefined;
-                const isAlreadyAssigned = currentModel?.assignedClients.includes(client.id) ?? false;
+                const isAlreadyAssigned = (currentModel ? clientsOf(currentModel).includes(client.id) : false) ?? false;
                 const isSelected = assignDialog.selectedClients.includes(client.id);
                 
                 return (

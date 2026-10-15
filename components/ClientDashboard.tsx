@@ -13,9 +13,7 @@ import {
   Grid,
   List,
   Eye,
-  User,
   LogOut,
-  Filter,
   Calendar
 } from 'lucide-react';
 
@@ -39,7 +37,7 @@ export function ClientDashboard() {
   const getModelThumbnail = (model: any): string =>
     model?.thumbnail ||
     model?.preview ||
-    'https://images.unsplash.com/photo-1586023492125-27b2c045efd7?w=300&h=200&fit=crop';
+    ''; // ImageWithFallback shows a neutral placeholder (was an unrelated stock photo).
 
   const formatFileSize = (model: any): string => {
     if (typeof model?.fileSize === 'number') {
@@ -52,7 +50,7 @@ export function ClientDashboard() {
   };
 
   // Fetch models from backend
-  const { data: modelsResponse, loading, error } = useApi<{ models: any[] }>('/models', [user?.id]);
+  const { data: modelsResponse, loading, error, refetch } = useApi<{ models: any[] }>('/models', [user?.id]);
   const models = modelsResponse?.models || [];
 
   React.useEffect(() => {
@@ -82,11 +80,14 @@ export function ClientDashboard() {
   const renderModelsSection = (title: string, sectionModels: any[], emptyMessage: string) => {
     if (sectionModels.length === 0) {
       return (
+        <section>
+        <h2 className="text-xl font-semibold text-white mb-4">{title}</h2>
         <Card className="bg-slate-800/50 border-slate-700">
           <CardContent className="py-8 text-center">
             <p className="text-gray-400">{emptyMessage}</p>
           </CardContent>
         </Card>
+        </section>
       );
     }
 
@@ -109,10 +110,10 @@ export function ClientDashboard() {
                       className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                     />
                   </Suspense>
-                  <div className="absolute inset-0 bg-linear-to-t from-black/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+                  <div className="hover-reveal absolute inset-0 bg-linear-to-t from-black/60 to-transparent pointer-events-none" />
                   <Button
                     onClick={() => handleOpenWorkspace(model)}
-                    className="absolute bottom-4 left-1/2 transform -translate-x-1/2 bg-linear-to-r from-purple-500 to-pink-500 hover:from-purple-400 hover:to-pink-400 opacity-0 group-hover:opacity-100 transition-all duration-300"
+                    className="hover-reveal absolute bottom-4 left-1/2 transform -translate-x-1/2 bg-linear-to-r from-purple-500 to-pink-500 hover:from-purple-400 hover:to-pink-400"
                     size="sm"
                   >
                     <Eye className="w-4 h-4 mr-2" />
@@ -219,8 +220,13 @@ export function ClientDashboard() {
     return (
       <div className="min-h-screen bg-slate-900 flex items-center justify-center">
         <div className="text-center">
-          <p className="text-red-400 text-lg mb-4">Failed to load models</p>
-          <p className="text-gray-400">{error}</p>
+          <p className="text-red-400 text-lg mb-4">Couldn't load your models</p>
+          <p className="text-gray-400 mb-6">{error}</p>
+          {/* There used to be no way out of this screen short of reloading the page. */}
+          <div className="flex gap-3 justify-center">
+            <Button onClick={() => refetch()} className="bg-purple-600 hover:bg-purple-700">Try again</Button>
+            <Button variant="outline" onClick={logout} className="border-slate-600">Log out</Button>
+          </div>
         </div>
       </div>
     );
@@ -239,18 +245,9 @@ export function ClientDashboard() {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold text-white">My Models</h1>
-            <p className="text-gray-400">Welcome back, {user?.username}</p>
+            <p className="text-gray-400">Welcome back{user?.name && !user.name.includes('@') ? `, ${user.name}` : ''}</p>
           </div>
           <div className="flex items-center gap-4">
-            <Button
-              variant="outline"
-              className="border-gray-600 text-gray-400 hover:text-white"
-              disabled
-              title="Coming soon"
-            >
-              <User className="w-4 h-4 mr-2" />
-              Profile
-            </Button>
             <Button
               onClick={logout}
               variant="outline"
@@ -281,22 +278,13 @@ export function ClientDashboard() {
             </div>
             
             <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                className="border-slate-600"
-                disabled
-                title="Coming soon"
-              >
-                <Filter className="w-4 h-4 mr-2" />
-                Filter
-              </Button>
-              
               <div className="flex border border-slate-600 rounded-lg overflow-hidden">
                 <Button
                   variant={viewMode === 'grid' ? 'default' : 'ghost'}
                   size="sm"
                   onClick={() => setViewMode('grid')}
+                  aria-label="Grid view"
+                  aria-pressed={viewMode === 'grid'}
                   className="rounded-none"
                 >
                   <Grid className="w-4 h-4" />
@@ -305,6 +293,8 @@ export function ClientDashboard() {
                   variant={viewMode === 'list' ? 'default' : 'ghost'}
                   size="sm"
                   onClick={() => setViewMode('list')}
+                  aria-label="List view"
+                  aria-pressed={viewMode === 'list'}
                   className="rounded-none"
                 >
                   <List className="w-4 h-4" />
