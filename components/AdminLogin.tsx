@@ -44,7 +44,13 @@ export function AdminLogin() {
 
   const handleForgotSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    await supabase.auth.resetPasswordForEmail(forgotEmail);
+    // Always confirm (never reveal whether an account exists), but don't let a network
+    // failure throw an unhandled rejection and leave the dialog stuck.
+    try {
+      await supabase.auth.resetPasswordForEmail(forgotEmail.trim());
+    } catch (err) {
+      console.error('Password reset request failed:', err);
+    }
     setForgotSent(true);
   };
 
@@ -57,14 +63,15 @@ export function AdminLogin() {
             <Button
               variant="ghost"
               size="sm"
-              onClick={() => navigate('/?page=home')}
+              onClick={() => navigate('/')}
+              aria-label="Back to home"
               className="text-gray-400 hover:text-white transition-colors duration-200"
             >
               <ArrowLeft className="w-4 h-4" />
             </Button>
             <Shield className="w-8 h-8 text-cyan-400" />
           </div>
-          <CardTitle className="text-white text-center">Admin Login</CardTitle>
+          <CardTitle role="heading" aria-level={1} className="text-white text-center">Admin Login</CardTitle>
           <CardDescription className="text-gray-400 text-center">
             Access the administrative dashboard
           </CardDescription>

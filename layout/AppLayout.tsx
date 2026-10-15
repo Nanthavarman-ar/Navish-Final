@@ -10,6 +10,7 @@ import { ProjectsPage } from '../components/site/ProjectsPage';
 import { FeaturesPage } from '../components/site/FeaturesPage';
 import { ProcessPage } from '../components/site/ProcessPage';
 import { ContactPage } from '../components/site/ContactPage';
+import { NotFoundPage } from '../components/site/NotFoundPage';
 import { DemoViewer } from '../components/DemoViewer';
 import { AdminLogin } from '../components/AdminLogin';
 import { ClientLogin } from '../components/ClientLogin';
@@ -92,6 +93,9 @@ const mapPathToPage = (path: string): string => {
   if (normalized.startsWith('/admin/models')) return 'admin-models';
   if (normalized.startsWith('/admin/audit')) return 'admin-audit';
   if (normalized.startsWith('/admin/settings')) return 'admin-settings';
+  // Without this, the sidebar's /admin/overview link was rewritten to /admin/dashboard,
+  // adding a history entry that the Back button bounced straight back into.
+  if (normalized.startsWith('/admin/overview')) return 'admin-overview';
   if (normalized.startsWith('/admin/upload')) return 'admin-upload';
   if (normalized.startsWith('/client/models')) return 'client-models';
   if (normalized.startsWith('/client/upload')) return 'client-upload';
@@ -107,7 +111,10 @@ const mapPathToPage = (path: string): string => {
   if (normalized === '/traffic-parking-simulation') return 'traffic-parking-simulation';
   const toolSlug = getToolSlugFromPath(normalized);
   if (toolSlug) return toolSlug;
-  return 'home';
+  // Previously 'home', which made the URL-sync effect below rewrite any mistyped or
+  // stale link to "/" - visitors lost the URL they followed and search engines saw a
+  // soft 404. Unknown paths now keep their URL and render the 404 page.
+  return 'not-found';
 };
 
 const mapPageToPath = (page: string): string => {
@@ -119,12 +126,15 @@ const mapPageToPath = (page: string): string => {
   if (page === 'contact') return '/contact';
   // A demo's URL carries its share id, so there's no single path to sync back to.
   if (page === 'demo') return '';
+  // Leave a not-found URL exactly as the visitor typed it.
+  if (page === 'not-found') return '';
   if (page === 'admin-login') return '/admin/login';
   if (page === 'client-login') return '/client/login';
   if (page === 'admin-clients') return '/admin/clients';
   if (page === 'admin-models') return '/admin/models';
   if (page === 'admin-audit') return '/admin/audit';
   if (page === 'admin-settings') return '/admin/settings';
+  if (page === 'admin-overview') return '/admin/overview';
   if (page === 'admin-upload') return '/admin/upload';
   if (page === 'admin-dashboard') return '/admin/dashboard';
   if (page === 'client-models') return '/client/models';
@@ -144,11 +154,54 @@ const mapPageToPath = (page: string): string => {
   return '/';
 };
 
+// Every page used to share one <title> and had no meta description, so browser tabs,
+// bookmarks, search results and link previews all looked identical.
+const SITE_NAME = 'Navish — Architect & Builders';
+const DEFAULT_DESCRIPTION =
+  'Navish is an architecture and construction studio. We design and build homes, workplaces and interiors - and let you walk through every room in 3D and VR before a single wall goes up.';
+const PAGE_META: Record<string, [title: string, description?: string]> = {
+  '/': [SITE_NAME],
+  '/home': [SITE_NAME],
+  '/projects': ['Projects', 'Residential, commercial, healthcare, hospitality and interior projects designed and built by Navish.'],
+  '/features': ['Features', 'The tools inside the Navish 3D workspace - simulation, analysis, collaboration and immersive VR review.'],
+  '/process': ['Our process', 'From first sketch to the keys in your hand - how Navish designs and builds, step by step.'],
+  '/contact': ['Contact', 'Tell us about your project. Share a few details and we will arrange a first conversation.'],
+  '/login': ['Log in'],
+  '/admin/login': ['Admin log in'],
+  '/client/login': ['Client log in'],
+  '/workspace': ['3D workspace'],
+  '/tools-features': ['Documentation'],
+};
+
+const usePageMeta = (pathname: string, page: string) => {
+  useEffect(() => {
+    const path = normalizePath(pathname).toLowerCase();
+    let meta = PAGE_META[path];
+    if (!meta) {
+      if (page === 'not-found') meta = ['Page not found'];
+      else if (path.startsWith('/admin')) meta = ['Admin'];
+      else if (path.startsWith('/client')) meta = ['My studio'];
+      else if (path.startsWith('/demo/')) meta = ['Shared demo'];
+      else if (path.startsWith('/tool/')) meta = ['Documentation'];
+      else meta = [SITE_NAME];
+    }
+    const [title, description] = meta;
+    document.title = title === SITE_NAME ? SITE_NAME : `${title} | Navish`;
+    let tag = document.querySelector<HTMLMetaElement>('meta[name="description"]');
+    if (!tag) {
+      tag = document.createElement('meta');
+      tag.name = 'description';
+      document.head.appendChild(tag);
+    }
+    tag.content = description || DEFAULT_DESCRIPTION;
+  }, [pathname, page]);
+};
+
 const ToolPageRoute: React.FC = () => {
   const { toolId } = useParams<{ toolId: string }>();
-  if (!toolId) return <Home />;
+  if (!toolId) return <NotFoundPage />;
   const normalized = toolId.toLowerCase() as ToolPageId;
-  if (!toolPageSlugs.includes(normalized)) return <Home />;
+  if (!toolPageSlugs.includes(normalized)) return <NotFoundPage />;
   return <ToolPage page={normalized} />;
 };
 
@@ -178,6 +231,7 @@ export default function AppLayout() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const currentPath = normalizePath(location.pathname).toLowerCase();
+  usePageMeta(location.pathname, currentPage);
   const showMyModelsShortcut = user?.role === 'client' && currentPath === '/workspace';
   const sceneRef = useRef<Scene | null>(null);
   const [sceneReady, setSceneReady] = useState(false);
@@ -458,10 +512,12 @@ export default function AppLayout() {
       <Route path="/demo/:shareId" element={<DemoViewer />} />
       <Route path="/admin/login" element={<AdminLogin />} />
       <Route path="/client/login" element={<ClientLogin />} />
-      <Route path="/client/upload" element={user?.role === 'client' ? <UserUploadPage /> : <Home />} />
-      <Route path="/admin/*" element={user?.role === 'admin' ? <AdminDashboard /> : <Home />} />
-      <Route path="/client/models" element={user?.role === 'client' ? <ClientDashboard /> : <Home />} />
-      <Route path="/client/*" element={user?.role === 'client' ? <ClientDashboard /> : <Home />} />
+      {/* Signed-out visitors on a protected URL go to the matching login instead of
+          silently seeing the home page under an /admin or /client address. */}
+      <Route path="/client/upload" element={user?.role === 'client' ? <UserUploadPage /> : user ? <Home /> : <Navigate to="/client/login" replace />} />
+      <Route path="/admin/*" element={user?.role === 'admin' ? <AdminDashboard /> : user ? <Home /> : <Navigate to="/admin/login" replace />} />
+      <Route path="/client/models" element={user?.role === 'client' ? <ClientDashboard /> : user ? <Home /> : <Navigate to="/client/login" replace />} />
+      <Route path="/client/*" element={user?.role === 'client' ? <ClientDashboard /> : user ? <Home /> : <Navigate to="/client/login" replace />} />
       <Route path="/babylon-workspace" element={<Navigate to="/workspace" replace />} />
       <Route path="/integrated-workspace" element={<Navigate to="/workspace" replace />} />
       <Route
@@ -469,8 +525,11 @@ export default function AppLayout() {
         element={user ? (
           <BabylonErrorBoundary>
             <Suspense fallback={
-              <div className="absolute inset-0 bg-black/50 flex items-center justify-center z-50">
-                <div className="animate-spin w-8 h-8 border-2 border-cyan-500 border-t-transparent rounded-full"></div>
+              // fixed, not absolute: the parent has no height while the chunk loads, so
+              // the spinner used to sit half off the top edge of an otherwise blank page.
+              <div className="fixed inset-0 bg-slate-900 flex flex-col items-center justify-center gap-4 z-50" role="status">
+                <div className="animate-spin w-10 h-10 border-2 border-[#ff4d4f] border-t-transparent rounded-full"></div>
+                <p className="text-sm text-gray-400">Loading 3D workspace…</p>
               </div>
             }>
               <BabylonWorkspace
@@ -489,11 +548,16 @@ export default function AppLayout() {
       />
       <Route path="/tools-features" element={<ToolsAndFeatures />} />
       <Route path="/traffic-parking-simulation" element={<Suspense fallback={<RouteLoadingFallback />}><TrafficParkingSimulationPage /></Suspense>} />
-      <Route path="/button-test-runner" element={<Suspense fallback={<RouteLoadingFallback />}><ButtonTestRunner /></Suspense>} />
-      <Route path="/comprehensive-button-test" element={<Suspense fallback={<RouteLoadingFallback />}><ComprehensiveButtonTest /></Suspense>} />
-      <Route path="/button-function-test" element={<Suspense fallback={<RouteLoadingFallback />}><ButtonFunctionTest /></Suspense>} />
+      {/* Internal QA pages - development builds only, never exposed on the live site. */}
+      {import.meta.env.DEV && (
+        <>
+          <Route path="/button-test-runner" element={<Suspense fallback={<RouteLoadingFallback />}><ButtonTestRunner /></Suspense>} />
+          <Route path="/comprehensive-button-test" element={<Suspense fallback={<RouteLoadingFallback />}><ComprehensiveButtonTest /></Suspense>} />
+          <Route path="/button-function-test" element={<Suspense fallback={<RouteLoadingFallback />}><ButtonFunctionTest /></Suspense>} />
+        </>
+      )}
       <Route path="/tool/:toolId" element={<ToolPageRoute />} />
-      <Route path="*" element={<Home />} />
+      <Route path="*" element={<NotFoundPage />} />
     </Routes>
   );
 

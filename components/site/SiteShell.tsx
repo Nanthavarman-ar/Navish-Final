@@ -169,7 +169,71 @@ export function SiteShell({
     });
     const lenis = lenisRef.current;
     if (lenis) menuOpen ? lenis.stop() : lenis.start();
+    if (!menuOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setMenuOpen(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
   }, [menuOpen]);
+
+  // The nav used to be white with mix-blend-mode: difference everywhere, which only reads
+  // over dark photos - over the light grey page it came out grey-on-grey and ran straight
+  // into headings and form fields. Now it samples what's actually under the bar: over
+  // media/dark sections it keeps the blended white look, over light areas it switches to
+  // ink text (on a frosted bar once scrolled), and it tucks away while scrolling down.
+  const [nav, setNav] = useState({ dark: true, solid: false, hidden: false });
+  useEffect(() => {
+    let lastY = window.scrollY;
+    let raf = 0;
+    // Only full-width dark surfaces count as "dark" - a card image or a thin strip of
+    // photo under part of the bar would leave the blended white text half-unreadable.
+    const isDarkAt = (x: number, y: number) => {
+      for (const el of document.elementsFromPoint(x, y)) {
+        if (el.closest('.nv-nav, .nv-logo, .nv-grain, .nv-curtains, .nv-fcursor')) continue;
+        if (el.closest('.nv-hero, .nv-footer, .nv-section--dark, .nv-section--ink, .nv-menu, [data-nv-dark]')) return true;
+        const media = el.closest('.nv-media');
+        if (!media) return false;
+        const r = media.getBoundingClientRect();
+        return r.width >= window.innerWidth * 0.95 && r.bottom >= 120;
+      }
+      return false;
+    };
+    const update = () => {
+      raf = 0;
+      const y = window.scrollY;
+      const probeY = 30;
+      const w = window.innerWidth;
+      const dark = [0.1, 0.35, 0.6, 0.9].every((f) => isDarkAt(w * f, probeY));
+      const down = y > lastY + 2;
+      const up = y < lastY - 2;
+      lastY = y;
+      setNav((prev) => {
+        const hidden = y > 240 && (down ? true : up ? false : prev.hidden);
+        // At the very top of a light page the bar stays clear (it's the same colour as the
+        // page); anywhere else it gets a frosted backing so the links never sit on content.
+        const next = { dark, solid: !dark && (y > 8 || document.querySelector('.nv-split') !== null), hidden };
+        return next.dark === prev.dark && next.solid === prev.solid && next.hidden === prev.hidden ? prev : next;
+      });
+    };
+    const onScroll = () => {
+      if (!raf) raf = requestAnimationFrame(update);
+    };
+    update();
+    // Pinned GSAP sections and late images can change what's under the bar without a scroll.
+    const id = window.setInterval(onScroll, 500);
+    window.addEventListener('scroll', onScroll, { passive: true });
+    window.addEventListener('resize', onScroll);
+    return () => {
+      cancelAnimationFrame(raf);
+      window.clearInterval(id);
+      window.removeEventListener('scroll', onScroll);
+      window.removeEventListener('resize', onScroll);
+    };
+  }, []);
+  const navMode = menuOpen ? 'dark' : nav.dark ? 'dark' : 'light';
+  const navSolid = !menuOpen && nav.solid;
+  const navHidden = !menuOpen && nav.hidden;
 
   const ctx: SiteCtx = {
     go,
@@ -181,7 +245,14 @@ export function SiteShell({
 
   return (
     <SiteContext.Provider value={ctx}>
-      <div ref={rootRef} className="nv-site" data-page={page}>
+      <div
+        ref={rootRef}
+        className="nv-site"
+        data-page={page}
+        data-nav={navMode}
+        data-nav-solid={navSolid || undefined}
+        data-nav-hidden={navHidden || undefined}
+      >
         <div className="nv-grain" aria-hidden />
 
         {/* Logo sits outside the blended nav so the red mark keeps its real colour. */}

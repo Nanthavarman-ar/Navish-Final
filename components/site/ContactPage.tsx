@@ -9,6 +9,8 @@ export function ContactPage() {
   const [phone, setPhone] = useState('');
   const [type, setType] = useState(pathways[0].title);
   const [message, setMessage] = useState('');
+  const [sent, setSent] = useState<null | { body: string }>(null);
+  const [copied, setCopied] = useState(false);
 
   // No backend for enquiries yet - hand the message to the visitor's mail client.
   const onSubmit = (e: React.FormEvent) => {
@@ -18,6 +20,8 @@ export function ContactPage() {
     if (phone) lines.push(`Phone: ${phone}`);
     lines.push(`Project: ${type}`);
     const body = lines.join('\n');
+    setSent({ body: `${subject}\n\n${body}` });
+    setCopied(false);
     window.location.href = `mailto:${SITE.email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
   };
 
@@ -81,6 +85,36 @@ export function ContactPage() {
               </button>
             </div>
           </form>
+
+          {/* mailto: silently does nothing when no mail app is set up (common on Windows
+              and for webmail users), so always confirm and offer a copy fallback. */}
+          {sent && (
+            <div className="nv-msg nv-msg--ok" role="status" aria-live="polite" style={{ maxWidth: '34rem' }}>
+              <p style={{ margin: 0 }}>
+                Your email app should open with the enquiry ready to send. If nothing opened, copy the message and send it
+                to{' '}
+                <a className="nv-ulink" href={`mailto:${SITE.email}`}>
+                  {SITE.email}
+                </a>
+                .
+              </p>
+              <button
+                type="button"
+                className="nv-textbtn"
+                style={{ marginTop: '0.75rem' }}
+                onClick={async () => {
+                  try {
+                    await navigator.clipboard.writeText(sent.body);
+                    setCopied(true);
+                  } catch {
+                    setCopied(false);
+                  }
+                }}
+              >
+                {copied ? 'Copied to clipboard' : 'Copy message'}
+              </button>
+            </div>
+          )}
 
           <p className="nv-eyebrow" style={{ marginTop: 'auto' }}>
             Existing client?{' '}
