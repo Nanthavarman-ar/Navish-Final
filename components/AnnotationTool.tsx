@@ -60,6 +60,13 @@ const AnnotationTool: React.FC<AnnotationToolProps> = ({ scene, roomId, onClose,
     const load = async () => {
       setIsLoading(true);
       try {
+        // Signed-out visitors (the public workspace preview) simply have no notes -
+        // this used to throw and pop a "Could not load annotations" error toast at them.
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) {
+          if (!cancelled) setAnnotations([]);
+          return;
+        }
         const headers = await getAuthHeaders();
         const response = await fetch(`${functionsBaseUrl}/api/annotations/${encodeURIComponent(roomId)}`, { headers });
         if (!response.ok) throw new Error(`Failed to load annotations (${response.status})`);

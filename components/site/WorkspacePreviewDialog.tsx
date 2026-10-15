@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, Suspense } from 'react';
-import { Smartphone, Move, MousePointer, Monitor, Tablet, Square } from 'lucide-react';
+import { Smartphone, Move, Monitor, Tablet, Square, X } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../ui/dialog';
 // Lazy-loaded: only rendered once the preview is opened - a static import would pull
 // the full Babylon.js engine (~1.25MB gzip) into every landing-page visit.
@@ -21,8 +21,36 @@ export function WorkspacePreviewDialog({
   isAdmin: boolean;
   title: string;
 }) {
-  const [modalPosition, setModalPosition] = useState({ x: 50, y: 50 });
-  const [modalSize, setModalSize] = useState({ width: 375, height: 667 });
+  // Opened as a 375x667 window pinned at (50,50) on every screen: on a phone that ran
+  // past the right edge (close button unreachable) and on desktop it was a tiny window
+  // the tool panel covered almost entirely. Now: full-screen on phones, a large centred
+  // window elsewhere, re-fitted whenever it opens or the browser resizes.
+  const [isCompact, setIsCompact] = useState(false);
+  const [modalPosition, setModalPosition] = useState({ x: 48, y: 48 });
+  const [modalSize, setModalSize] = useState({ width: 1200, height: 800 });
+
+  const fitToViewport = React.useCallback(() => {
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    const compact = vw < 768;
+    setIsCompact(compact);
+    if (compact) {
+      setModalPosition({ x: 0, y: 0 });
+      setModalSize({ width: vw, height: vh });
+      return;
+    }
+    const width = Math.min(1280, vw - 96);
+    const height = Math.min(820, vh - 96);
+    setModalSize({ width, height });
+    setModalPosition({ x: Math.round((vw - width) / 2), y: Math.round((vh - height) / 2) });
+  }, []);
+
+  useEffect(() => {
+    if (!open) return;
+    fitToViewport();
+    window.addEventListener('resize', fitToViewport);
+    return () => window.removeEventListener('resize', fitToViewport);
+  }, [open, fitToViewport]);
   const [isDragging, setIsDragging] = useState(false);
   const [isResizing, setIsResizing] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
@@ -31,15 +59,26 @@ export function WorkspacePreviewDialog({
   const modalRef = useRef<HTMLDivElement>(null);
 
   const setSizePreset = (width: number, height: number) => {
-    const maxWidth = window.innerWidth - modalPosition.x;
-    const maxHeight = window.innerHeight - modalPosition.y;
-    setModalSize({ width: Math.min(width, maxWidth), height: Math.min(height, maxHeight) });
+    if (isCompact) return;
+    const w = Math.min(width, window.innerWidth);
+    const h = Math.min(height, window.innerHeight);
+    // Keep the whole window on screen after resizing.
+    setModalSize({ width: w, height: h });
+    setModalPosition((pos) => ({
+      x: Math.max(0, Math.min(pos.x, window.innerWidth - w)),
+      y: Math.max(0, Math.min(pos.y, window.innerHeight - h)),
+    }));
   };
 
   // Keyboard shortcuts for size adjustment
   useEffect(() => {
     const handleKeyPress = (e: KeyboardEvent) => {
       if (!open) return;
+      // Typing a number into the workspace's tool search (or any field) used to resize
+      // the window.
+      const t = e.target as HTMLElement | null;
+      if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return;
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
       switch (e.key) {
         case '1':
           setSizePreset(375, 667); // Mobile
@@ -60,10 +99,13 @@ export function WorkspacePreviewDialog({
     };
     document.addEventListener('keydown', handleKeyPress);
     return () => document.removeEventListener('keydown', handleKeyPress);
-  }, [open, modalPosition]);
+  }, [open, isCompact]);
 
-  // Drag functionality
+  // Drag by the title bar only. It used to be bound to the whole window, so orbiting
+  // the 3D view (or pressing any workspace button) dragged the window around instead.
   const handleMouseDown = (e: React.MouseEvent) => {
+    if (isCompact || e.button !== 0) return;
+    if ((e.target as HTMLElement).closest('button, a, input, select, textarea')) return;
     setIsDragging(true);
     setDragStart({ x: e.clientX - modalPosition.x, y: e.clientY - modalPosition.y });
     e.preventDefault();
@@ -71,8 +113,8 @@ export function WorkspacePreviewDialog({
 
   const handleMouseMove = (e: MouseEvent) => {
     if (!isDragging) return;
-    const maxX = window.innerWidth - 375;
-    const maxY = window.innerHeight - 667;
+    const maxX = Math.max(0, window.innerWidth - modalSize.width);
+    const maxY = Math.max(0, window.innerHeight - modalSize.height);
     setModalPosition({
       x: Math.max(0, Math.min(e.clientX - dragStart.x, maxX)),
       y: Math.max(0, Math.min(e.clientY - dragStart.y, maxY)),
@@ -83,6 +125,7 @@ export function WorkspacePreviewDialog({
 
   // Resize functionality
   const handleResizeMouseDown = (e: React.MouseEvent, direction: string) => {
+    if (isCompact) return;
     setIsResizing(true);
     setResizeDirection(direction);
     setResizeStart({ x: e.clientX, y: e.clientY, width: modalSize.width, height: modalSize.height });
@@ -162,7 +205,9 @@ export function WorkspacePreviewDialog({
       <DialogContent
         ref={modalRef}
         data-lenis-prevent
-        className={`p-0 select-none border-0 rounded-[2px] flex flex-col gap-0 overflow-hidden ${isDragging ? 'cursor-grabbing' : 'cursor-grab'}`}
+        hideCloseButton
+        aria-describedby={undefined}
+        className="p-0 border-0 rounded-[2px] flex flex-col gap-0 overflow-hidden"
         style={{
           position: 'fixed',
           left: `${modalPosition.x}px`,
@@ -178,40 +223,46 @@ export function WorkspacePreviewDialog({
           backgroundColor: '#1a1a1a',
           boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.45)',
         }}
-        onMouseDown={handleMouseDown}
       >
-        <DialogHeader className="px-5 py-4 bg-[#1a1a1a] border-b border-white/10">
+        <DialogHeader
+          className={`px-4 sm:px-5 py-3 bg-[#1a1a1a] border-b border-white/10 select-none ${isCompact ? '' : isDragging ? 'cursor-grabbing' : 'cursor-grab'}`}
+          onMouseDown={handleMouseDown}
+        >
           <div className="flex items-center justify-between">
             <DialogTitle className="text-sm font-semibold uppercase tracking-[0.12em] text-[#ecebeb]">
               {title}
             </DialogTitle>
             <div className="flex items-center gap-2 text-[#ecebeb]/60">
-              <MousePointer className="w-4 h-4" />
-              <Move className="w-4 h-4" />
-              <div className="flex items-center gap-1">
+              {!isCompact && <Move className="w-4 h-4" aria-hidden />}
+              <div className={`items-center gap-1 ${isCompact ? 'hidden' : 'flex'}`}>
                 {sizeButtons.map(([w, h, label, Icon]) => (
                   <button
                     key={label}
+                    type="button"
                     onClick={() => setSizePreset(w, h)}
                     className="p-1 hover:text-[#ff4d4f] transition-colors"
                     title={label}
+                    aria-label={label}
                   >
                     <Icon className="w-4 h-4" />
                   </button>
                 ))}
               </div>
-              <div className="text-xs px-2 py-1 bg-white/10 rounded-[2px]">
-                {modalSize.width}×{modalSize.height}
-              </div>
+              {!isCompact && (
+                <div className="text-xs px-2 py-1 bg-white/10 rounded-[2px] tabular-nums">
+                  {modalSize.width}×{modalSize.height}
+                </div>
+              )}
               <button
+                type="button"
                 onClick={(e) => {
                   e.stopPropagation();
                   onOpenChange(false);
                 }}
-                className="p-1 hover:text-[#ff4d4f] transition-colors"
+                className="p-2 -mr-1 text-[#ecebeb] hover:text-[#ff4d4f] transition-colors"
                 aria-label="Close preview"
               >
-                ✕
+                <X className="w-5 h-5" />
               </button>
             </div>
           </div>
@@ -223,7 +274,7 @@ export function WorkspacePreviewDialog({
           <div className="w-full h-full">
             <Suspense
               fallback={
-                <div className="w-full h-full min-h-[600px] flex items-center justify-center">
+                <div className="w-full h-full flex items-center justify-center">
                   <div className="animate-spin w-8 h-8 border-2 border-[#ff4d4f] border-t-transparent rounded-full" />
                 </div>
               }
@@ -242,7 +293,7 @@ export function WorkspacePreviewDialog({
           </div>
         </div>
 
-        {handles.map(([dir, cls]) => (
+        {!isCompact && handles.map(([dir, cls]) => (
           <div
             key={dir}
             className={`${cls} bg-[#ff4d4f]/60 hover:bg-[#ff4d4f]`}

@@ -49,15 +49,17 @@ export function XRQuickButtons({
       type="button"
       onClick={onClick}
       aria-pressed={active}
+      aria-label={active ? `Exit ${label}` : help}
       title={supported === false && !active ? `${help} (needs a VR/AR headset or an AR-capable phone)` : help}
-      className={`flex items-center gap-2 h-12 px-5 rounded-full text-sm font-semibold uppercase tracking-[0.08em] shadow-xl border transition-colors ${
+      className={`flex items-center gap-2 h-11 sm:h-12 px-3.5 sm:px-5 rounded-full text-sm font-semibold uppercase tracking-[0.08em] shadow-xl border transition-colors ${
         active
           ? 'bg-[#ff4d4f] border-[#ff4d4f] text-white hover:bg-[#e63e40]'
           : 'bg-[#1a1a1a]/90 border-white/15 text-[#ecebeb] hover:bg-[#ff4d4f] hover:border-[#ff4d4f] hover:text-white'
       } ${supported === false && !active ? 'opacity-70' : ''}`}
     >
       <Icon className="w-5 h-5" />
-      {active ? `Exit ${label}` : label}
+      {/* Icon-only on phones so the pair doesn't cover the Fit/Set/Flip controls. */}
+      <span className="hidden sm:inline">{active ? `Exit ${label}` : label}</span>
     </button>
   );
 

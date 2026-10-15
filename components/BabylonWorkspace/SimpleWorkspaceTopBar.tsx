@@ -193,8 +193,9 @@ export function SimpleWorkspaceTopBar({
           )}
         </div>
 
-        {/* Center - Camera / view modes - compact */}
-        <div className="flex items-center gap-1.5 shrink-0">
+        {/* Center - Camera / view modes - compact. Wraps instead of running off the
+            right edge on phones. */}
+        <div className="flex items-center gap-1.5 flex-wrap max-w-full">
           {onViewModeChange ? (
             <ViewModeSelector mode={viewMode} onModeChange={handleViewMode} compact />
           ) : (

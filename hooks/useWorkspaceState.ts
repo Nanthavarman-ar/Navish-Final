@@ -57,7 +57,12 @@ export const useWorkspaceState = (initialWorkspaceId: string): WorkspaceState =>
   const [statsVisible, setStatsVisible] = useState<boolean>(false);
   const [animationManager] = useState<AnimationManager | null>(null);
   const [topBarVisible, setTopBarVisible] = useState<boolean>(true);
-  const [leftPanelVisible, setLeftPanelVisible] = useState<boolean>(true);
+  // Starts closed on phones: open by default it covered the entire 3D view, so the
+  // first thing a mobile visitor saw was a tool list with no model. The toggle still
+  // opens it.
+  const [leftPanelVisible, setLeftPanelVisible] = useState<boolean>(
+    () => typeof window === 'undefined' || window.innerWidth >= 768
+  );
   const [rightPanelVisible, setRightPanelVisible] = useState<boolean>(false);
   const [bottomPanelVisible, setBottomPanelVisible] = useState<boolean>(false);
   const [showFloatingToolbar, setShowFloatingToolbar] = useState<boolean>(true);
