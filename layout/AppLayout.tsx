@@ -98,6 +98,7 @@ const mapPathToPage = (path: string): string => {
   // Without this, the sidebar's /admin/overview link was rewritten to /admin/dashboard,
   // adding a history entry that the Back button bounced straight back into.
   if (normalized.startsWith('/admin/overview')) return 'admin-overview';
+  if (normalized.startsWith('/admin/enquiries')) return 'admin-enquiries';
   if (normalized.startsWith('/admin/upload')) return 'admin-upload';
   if (normalized.startsWith('/client/models')) return 'client-models';
   if (normalized.startsWith('/client/upload')) return 'client-upload';
@@ -140,6 +141,7 @@ const mapPageToPath = (page: string): string => {
   if (page === 'admin-audit') return '/admin/audit';
   if (page === 'admin-settings') return '/admin/settings';
   if (page === 'admin-overview') return '/admin/overview';
+  if (page === 'admin-enquiries') return '/admin/enquiries';
   if (page === 'admin-upload') return '/admin/upload';
   if (page === 'admin-dashboard') return '/admin/dashboard';
   if (page === 'client-models') return '/client/models';

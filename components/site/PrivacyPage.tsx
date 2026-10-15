@@ -44,9 +44,10 @@ export function PrivacyPage() {
           <h2>What we collect</h2>
           <h3>When you contact us</h3>
           <p>
-            The contact form does not send or store anything on our servers. It opens your own email app with your
-            message filled in, and we receive whatever you choose to send: usually your name, email address, phone
-            number (optional), project type and message.
+            When you send the contact form, we store your name, email address, phone number (optional), project type
+            and message so we can reply, along with the date and your browser type. To stop spam, we also briefly keep
+            a count of messages sent from your internet connection. If you email us directly instead, we receive
+            whatever you choose to send.
           </p>
           <h3>If you are a client with an account</h3>
           <ul>
@@ -114,7 +115,7 @@ export function PrivacyPage() {
           <h2>Who we share it with</h2>
           <p>We use trusted service providers who process data for us only to run the service:</p>
           <ul>
-            <li>Supabase: account login and database.</li>
+            <li>Supabase: account login, database and contact-form messages (stored in Mumbai, India).</li>
             <li>Cloudflare: storage and delivery of 3D model files, and our domain&rsquo;s DNS.</li>
             <li>Vercel and Railway: website and server hosting.</li>
             <li>Google (Gmail): our email.</li>

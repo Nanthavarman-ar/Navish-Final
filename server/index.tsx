@@ -2296,6 +2296,102 @@ app.get('/make-server-cf230d31/api/admin/audit-logs', async (c) => {
   }
 });
 
+// ---- Contact form enquiries ------------------------------------------------------
+// The site's contact form used to only open the visitor's mail app (mailto:), which
+// silently does nothing for anyone without one set up - enquiries were simply lost.
+// Enquiries are now stored here and listed in the admin dashboard.
+const ENQUIRY_LIMITS = { name: 120, email: 200, phone: 40, projectType: 120, message: 5000 };
+const ENQUIRY_STATUSES = ['new', 'replied', 'archived'] as const;
+
+app.post('/make-server-cf230d31/public/contact', async (c) => {
+  try {
+    const body = await c.req.json().catch(() => null);
+    if (!body || typeof body !== 'object') {
+      return c.json({ error: 'Invalid request' }, 400);
+    }
+    // Honeypot: a hidden field real visitors never fill in. Pretend success so bots
+    // don't learn to skip it.
+    if (typeof body.website === 'string' && body.website.trim() !== '') {
+      return c.json({ ok: true });
+    }
+
+    const field = (key: keyof typeof ENQUIRY_LIMITS) =>
+      typeof body[key] === 'string' ? body[key].trim().slice(0, ENQUIRY_LIMITS[key]) : '';
+    const enquiry = {
+      name: field('name'),
+      email: field('email'),
+      phone: field('phone'),
+      projectType: field('projectType'),
+      message: field('message'),
+    };
+    if (!enquiry.name || !enquiry.message || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(enquiry.email)) {
+      return c.json({ error: 'Please include your name, a valid email address and a message.' }, 400);
+    }
+
+    // Basic flood protection: at most 5 enquiries per IP per hour.
+    const ip = c.req.header('cf-connecting-ip') || c.req.header('x-forwarded-for')?.split(',')[0].trim() || 'unknown';
+    const hourKey = `enquiry_rate:${ip}:${new Date().toISOString().slice(0, 13)}`;
+    const count = Number((await kv.get(hourKey)) || 0);
+    if (count >= 5) {
+      return c.json({ error: 'Too many enquiries from your connection. Please email us directly.' }, 429);
+    }
+    await kv.set(hourKey, count + 1);
+
+    const createdAt = new Date().toISOString();
+    const id = `${Date.now()}_${crypto.randomUUID().slice(0, 8)}`;
+    await kv.set(`enquiry:${id}`, {
+      id,
+      ...enquiry,
+      status: 'new',
+      createdAt,
+      userAgent: (c.req.header('user-agent') || '').slice(0, 300),
+    });
+    return c.json({ ok: true });
+  } catch (error) {
+    console.error('Contact enquiry error:', error);
+    return c.json({ error: 'Could not send your enquiry' }, 500);
+  }
+});
+
+app.get('/make-server-cf230d31/api/admin/enquiries', async (c) => {
+  const { error } = await verifyAdmin(c.req.raw);
+  if (error) {
+    return c.json({ error }, 401);
+  }
+  try {
+    const enquiries = (await kv.getByPrefix('enquiry:'))
+      .filter((e: any) => e && e.id)
+      .sort((a: any, b: any) => String(b.createdAt).localeCompare(String(a.createdAt)));
+    return c.json({ enquiries });
+  } catch (error) {
+    console.error('Enquiries fetch error:', error);
+    return c.json({ error: 'Failed to load enquiries' }, 500);
+  }
+});
+
+app.patch('/make-server-cf230d31/api/admin/enquiries/:id', async (c) => {
+  const { error } = await verifyAdmin(c.req.raw);
+  if (error) {
+    return c.json({ error }, 401);
+  }
+  try {
+    const id = c.req.param('id');
+    const { status } = await c.req.json();
+    if (!ENQUIRY_STATUSES.includes(status)) {
+      return c.json({ error: 'Invalid status' }, 400);
+    }
+    const existing = await kv.get(`enquiry:${id}`);
+    if (!existing) {
+      return c.json({ error: 'Enquiry not found' }, 404);
+    }
+    await kv.set(`enquiry:${id}`, { ...existing, status });
+    return c.json({ ok: true });
+  } catch (error) {
+    console.error('Enquiry update error:', error);
+    return c.json({ error: 'Failed to update enquiry' }, 500);
+  }
+});
+
 // Get admin settings
 app.get('/make-server-cf230d31/api/admin/settings', async (c) => {
   const { error, user } = await verifyAdmin(c.req.raw);

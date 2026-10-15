@@ -14,7 +14,8 @@ import {
   LogOut,
   Home,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  Inbox
 } from 'lucide-react';
 
 // Lazy load heavy components for better performance
@@ -23,10 +24,11 @@ const ClientsPage = lazy(() => import('./admin/ClientsPage').then(module => ({ d
 const ModelsPage = lazy(() => import('./admin/ModelsPage').then(module => ({ default: module.ModelsPage })));
 const AuditLogsPage = lazy(() => import('./admin/AuditLogsPage').then(module => ({ default: module.AuditLogsPage })));
 const SettingsPage = lazy(() => import('./admin/SettingsPage').then(module => ({ default: module.SettingsPage })));
+const EnquiriesPage = lazy(() => import('./admin/EnquiriesPage').then(module => ({ default: module.EnquiriesPage })));
 const UploadPage = lazy(() => import('./admin/UploadPage').then(module => ({ default: module.UploadPage })));
 
-type AdminView = 'overview' | 'clients' | 'models' | 'audit' | 'settings' | 'upload';
-const KNOWN_VIEWS: AdminView[] = ['overview', 'clients', 'models', 'audit', 'settings', 'upload'];
+type AdminView = 'overview' | 'enquiries' | 'clients' | 'models' | 'audit' | 'settings' | 'upload';
+const KNOWN_VIEWS: AdminView[] = ['overview', 'enquiries', 'clients', 'models', 'audit', 'settings', 'upload'];
 
 export function AdminDashboard() {
   const { user, logout } = useAuth();
@@ -61,6 +63,7 @@ export function AdminDashboard() {
 
   const menuItems = [
     { id: 'overview' as AdminView, label: 'Overview', icon: LayoutDashboard, description: 'Platform stats at a glance' },
+    { id: 'enquiries' as AdminView, label: 'Enquiries', icon: Inbox, description: 'Contact form messages' },
     { id: 'clients' as AdminView, label: 'User Management', icon: Users, description: 'Manage user accounts' },
     { id: 'models' as AdminView, label: 'Models Library', icon: Box, description: 'Manage 3D models' },
     { id: 'upload' as AdminView, label: 'Upload Models', icon: Upload, description: 'Upload new models' },
@@ -72,6 +75,8 @@ export function AdminDashboard() {
     switch (currentView) {
       case 'overview':
         return <OverviewPage />;
+      case 'enquiries':
+        return <EnquiriesPage />;
       case 'clients':
         return <ClientsPage />;
       case 'models':
