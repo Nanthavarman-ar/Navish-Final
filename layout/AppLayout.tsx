@@ -11,6 +11,7 @@ import { FeaturesPage } from '../components/site/FeaturesPage';
 import { ProcessPage } from '../components/site/ProcessPage';
 import { ContactPage } from '../components/site/ContactPage';
 import { NotFoundPage } from '../components/site/NotFoundPage';
+import { PrivacyPage } from '../components/site/PrivacyPage';
 import { DemoViewer } from '../components/DemoViewer';
 import { AdminLogin } from '../components/AdminLogin';
 import { ClientLogin } from '../components/ClientLogin';
@@ -86,6 +87,7 @@ const mapPathToPage = (path: string): string => {
   if (normalized === '/features') return 'features';
   if (normalized === '/process') return 'process';
   if (normalized === '/contact') return 'contact';
+  if (normalized === '/privacy') return 'privacy';
   if (normalized.startsWith('/demo/')) return 'demo';
   if (normalized.startsWith('/admin/login')) return 'admin-login';
   if (normalized.startsWith('/client/login')) return 'client-login';
@@ -126,6 +128,7 @@ const mapPageToPath = (page: string): string => {
   if (page === 'features') return '/features';
   if (page === 'process') return '/process';
   if (page === 'contact') return '/contact';
+  if (page === 'privacy') return '/privacy';
   // A demo's URL carries its share id, so there's no single path to sync back to.
   if (page === 'demo') return '';
   // Leave a not-found URL exactly as the visitor typed it.
@@ -168,6 +171,7 @@ const PAGE_META: Record<string, [title: string, description?: string]> = {
   '/features': ['Features', 'The tools inside the Navish 3D workspace - simulation, analysis, collaboration and immersive VR review.'],
   '/process': ['Our process', 'From first sketch to the keys in your hand - how Navish designs and builds, step by step.'],
   '/contact': ['Contact', 'Tell us about your project. Share a few details and we will arrange a first conversation.'],
+  '/privacy': ['Privacy policy', 'How Navish Studio Architects collects, uses and protects your personal information, and the rights you have.'],
   '/login': ['Log in'],
   '/admin/login': ['Admin log in'],
   '/client/login': ['Client log in'],
@@ -511,6 +515,7 @@ export default function AppLayout() {
       <Route path="/features" element={<FeaturesPage />} />
       <Route path="/process" element={<ProcessPage />} />
       <Route path="/contact" element={<ContactPage />} />
+      <Route path="/privacy" element={<PrivacyPage />} />
       <Route path="/demo/:shareId" element={<DemoViewer />} />
       <Route path="/admin/login" element={<AdminLogin />} />
       <Route path="/client/login" element={<ClientLogin />} />

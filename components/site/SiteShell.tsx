@@ -363,7 +363,10 @@ export function SiteShell({
               <span className="nv-footer__word">Navish</span>
             </div>
             <div className="nv-footer__bottom">
-              <span>&copy; {year} Navish. All rights reserved.</span>
+              <span>
+                &copy; {year} Navish Studio Architects. All rights reserved. ·{' '}
+                <SiteLink to="/privacy">Privacy policy</SiteLink>
+              </span>
               <span>{SITE.descriptor}</span>
             </div>
           </footer>
