@@ -1,8 +1,15 @@
-import React, { Suspense, useEffect, useState } from 'react';
+import React, { Suspense, useEffect, useRef, useState } from 'react';
+import type { Scene } from '@babylonjs/core';
 import { Link, useParams } from 'react-router-dom';
 import { projectId } from '../supabase/client';
 import { useApp, LAST_MODEL_ID_KEY } from '../contexts/AppContext';
 import BabylonErrorBoundary from './BabylonErrorBoundary';
+import { usePresentMode } from '../presentation/mode';
+import { loadPresentConfig, DEFAULT_CONFIG, type PresentConfig } from '../data/presentConfig';
+import { CornerLongPress, PinDialog } from '../ui/CornerLongPress';
+
+// Client-facing presentation layer (floors, pins, 360 rooms...). Lazy so it never loads in workspace mode.
+const PresentationLayer = React.lazy(() => import('../ui/PresentationLayer').then((m) => ({ default: m.PresentationLayer })));
 
 // Lazy for the same reason as everywhere else: the Babylon engine is ~1.25MB gzip.
 const BabylonWorkspace = React.lazy(() => import('./BabylonWorkspace'));
@@ -24,6 +31,23 @@ export function DemoViewer() {
   const { shareId = '' } = useParams<{ shareId: string }>();
   const { setSelectedModel } = useApp();
   const [state, setState] = useState<DemoState>({ status: 'loading' });
+
+  // PRESENT is the default. ?workspace=1 or a 3-second corner long-press opens the workspace
+  // (behind an optional PIN from config.json); another long-press returns to present mode.
+  const { mode, setMode } = usePresentMode();
+  const [config, setConfig] = useState<PresentConfig>(DEFAULT_CONFIG);
+  const [unlocked, setUnlocked] = useState(false);
+  const [askPin, setAskPin] = useState(false);
+  const sceneRef = useRef<Scene | null>(null);
+  useEffect(() => { loadPresentConfig(shareId).then(setConfig); }, [shareId]);
+  const needsPin = !!config.pinCode && !unlocked;
+  const workspaceActive = mode === 'workspace' && !needsPin;
+  const presentMode = !workspaceActive;
+  const toggleMode = () => {
+    if (workspaceActive) { setMode('present'); return; }
+    if (needsPin) setAskPin(true);
+    else setMode('workspace');
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -68,7 +92,7 @@ export function DemoViewer() {
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#1a1a1a] text-[#eceaea] p-6">
         <div className="max-w-md text-center space-y-4">
-          <img src="/brand/navish-mark.svg" alt="Navish" className="w-14 mx-auto" />
+          {workspaceActive && <img src="/brand/navish-mark.svg" alt="Navish" className="w-14 mx-auto" />}
           {state.status === 'loading' ? (
             <>
               <div className="animate-spin w-8 h-8 border-2 border-[#ff4d4f] border-t-transparent rounded-full mx-auto" />
@@ -78,9 +102,11 @@ export function DemoViewer() {
             <>
               <p className="text-lg font-semibold">Demo unavailable</p>
               <p className="text-sm text-[#c4c2c2]">{state.message}</p>
-              <Link to="/" className="inline-block mt-2 px-4 py-2 rounded bg-[#ff4d4f] text-[#1a1a1a] text-sm font-semibold">
-                Go to Navish
-              </Link>
+              {workspaceActive && (
+                <Link to="/" className="inline-block mt-2 px-4 py-2 rounded bg-[#ff4d4f] text-[#1a1a1a] text-sm font-semibold">
+                  Go to Navish
+                </Link>
+              )}
             </>
           )}
         </div>
@@ -112,10 +138,25 @@ export function DemoViewer() {
             enablePhysics={false}
             enableXR={true}
             enableSpatialAudio={false}
-            topBarExtraLeft={demoBadge}
+            presentMode={presentMode}
+            sceneRef={sceneRef}
+            topBarExtraLeft={workspaceActive ? demoBadge : undefined}
           />
         </Suspense>
       </BabylonErrorBoundary>
+      {presentMode && (
+        <Suspense fallback={null}>
+          <PresentationLayer sceneRef={sceneRef} projectId={shareId} config={config} />
+        </Suspense>
+      )}
+      <CornerLongPress onTrigger={toggleMode} />
+      {askPin && (
+        <PinDialog
+          pin={config.pinCode}
+          onCancel={() => setAskPin(false)}
+          onSuccess={() => { setUnlocked(true); setAskPin(false); setMode('workspace'); }}
+        />
+      )}
     </div>
   );
 }

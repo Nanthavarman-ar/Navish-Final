@@ -115,6 +115,9 @@ interface SceneConfig {
 interface BabylonWorkspaceProps {
   workspaceId: string;
   isAdmin?: boolean;
+  // Client-facing present mode (see presentation/): hides every editor/workspace panel,
+  // top bar, toolbars and keyboard shortcuts. The 3D scene itself is untouched.
+  presentMode?: boolean;
   layoutMode?: 'standard' | 'compact' | 'immersive' | 'split';
   performanceMode?: 'low' | 'medium' | 'high';
   enablePhysics?: boolean;
@@ -369,6 +372,7 @@ function getSceneLoaderModule() {
 const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
   workspaceId,
   isAdmin = false,
+  presentMode = false,
   // default to standard layout so UI panels and buttons are visible immediately
   layoutMode: layoutModeProp = 'standard',
   performanceMode = 'medium',
@@ -5363,9 +5367,22 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
     }
   }, [enableFeature, disableFeature, setTransformMode, setCameraActive, isAdmin]);
 
+  // Lets the present-mode UI (presentation/) start VR/AR through the exact same handlers the
+  // workspace's own buttons use, without reaching into this component's internals.
+  React.useEffect(() => {
+    const onPresentXR = (e: Event) => {
+      const mode = (e as CustomEvent).detail;
+      if (mode === 'vr') handleFeatureToggle('showVR', !featureStates.showVR);
+      else if (mode === 'ar') handleFeatureToggle('showAR', !featureStates.showAR);
+    };
+    window.addEventListener('naviz:present-xr', onPresentXR);
+    return () => window.removeEventListener('naviz:present-xr', onPresentXR);
+  }, [handleFeatureToggle, featureStates.showVR, featureStates.showAR]);
+
   // Global keyboard shortcuts (must be after handleFeatureToggle)
   React.useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
+      if (presentMode) return;
       const tag = (e.target as HTMLElement)?.tagName?.toLowerCase();
       if (tag === 'input' || tag === 'textarea' || tag === 'select') return;
       const key = e.key.toLowerCase();
@@ -5896,7 +5913,7 @@ const getCategoryDescription = (categoryName: string): string => {
   return (
     <ErrorBoundary>
       <div className={layoutClasses.container}>
-  {leftPanelVisible && renderLeftPanel({
+  {!presentMode && leftPanelVisible && renderLeftPanel({
     featureCategories: rawFeaturesByCategoryVisible,
     categoryPanelVisible,
     searchTerm,
@@ -5914,7 +5931,7 @@ const getCategoryDescription = (categoryName: string): string => {
   })}
         <div className={layoutClasses.mainWorkspace}>
           {/* Top bar - shrink-0 so it stays visible */}
-          {topBarVisible && (
+          {!presentMode && topBarVisible && (
             <div className="shrink-0 w-full z-10 bg-gray-900 border-b border-gray-700">
               {renderTopBar({
             fps,
@@ -6042,13 +6059,15 @@ const getCategoryDescription = (categoryName: string): string => {
             </div>
             {/* Always shown: VR/AR work on every workspace page (the main /workspace
                 route never passes enableXR, so gating on it hid the buttons there). */}
-            <XRQuickButtons
-              vrActive={!!featureStates.showVR}
-              arActive={!!featureStates.showAR}
-              onToggleVR={() => handleFeatureToggle('showVR', !featureStates.showVR)}
-              onToggleAR={() => handleFeatureToggle('showAR', !featureStates.showAR)}
-            />
-            {workspaceState.selectedMesh && (
+            {!presentMode && (
+              <XRQuickButtons
+                vrActive={!!featureStates.showVR}
+                arActive={!!featureStates.showAR}
+                onToggleVR={() => handleFeatureToggle('showVR', !featureStates.showVR)}
+                onToggleAR={() => handleFeatureToggle('showAR', !featureStates.showAR)}
+              />
+            )}
+            {!presentMode && workspaceState.selectedMesh && (
               <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-40 flex items-center gap-1 bg-gray-900/95 border border-cyan-500/20 rounded-lg shadow-2xl px-2 py-1.5 text-white">
                 <span className="text-xs text-gray-300 px-2 max-w-[140px] truncate" title={workspaceState.selectedMesh.name}>
                   {workspaceState.selectedMesh.name}
@@ -6224,7 +6243,7 @@ const getCategoryDescription = (categoryName: string): string => {
               </div>
             )}
           </div>
-          {layoutMode !== 'immersive' && workspaceState.bottomPanelVisible && renderBottomPanel({
+          {!presentMode && layoutMode !== 'immersive' && workspaceState.bottomPanelVisible && renderBottomPanel({
             workspaceState,
             activeFeatures,
             performanceMode: performanceModeResolved,
@@ -6240,7 +6259,7 @@ const getCategoryDescription = (categoryName: string): string => {
             animationManagerRef
           })}
         </div>
-        {renderRightPanel({
+        {!presentMode && renderRightPanel({
           workspaceState,
           updateState,
           bimManagerRef,
@@ -6248,7 +6267,7 @@ const getCategoryDescription = (categoryName: string): string => {
           currentModelId
         })}
         {/* Floating aeromark tab - portaled to body so it's always clickable above canvas */}
-        {layoutMode !== 'immersive' && !leftPanelVisible && createPortal(
+        {!presentMode && layoutMode !== 'immersive' && !leftPanelVisible && createPortal(
           <button
             type="button"
             className="fixed left-0 top-1/2 -translate-y-1/2 z-99998 h-16 w-6 flex items-center justify-center rounded-r-md bg-gray-800 hover:bg-gray-700 border border-l-0 border-gray-600 text-gray-400 hover:text-white shadow-lg transition-colors cursor-pointer"
@@ -6271,7 +6290,7 @@ const getCategoryDescription = (categoryName: string): string => {
           document.body
         )}
         {/* Floating aeromark tab at top center to expand top bar when hidden */}
-        {layoutMode !== 'immersive' && !topBarVisible && createPortal(
+        {!presentMode && layoutMode !== 'immersive' && !topBarVisible && createPortal(
           <button
             type="button"
             className="fixed top-0 left-1/2 -translate-x-1/2 z-99998 w-16 h-6 flex items-center justify-center rounded-b-md bg-gray-800 hover:bg-gray-700 border border-t-0 border-gray-600 text-gray-400 hover:text-white shadow-lg transition-colors cursor-pointer"

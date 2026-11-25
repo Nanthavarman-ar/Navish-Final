@@ -1,0 +1,22 @@
+{
+  "homes": [
+    {
+      "id": "Home_101",
+      "name": "Residence 101",
+      "floor": 1,
+      "areaM2": 86.5,
+      "status": "available",
+      "bedrooms": 2,
+      "bathrooms": 2,
+      "price": "On request",
+      "description": "Corner home with a south-facing balcony.",
+      "photos": ["/projects/CLIENT/photos/101-1.jpg"],
+      "floorPlan": "/projects/CLIENT/plans/101.png",
+      "rooms": ["living", "dining", "bedroom", "balcony"],
+      "hotspots": {
+        "living": [{ "label": "Dining", "yaw": 90, "pitch": -5, "target": "dining" }],
+        "dining": [{ "label": "Living", "yaw": -90, "pitch": -5, "target": "living" }]
+      }
+    }
+  ]
+}

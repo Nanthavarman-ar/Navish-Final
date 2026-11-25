@@ -1,0 +1,17 @@
+{
+  "clientName": "Client Name",
+  "clientLogo": "",
+  "tagline": "Your tagline here",
+  "accentColor": "#ff4d4f",
+  "contactLink": "mailto:sales@example.com?subject=Call%20about%20{home}",
+  "pinCode": "",
+  "units": "m2",
+  "cutHeightRatio": 0.6,
+  "cutCaps": true,
+  "naming": {
+    "floor": "^Floor[_\\-\\s]?(\\d+)",
+    "home": "^Home[_\\-\\s]?(\\d+)",
+    "roof": "^Roof",
+    "exterior": "^(Exterior|Facade|Shell|Site)"
+  }
+}
