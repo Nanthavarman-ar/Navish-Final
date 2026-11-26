@@ -23,8 +23,6 @@ export interface PresentConfig {
   accentColor: string;
   /** https://..., mailto:..., tel:... ({home} is replaced with the home's name). */
   contactLink: string;
-  /** If set, a PIN is asked before workspace mode opens. Empty = no PIN. */
-  pinCode: string;
   /** Default unit shown first. */
   units: 'm2' | 'ft2';
   /** Where in a level the cut happens: 0 = floor slab, 1 = top of the level. */
@@ -40,7 +38,6 @@ export const DEFAULT_CONFIG: PresentConfig = {
   tagline: '',
   accentColor: '#ff4d4f',
   contactLink: '',
-  pinCode: '',
   units: 'm2',
   cutHeightRatio: 0.6,
   cutCaps: true,

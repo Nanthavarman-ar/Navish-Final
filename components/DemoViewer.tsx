@@ -1,14 +1,13 @@
 import React, { Suspense, useEffect, useRef, useState } from 'react';
 import type { Scene } from '@babylonjs/core';
-import { Link, useParams } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 import { projectId } from '../supabase/client';
 import { useApp, LAST_MODEL_ID_KEY } from '../contexts/AppContext';
 import BabylonErrorBoundary from './BabylonErrorBoundary';
-import { usePresentMode } from '../presentation/mode';
 import { loadPresentConfig, DEFAULT_CONFIG, type PresentConfig } from '../data/presentConfig';
-import { CornerLongPress, PinDialog } from '../ui/CornerLongPress';
+import { setProtectedMeshPatterns } from './utils/meshMerging';
 
-// Client-facing presentation layer (floors, pins, 360 rooms...). Lazy so it never loads in workspace mode.
+// Client-facing presentation layer (floors, pins, 360 rooms...).
 const PresentationLayer = React.lazy(() => import('../ui/PresentationLayer').then((m) => ({ default: m.PresentationLayer })));
 
 // Lazy for the same reason as everywhere else: the Babylon engine is ~1.25MB gzip.
@@ -23,31 +22,28 @@ type DemoState =
 
 /**
  * Public demo viewer at /demo/:shareId - no login. An admin creates the link from the
- * Models page; anyone who has it can open that one model in the 3D viewer (look around,
- * walk through it, VR/AR) but can't upload anything: the workspace runs with
- * isAdmin={false}, and every upload/assign route on the server is admin-only anyway.
+ * Models page; anyone who has it can open that one model in the presentation UI (look
+ * around, floors, homes, 360 rooms, VR/AR) but can't upload or edit anything: the workspace
+ * runs with isAdmin={false} and presentMode, so no editor UI is rendered, and every
+ * upload/assign route on the server is admin-only anyway.
+ *
+ * There is deliberately NO way to switch this view into the workspace UI. The workspace
+ * is only reachable through the admin login at /workspace.
  */
 export function DemoViewer() {
   const { shareId = '' } = useParams<{ shareId: string }>();
   const { setSelectedModel } = useApp();
   const [state, setState] = useState<DemoState>({ status: 'loading' });
 
-  // PRESENT is the default. ?workspace=1 or a 3-second corner long-press opens the workspace
-  // (behind an optional PIN from config.json); another long-press returns to present mode.
-  const { mode, setMode } = usePresentMode();
   const [config, setConfig] = useState<PresentConfig>(DEFAULT_CONFIG);
-  const [unlocked, setUnlocked] = useState(false);
-  const [askPin, setAskPin] = useState(false);
   const sceneRef = useRef<Scene | null>(null);
-  useEffect(() => { loadPresentConfig(shareId).then(setConfig); }, [shareId]);
-  const needsPin = !!config.pinCode && !unlocked;
-  const workspaceActive = mode === 'workspace' && !needsPin;
-  const presentMode = !workspaceActive;
-  const toggleMode = () => {
-    if (workspaceActive) { setMode('present'); return; }
-    if (needsPin) setAskPin(true);
-    else setMode('workspace');
-  };
+  useEffect(() => {
+    loadPresentConfig(shareId).then((cfg) => {
+      // The client's own Floor/Home/Roof/Exterior naming must survive merge + freeze too.
+      setProtectedMeshPatterns([cfg.naming.floor, cfg.naming.home, cfg.naming.roof, cfg.naming.exterior]);
+      setConfig(cfg);
+    });
+  }, [shareId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -92,7 +88,6 @@ export function DemoViewer() {
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#1a1a1a] text-[#eceaea] p-6">
         <div className="max-w-md text-center space-y-4">
-          {workspaceActive && <img src="/brand/navish-mark.svg" alt="Navish" className="w-14 mx-auto" />}
           {state.status === 'loading' ? (
             <>
               <div className="animate-spin w-8 h-8 border-2 border-[#ff4d4f] border-t-transparent rounded-full mx-auto" />
@@ -102,25 +97,12 @@ export function DemoViewer() {
             <>
               <p className="text-lg font-semibold">Demo unavailable</p>
               <p className="text-sm text-[#c4c2c2]">{state.message}</p>
-              {workspaceActive && (
-                <Link to="/" className="inline-block mt-2 px-4 py-2 rounded bg-[#ff4d4f] text-[#1a1a1a] text-sm font-semibold">
-                  Go to Navish
-                </Link>
-              )}
             </>
           )}
         </div>
       </div>
     );
   }
-
-  const demoBadge = (
-    <div className="flex items-center gap-2 px-2">
-      <img src="/brand/navish-mark.svg" alt="" className="w-6" aria-hidden />
-      <span className="text-sm font-semibold text-white truncate max-w-[40vw]">{state.name}</span>
-      <span className="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-[#ff4d4f]/20 text-[#ff9d9e] border border-[#ff4d4f]/40">Demo</span>
-    </div>
-  );
 
   return (
     <div className="fixed inset-0 z-40 bg-[#111]">
@@ -138,25 +120,14 @@ export function DemoViewer() {
             enablePhysics={false}
             enableXR={true}
             enableSpatialAudio={false}
-            presentMode={presentMode}
+            presentMode
             sceneRef={sceneRef}
-            topBarExtraLeft={workspaceActive ? demoBadge : undefined}
           />
         </Suspense>
       </BabylonErrorBoundary>
-      {presentMode && (
-        <Suspense fallback={null}>
-          <PresentationLayer sceneRef={sceneRef} projectId={shareId} config={config} />
-        </Suspense>
-      )}
-      <CornerLongPress onTrigger={toggleMode} />
-      {askPin && (
-        <PinDialog
-          pin={config.pinCode}
-          onCancel={() => setAskPin(false)}
-          onSuccess={() => { setUnlocked(true); setAskPin(false); setMode('workspace'); }}
-        />
-      )}
+      <Suspense fallback={null}>
+        <PresentationLayer sceneRef={sceneRef} projectId={shareId} config={config} />
+      </Suspense>
     </div>
   );
 }

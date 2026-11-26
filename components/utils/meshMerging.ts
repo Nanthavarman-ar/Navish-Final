@@ -39,9 +39,39 @@ const NON_MODEL_MESH_PREFIX = /^(ground|__root__|measure_|annotation_|cursor_|co
 // decorative clutter is small relative to the whole model.
 const MAX_CANDIDATE_SIZE_RATIO = 0.25;
 
+// Meshes the present-mode floor slice / pins / homes rely on (presentation/sceneModel.ts).
+// They must stay individual, unmerged, un-instanced and un-frozen so they can be faded,
+// clipped, picked and measured one by one. A mesh is protected if its own name OR any
+// ancestor's name matches - glTF exports often put "Home_101" on a parent node and give the
+// child meshes names like "Balcony_Railing", which would otherwise match the decorative
+// pattern and be merged away out of that home.
+// Defaults match the standard naming; DemoViewer replaces them with the client's own
+// config.json "naming" patterns via setProtectedMeshPatterns().
+const DEFAULT_PROTECTED = [/^Floor[_\-\s]?\d+/i, /^Home[_\-\s]?\d+/i, /^Roof/i, /^Exterior/i];
+let protectedPatterns: RegExp[] = DEFAULT_PROTECTED;
+
+export function setProtectedMeshPatterns(sources: string[]): void {
+  const parsed: RegExp[] = [];
+  for (const src of sources) {
+    try { if (src) parsed.push(new RegExp(src, 'i')); } catch { /* ignore a bad pattern */ }
+  }
+  protectedPatterns = [...DEFAULT_PROTECTED, ...parsed];
+}
+
+export function isPresentationProtected(mesh: AbstractMesh): boolean {
+  let node: { name?: string; parent?: unknown } | null = mesh;
+  while (node) {
+    const name = node.name || '';
+    if (protectedPatterns.some((re) => re.test(name))) return true;
+    node = (node.parent as { name?: string; parent?: unknown } | null) ?? null;
+  }
+  return false;
+}
+
 function isMergeCandidate(mesh: AbstractMesh, modelDiagonal: number): mesh is Mesh {
   if (!(mesh instanceof Mesh)) return false;
   if (mesh.getTotalVertices() === 0) return false;
+  if (isPresentationProtected(mesh)) return false;
   const name = mesh.name || '';
   if (NON_MODEL_MESH_PREFIX.test(name)) return false;
   if (!DECORATIVE_NAME_PATTERN.test(name)) return false;

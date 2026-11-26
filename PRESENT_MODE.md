@@ -4,11 +4,11 @@ Opening `/demo/<shareId>` (the existing no-login share link) now starts in **PRE
 only the model + a minimal glass UI. All workspace/editor panels, the top bar, toolbars
 and keyboard shortcuts are hidden and disabled.
 
-Workspace mode: add `?workspace=1` to the link, or **hold the bottom-left corner of the
-screen for 3 seconds** (invisible 44px hot-spot). Hold again to return to present mode.
-If `pinCode` is set in config.json, a PIN is asked before the workspace opens.
-(The PIN sits in a public file: it keeps casual visitors out, it is not real security.
-Uploads/edits/deletes are still protected by the server's admin-only routes.)
+There is **no way** to reach the workspace UI from a demo or client link: no URL flag, no
+long-press, no PIN. The workspace is only available through the admin login at `/workspace`.
+In present mode the workspace runs with `isAdmin={false}` and `presentMode`, which renders none
+of its editor UI, ignores its keyboard shortcuts and `?feature=` links, and refuses every
+feature toggle except VR/AR.
 
 ## One folder per client
 
@@ -22,7 +22,7 @@ public/projects/<shareId>/photos/, plans/  whatever homes.json points to
 ```
 
 `config.json`: clientName, clientLogo, tagline, accentColor, contactLink (https/mailto/tel,
-`{home}` is replaced by the home name), pinCode, units ("m2"/"ft2"), cutHeightRatio
+`{home}` is replaced by the home name), units ("m2"/"ft2"), cutHeightRatio
 (0..1, where in a level the section cut happens), cutCaps, naming (regex patterns).
 
 ## Model naming (Blender) - needed per client
@@ -75,13 +75,13 @@ Files: `/projects/<shareId>/panoramas/<homeId>_<room>_<time>.jpg`, for example
 - [ ] 360: every room tab loads, time slider crossfades, hotspots jump, Exit works.
 - [ ] VR headset: enter VR, pins visible, controller ray opens the info panel, 360 works.
 - [ ] Slow network (browser dev tools "Slow 4G"): model and first 360 image stay usable.
-- [ ] Long-press corner opens workspace only for you (and PIN if set); QR link has no `?workspace=1`.
+- [ ] Adding `?workspace=1` or `?feature=showPropertyInspector` to the link changes nothing.
 - [ ] config.json has the real client name/logo/colour; homes.json has no empty areas.
 
 ## What changed (undo)
 
 Edited: `components/BabylonWorkspace.tsx` (new optional `presentMode` prop + gates, and a
-`naviz:present-xr` listener), `components/DemoViewer.tsx`, `package.json` (qrcode dev dependency, 2 scripts).
+`naviz:present-xr` listener), `components/DemoViewer.tsx`, `components/utils/meshMerging.ts` (Floor/Home/Roof/Exterior are never merged/instanced), `package.json` (qrcode dev dependency, 2 scripts).
 New: `data/`, `presentation/`, `ui/`, `scripts/make-qr.mjs`, `scripts/generate-homes.mjs`,
 `public/config.json`, `public/homes.json`, `public/homes.example.json`, this file.
 
@@ -95,4 +95,4 @@ nothing runs in `/workspace` differently (`presentMode` defaults to false).
 This was written without being able to run the app. Verify on a real model: the
 white-cap trick (back faces of the clipped meshes) can look different on some exports;
 fade-out of frozen materials may snap instead of fading; VR pin selection depends on the
-XR pointer-selection feature being on; PIN protects workspace entry, not each save/delete.
+XR pointer-selection feature being on.

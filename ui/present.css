@@ -132,12 +132,6 @@
 .pr-planview { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding: 80px 16px 24px; background: rgba(10, 11, 13, 0.82); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); pointer-events: auto; }
 .pr-planview img { max-width: 100%; max-height: 100%; background: #fff; border-radius: 12px; }
 
-/* Corner long-press + PIN dialog */
-.pr-corner { position: fixed; left: 0; bottom: 0; width: 44px; height: 44px; z-index: 99990; touch-action: none; background: transparent; -webkit-tap-highlight-color: transparent; user-select: none; }
-.pr-pin-dialog { position: fixed; inset: 0; z-index: 99995; display: flex; align-items: center; justify-content: center; background: rgba(0, 0, 0, 0.55); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }
-.pr-pin-dialog form { width: min(90vw, 320px); padding: 24px; border-radius: 22px; display: flex; flex-direction: column; gap: 12px; color: #fff; font-family: inherit; }
-.pr-pin-dialog input { height: 48px; border-radius: 12px; border: 1px solid var(--pr-line, rgba(255,255,255,.2)); background: rgba(255,255,255,0.08); color: #fff; font-size: 20px; letter-spacing: 0.4em; text-align: center; }
-
 /* Phones: controls and sheet move to the bottom */
 @media (max-width: 768px) {
   .pr-brand { top: 10px; left: 10px; padding: 6px 12px 6px 8px; }
@@ -153,5 +147,5 @@
   .pr-pano-time { bottom: calc(18px + env(safe-area-inset-bottom)); }
 }
 @media (prefers-reduced-motion: reduce) {
-  .pr-root *, .pr-pin-dialog * { transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; }
+  .pr-root * { transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; }
 }

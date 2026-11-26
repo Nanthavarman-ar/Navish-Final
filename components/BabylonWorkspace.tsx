@@ -66,7 +66,7 @@ import { SustainabilityManager, SustainabilityReport } from './SustainabilityMan
 import { PresentationManager } from './PresentationManager';
 import { IoTManager } from './IoTManager';
 import { captureSceneEdits, applySceneEdits, mergeAndSaveSceneEdits, loadSceneEdits, type SceneEditsData } from './utils/sceneEditsPersistence';
-import { mergeDecorativeMeshes, thinInstanceDecorativeMeshes, isDecorativeClutterMesh } from './utils/meshMerging';
+import { mergeDecorativeMeshes, thinInstanceDecorativeMeshes, isDecorativeClutterMesh, isPresentationProtected } from './utils/meshMerging';
 import { runChunked } from './utils/runChunked';
 import { enhanceImportedMaterials } from './utils/materialEnhancement';
 import { classifyMaterialsByTexture } from './utils/textureMaterialClassifier';
@@ -571,7 +571,7 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
   const [searchParams] = useSearchParams();
   useEffect(() => {
     const requestedFeature = searchParams.get('feature');
-    if (requestedFeature && Object.prototype.hasOwnProperty.call(initialFeatureStates, requestedFeature)) {
+    if (!presentMode && requestedFeature && Object.prototype.hasOwnProperty.call(initialFeatureStates, requestedFeature)) {
       handleFeatureToggle(requestedFeature, true);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1272,6 +1272,8 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
           await runChunked(loadedModelMeshesRef.current, (m) => {
             const vertexCount = m.getTotalVertices();
             if (vertexCount === 0) return;
+            // Floor_* / Home_* / Roof / Exterior (present-mode slice, pins) stay un-frozen.
+            if (isPresentationProtected(m)) return;
             m.freezeWorldMatrix();
             m.doNotSyncBoundingInfo = true;
             // Babylon's default culling strategy tests a mesh's full bounding BOX against
@@ -4667,6 +4669,11 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
   // panel's first open is a fair trade for the toggle actually working.
   const handleFeatureToggle = useCallback((featureId: string | number, enabled: boolean) => {
     const id = String(featureId);
+    // Present mode (public demo / client view): the only features that may be switched on
+    // are VR and AR (started from the presentation UI). Every other feature - inspectors,
+    // editors, gizmos, import/export, AI, collaboration - is refused here, whichever path
+    // asked (URL ?feature=, a custom event, a stray shortcut).
+    if (presentMode && id !== 'showVR' && id !== 'showAR') return;
     if (enabled) {
       enableFeature(id);
       // Feeds the Session Insights panel (config/featureCategories.tsx's
@@ -5365,7 +5372,7 @@ const BabylonWorkspace: React.FC<BabylonWorkspaceProps> = ({
         console.error(`Error disabling feature ${id}:`, error);
       }
     }
-  }, [enableFeature, disableFeature, setTransformMode, setCameraActive, isAdmin]);
+  }, [enableFeature, disableFeature, setTransformMode, setCameraActive, isAdmin, presentMode]);
 
   // Lets the present-mode UI (presentation/) start VR/AR through the exact same handlers the
   // workspace's own buttons use, without reaching into this component's internals.
@@ -6025,6 +6032,7 @@ const getCategoryDescription = (categoryName: string): string => {
               role="img"
               aria-label="Babylon.js 3D Canvas"
             />
+            {!presentMode && (
             <div className="absolute bottom-3 left-3 flex items-center gap-2 z-10">
               <Button
                 variant="secondary"
@@ -6057,6 +6065,7 @@ const getCategoryDescription = (categoryName: string): string => {
                 Flip
               </Button>
             </div>
+            )}
             {/* Always shown: VR/AR work on every workspace page (the main /workspace
                 route never passes enableXR, so gating on it hid the buttons there). */}
             {!presentMode && (
@@ -6117,7 +6126,7 @@ const getCategoryDescription = (categoryName: string): string => {
                 </Button>
               </div>
             )}
-            {renderCustomPanels({
+            {!presentMode && renderCustomPanels({
               featureStates,
               sceneRef,
               engineRef,
